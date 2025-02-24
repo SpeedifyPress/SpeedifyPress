@@ -239,7 +239,7 @@ class Menu {
     public static function add_js() {
         // Enqueue the admin page JavaScript file.
         wp_enqueue_script(
-            'unused_upress_admin',                      // Handle for the script
+            'unused_spress_admin',                      // Handle for the script
             UPRESS_PLUGIN_URL . 'assets/admin/admin.min.js', // URL to the script
             array(),                                   // Dependencies (none)
             UPRESS_VER,
@@ -248,7 +248,7 @@ class Menu {
 
         // Enqueue the admin page CSS file.
         wp_enqueue_style(
-            'unused_upress_admin_style',                // Handle for the style
+            'unused_spress_admin_style',                // Handle for the style
             UPRESS_PLUGIN_URL . 'assets/admin/admin.min.css', // URL to the stylesheet
             array(),
             UPRESS_VER
@@ -274,7 +274,7 @@ class Menu {
         $ajax_url =  admin_url( 'admin-ajax.php' );
 
         // Output the necessary data for the frontend into a JavaScript object.
-        echo "<script>window.upress_namespace={config:$config,version:'$version',display:".json_encode(self::$display).",ajaxurl:'$ajax_url'}</script>";
+        echo "<script>window.spress_namespace={config:$config,version:'$version',display:".json_encode(self::$display).",ajaxurl:'$ajax_url'}</script>";
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';

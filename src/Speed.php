@@ -18,7 +18,7 @@ class Speed {
 
     //The directory where unused CSS will be stored
     //will be a subdirectory of wp-content/cache
-    public static $cache_directory = "speedify-upress";
+    public static $cache_directory = "speedify-spress";
 
     //The hostname of the current site
     public static $hostname;     

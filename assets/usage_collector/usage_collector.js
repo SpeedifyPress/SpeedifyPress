@@ -129,7 +129,7 @@ class CSSUsageCollector {
             this.includePatterns.push(new RegExp(`\\.${className}(\\.|\s|,|{)`));
         });        
 
-        window.upress_includePatterns = this.includePatterns;
+        window.spress_includePatterns = this.includePatterns;
 
         
         // Process styles and include used variables
@@ -439,7 +439,7 @@ class CSSUsageCollector {
                 console.log("Sheet URL is",sheetURL);
             }             
             //For stats mode, don't reproceed if already processed
-            const isProcessed = (typeof sheet.ownerNode.dataset.upressProcessed == "string") && sheet.ownerNode.dataset.upressProcessed == "true";
+            const isProcessed = (typeof sheet.ownerNode.dataset.spressProcessed == "string") && sheet.ownerNode.dataset.spressProcessed == "true";
             return sheetURL.host === this.currentHost && !sheetURL.pathname.includes(this.cacheDir) && !isProcessed;
         } catch (e) {
             this.warn(`Error processing stylesheet '${sheet.href}':`, e);

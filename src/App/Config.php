@@ -155,7 +155,7 @@ class Config {
 	public static function init() {
 
 		// Get the saved configuration from the database
-		self::$config = (array)get_option( 'upress_namespace_CONFIG', array() );
+		self::$config = (array)get_option( 'spress_namespace_CONFIG', array() );
 		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
 
 		// Example of how to update one of the default configs
@@ -312,7 +312,7 @@ class Config {
 		}
 
 
-		update_option( 'upress_namespace_CONFIG', self::$config, false );
+		update_option( 'spress_namespace_CONFIG', self::$config, false );
 
 	}
 

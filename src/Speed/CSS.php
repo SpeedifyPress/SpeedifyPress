@@ -309,7 +309,7 @@ class CSS {
 
                         if(self::$mode == "stats") {
                             
-                            $new_tag = str_replace("<link ","<link data-upress-processed='true' ",$tag);                        
+                            $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$tag);                        
 
                         } else {
 
@@ -348,7 +348,7 @@ class CSS {
 
                 $minifier = new Minify\CSS($inline_css);
                 $inline_css = $minifier->minify();
-                $output = str_replace($first_tag,"<style rel='upress-inlined'>".$inline_css."</style>",$output);
+                $output = str_replace($first_tag,"<style rel='spress-inlined'>".$inline_css."</style>",$output);
 
             }
             
