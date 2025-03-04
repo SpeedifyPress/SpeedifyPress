@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.32.0
+Version: 0.33.0
 Text Domain: speedify-press
 Author URI: https://github.com/acid-drop
 */
@@ -20,15 +20,19 @@ $plugin_data = get_file_data( __FILE__, array( 'Version' => 'Version' ) );
 $plugin_version_full = $plugin_data['Version'];
 
 // Define constants
-define('UPRESS_VER', $plugin_version_full);
-define('UPRESS_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('UPRESS_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('SPRESS_VER', $plugin_version_full);
+define('SPRESS_FILE_NAME', plugin_basename(__FILE__));
+define('SPRESS_DIR_NAME', dirname(plugin_basename(__FILE__)));
+define('SPRESS_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('SPRESS_PLUGIN_DIR', plugin_dir_path(__FILE__));
+
 
 //Run the init functions
-UPRESS\RestApi::init();
-UPRESS\App\Config::init();
-UPRESS\Speed::init();
+SPRESS\RestApi::init();
+SPRESS\App\Config::init();
+SPRESS\App\License::init();
+SPRESS\Speed::init();
 
 
 //Run last as other classes and feed $display var here
-UPRESS\App\Menu::init();
+SPRESS\App\Menu::init();

@@ -1,38 +1,177 @@
-# SpeedifyCSS
+# SpeedifyPress 
 
 <img src="assets/logo.svg" alt="SpeedifyCSS" width="200">
 
-## Getting Started
+# FAQ 
 
-When you first install the Plugin it will start in Preview Mode. This allows you to test the plugin as an admin and ensure that Unused CSS is being removed as expected. You should:
+## How to use the  CSS Settings?
 
--   Visit some pages on your site.
--   On each page you visit you should scroll and then wait a few seconds
--   In a separate browser tab, keep open The Dashboard
--   Keep an eye on the Cache Status. You should see the number of files & pages increasing
--   Revisit the pages they should now load with reduced CSS (check the page source to confirm)
--   If not, try clearning your page cache (for most caches, it should be automatic)
+### Mode Selection
 
-## Display Problems?
+#### Choose the Unused CSS Mode
 
-When you visit pages, you may find that the CSS is not displaying correctly for some elements. This is usually because the CSS is added by JavaScript or some other external process and therefore isn't captured. How to fix:
+When you first install the plugin, the CSS setting will be set to 
+      Preview Mode. 
+      This allows you to test the plugin as an admin and ensure that unused CSS is removed as expected.
 
--   These instructions are for Chrome 
--   First, make sure that Preview Mode is enabled in this plugin
--   Open a tab with the incorrect CSS displaying. In a new  incognito tab, open the same page.
--   On each page, right click the element which isn't displaying correctly and select "Inspect".
--   Look for the CSS class that causes the correct CSS to be loaded
--   Add that CSS class to the list of Force Include Seletors on the Settings Page.
--   Clear the cache and repeat
+- **Visit some pages** on your site.
+- **Scroll and wait** a few seconds on each page.
+- Keep [The Dashboard](#) open in another tab.
+- Monitor the **Cache Status**—the number of files & pages should increase.
+- **Revisit the pages**—they should now load with optimized CSS.
+- ⚠️ If not, try clearing your page cache (most caches should update automatically).
 
-## Using the Stats
+#### Choose the Inclusion Method
 
-The stats section allows you to explore how different plugins inject CSS across your site.
+Decide how your optimized CSS is loaded:
 
--   View by plugin folder, path or post type.
--   Click column headers to sort
--   Click a row for detailed usage information
+- ⚡ **Inline CSS:** Inserts all styles at the top of the document, improving Google PageSpeed Insights scores.
+- 📁 **External CSS Files:** Loads individual CSS files, making navigation smoother by caching CSS across multiple pages.
 
- ## High traffic site? Need Expert help?
+### Filters
 
-Optimising high traffic  WordPress sites and WooCommerce stores is not easy. If your business needs an expert to guide you then get in touch and let's talk.
+#### Force Include Selectors
+
+Use this option to always include specific CSS selectors. If elements lose their styling, it’s likely because JavaScript dynamically adds the CSS.
+
+- Ensure that **Preview Mode** is enabled.
+- Open an incognito tab and visit the same page where styling is incorrect.
+- Right-click the affected element and select **Inspect**.
+- Find the CSS class responsible for applying the correct styles.
+- Add that class to the **Force Include Selectors** list.
+- ♻️ Clear the cache and check if the issue is resolved.
+
+#### Force Include URLs
+
+Specify URLs where **no CSS optimization** should occur. Supports **full URLs** and **regular expressions**.
+
+#### Force Ignore Cookies
+
+Exclude CSS processing based on cookie values.  
+      Example:
+
+- 🔑 *wordpress_logged_in_* → Excludes logged-in users.
+- 🛒 *woocommerce_cart_hash* → Excludes users with an item in their cart.
+
+#### Generation by Screen Resolution
+
+Generates optimized CSS at specific screen resolutions while using the same CSS for all resolutions.  
+      Useful when page content significantly varies across different screen sizes.
+## How to use the  CSS Stats?
+
+**CSS Stats** provide valuable insights into how CSS is being generated across your site and which plugins contribute to it.
+
+- The **Unused** column shows the number of CSS files generated but **not used** on any page.
+- The **Used** column displays the CSS files that are actively in use.
+- Click on a row for a **detailed breakdown** of how CSS is applied across your site.
+
+#### By Plugin Folder
+
+View a breakdown of **CSS files generated per 📂 plugin folder**. This helps identify which plugins contribute the most to your site's styles.
+
+#### By Path
+
+Displays CSS caching stats **for each 🔍 page path**. This helps pinpoint where CSS is stored and how it's being utilized across different URLs.
+
+#### By Post Types
+
+Groups CSS stats by **📝 Post Type**, allowing you to analyze **which plugins affect different content types**.
+
+- If certain post types **only** fill the **Unused** column, they likely don’t need those styles—optimizing them can improve performance.
+## How to use the  Find Replace?
+
+**Find/Replace** is an advanced feature that allows you to directly **search and replace** text in the HTML of all pages on your site.
+
+#### Add Row
+
+Start by clicking **"Add Row"** and entering the text to find and replace.  
+            **Important:** Regular expressions are **not supported**, and replacements are **case-sensitive**.
+
+#### Choose Scope
+
+Choose how replacements are applied:
+
+- **Scope: all** – Apply the replacement **everywhere** on the page.
+- **Scope: first** – Replace **only the first occurrence** of the text.
+## How to use the  General Settings?
+
+### External Scripts
+
+#### Locally host gtag.js
+
+If you are using the standard Google Analytics tag then this generally results in a performance hit. One way to improve things is to host the file locally. 
+                Ticking this option will download the remote file and setup a cron job to ensure it's always kept up to date. 
+                This is the recommended method for most sites using GA.
+
+#### Preload gtag.js
+
+Adds a preload in for the locally hosted gtag.js. You won't generally see a performance increase from this, but it can be worth testing.
+
+#### Add scripts to Partytown
+
+🎉 Partytown is an experimental feature that allows you load certain scripts via a web worker and therefore not in the main JavaScript thread. 
+                It was developed by [https://partytown.builder.io/](https://partytown.builder.io/). To add the locally hosted gtag here, just enter "local_tag" to the box. 
+                This will generally give a performance boost of a few points, but may affect the amount of sessions reported. It's therefore most suited to new sites.
+
+### Images
+
+#### Preload Image
+
+This is a recommended feature for every site. Adding an image here will activate image lazy loading and set a default image to be displayed before the real image is loaded. 
+                It's recommended that you choose a very lightweight SVG image here.
+
+#### Skip Lazyloading
+
+Allows you to ⏩ skip the lazyloading of certain images. This would normally be for images that are shown above the fold. For example, you should skip lazyloading of your logo. 
+                Any images that are added here will be preloaded by default.
+## How to use the  Javascript Settings?
+
+### Defer JavaScript
+
+Ticking the Defer JavaScript textbox will add the *defer* attribute to the script tag. This will defer the loading of the JavaScript until after the DOM has finished parsing (but before the DOM content is ready).  
+                Try this one first and see what the effect is on page speed. ⚡
+
+#### Exclude scripts from defer
+
+Enter any script name or partial script names here to have them excluded from deferring. It will match against the entire script block, including tags such as *rel* and the script contents.  
+                This can help prevent conflicts with essential scripts.
+
+#### Exclude URLs from defer
+
+JavaScript will not be deferred on any URLs that match strings or regular expressions entered here.  
+                Useful for ensuring key functionality remains intact.
+
+### Delay JavaScript
+
+Ticking the Delay JavaScript textbox will delay the loading of JavaScript until either:
+
+- The user interacts with the page in any way 🖱️
+- A certain number of seconds (as configured) elapses ⏳
+
+This is a more aggressive method of deferring JavaScript and can sometimes cause issues with pages, depending on how exactly the JavaScript works.  
+                For this reason, there are several further options available to configure the way this works:
+
+#### Exclude scripts from delay
+
+Enter any script name or partial script names here to have them excluded from deferring. It will match against the entire script block, including tags such as *rel* and the script contents.  
+                Useful for scripts that need to run immediately.
+
+#### Exclude URLs from delay
+
+Enter any full or partial URLs here. If matched, no JavaScript delay will take place on that URL.  
+                Helps avoid breaking key functionality. 🚧
+
+#### Load JavaScript First
+
+Enter any script name or partial script names here to bring them to the front of the load order.  
+                Ideal for high-priority scripts. 🎯
+
+#### Load JavaScript Last
+
+Enter any script name or partial script names here to push them to the end of the load order.  
+                This can improve perceived page speed. 🚀
+
+#### JavaScript to run on completion
+
+Enter JavaScript here that should be run after all the scripts have finished loading.  
+                Enter complete JavaScript with no script tags.

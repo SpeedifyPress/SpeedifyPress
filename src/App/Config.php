@@ -1,8 +1,8 @@
 <?php
 
-namespace UPRESS\App;
+namespace SPRESS\App;
 
-use UPRESS\Speed;
+use SPRESS\Speed;
 
 /**
  * The Config class is responsible for managing various configurations of the system.
@@ -10,7 +10,7 @@ use UPRESS\Speed;
  * merging the default configuration with user-defined settings, and providing methods
  * for updating and retrieving configuration values.
  *
- * @package UPRESS
+ * @package SPRESS
  */
 class Config {
 

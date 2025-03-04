@@ -1,10 +1,10 @@
 <?php
 
-namespace UPRESS;
+namespace SPRESS;
 
-use UPRESS\Speed\CSS;
+use SPRESS\Speed\CSS;
 
-use UPRESS\App\Config;
+use SPRESS\App\Config;
 use simplehtmldom\HtmlDocument;
 use MatthiasMullie\Minify;
 
@@ -12,7 +12,7 @@ use MatthiasMullie\Minify;
  * The `Speed` class handles performance optimizations and output rewriting 
  * for the plugin. It manages CSS rewriting.
  * 
- * @package UPRESS
+ * @package SPRESS
  */
 class Speed {
 
@@ -237,7 +237,7 @@ class Speed {
     private static function add_jquery_standin($dom) {
      
         //Set file
-        $simple_jquery_standin = file_get_contents(UPRESS_PLUGIN_DIR . '/assets/simple_jquery_standin.js');
+        $simple_jquery_standin = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/simple_jquery_standin.js');
 
         //Minify it
         $minifier = new Minify\JS($simple_jquery_standin);
@@ -510,7 +510,7 @@ class Speed {
         $scriptElement = $dom->createElement('script');
         $scriptElement->setAttribute('ref', 'onload.min.js ');
         $scriptElement->setAttribute('id', 'onload-main');
-        $scriptElement->src = UPRESS_PLUGIN_URL . 'assets/onload/onload.min.js?v=' . UPRESS_VER;
+        $scriptElement->src = SPRESS_PLUGIN_URL . 'assets/onload/onload.min.js?v=' . SPRESS_VER;
 
         //Add after head
         $headElement = $dom->find('html', 0);
@@ -586,7 +586,7 @@ class Speed {
      
 
         //Set file
-        $intersection_observer = file_get_contents(UPRESS_PLUGIN_DIR . '/assets/intersection_observer.js');
+        $intersection_observer = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/intersection_observer.js');
         
         //Minify it
         $minifier = new Minify\JS($intersection_observer);
@@ -1045,6 +1045,7 @@ class Speed {
 	public static function save_data_image($dataUrl, $outputDirectory) {
 		// Validate the data URL
 		if (preg_match('/^data:image\/([a-zA-Z0-9\+\-\.]+);base64,/', $dataUrl, $type)) {
+
 			$data = substr($dataUrl, strpos($dataUrl, ',') + 1);
 			$type = strtolower($type[1]); // Extract the image type (e.g., jpg, png, svg+xml)
 	

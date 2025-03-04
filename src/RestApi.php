@@ -1,14 +1,14 @@
 <?php
 
-namespace UPRESS;
+namespace SPRESS;
 
 use WP_REST_Server;
 
 /**
  * This `RestApi` class handles the registration and processing of custom REST API endpoints
- * for the UPRESS plugin.
+ * for the SPRESS plugin.
  * 
- * @package UPRESS
+ * @package SPRESS
  */
 class RestApi {
 
@@ -76,7 +76,18 @@ class RestApi {
                 'callback' => array(__CLASS__, 'clear_css_cache'),
                 'permission_callback' => '__return_true', // Admin-only access as after auth check
             )
-        );           
+        );  
+        
+        // Route for clearing unused CSS cache
+        register_rest_route(
+            'speedifypress',
+            '/check_license/?',
+            array(
+                'methods' => array('POST'),
+                'callback' => array(__CLASS__, 'check_license'),
+                'permission_callback' => '__return_true', // Admin-only access as after auth check
+            )
+        );          
 
     }
 
@@ -138,6 +149,19 @@ class RestApi {
     }
 
     /**
+     * Checks the user's license
+     *
+     * @return array Empty array (no data returned).
+     */
+    public static function check_license($request) {          
+
+        $json = $request->get_json_params();
+        $data = App\License::check_license(base64_decode($json['license_email']));
+        return $data;
+
+    }    
+
+    /**
      * Processes a CSS update request from the public side.
      *
      * @param WP_REST_Request $request The request object containing CSS data.
@@ -171,6 +195,7 @@ class RestApi {
      */
     public static function transform_btoa($formDataJson) {
         foreach ($formDataJson as $key => $value) {
+
             // If the value is a string, check if it's base64 encoded using regex pattern
             if (is_string($value) && self::is_base64($value)) {
                 $decodedValue = base64_decode($value, true);
@@ -199,6 +224,13 @@ class RestApi {
      * @return boolean True if the string is a valid base64 encoded string, false otherwise.
      */
     private static function is_base64($string) {
+
+        // Attempt to decode; if decoding returns a string and it contains "data:", treat it as valid.
+        $decodedValue = base64_decode($string, true);
+        if (is_string($decodedValue) && strpos($decodedValue, "data:") === 0) {
+            return true;
+        }
+
         // The string length must be divisible by 4, and it can only contain valid base64 characters
         // This regex checks for valid characters, length divisible by 4, and optional padding.
         return (bool) preg_match('/^(?:[A-Za-z0-9+\/]{4})*(?:[A-Za-z0-9+\/]{2}==|[A-Za-z0-9+\/]{3}=)?$/', $string);

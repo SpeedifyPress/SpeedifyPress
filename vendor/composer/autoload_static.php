@@ -11,9 +11,9 @@ class ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b
         array (
             'Wa72\\Url\\' => 9,
         ),
-        'U' => 
+        'S' => 
         array (
-            'UPRESS\\' => 7,
+            'SPRESS\\' => 7,
         ),
         'M' => 
         array (
@@ -27,7 +27,7 @@ class ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b
         array (
             0 => __DIR__ . '/..' . '/wa72/url/src/Wa72/Url',
         ),
-        'UPRESS\\' => 
+        'SPRESS\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),

@@ -1,11 +1,11 @@
 <?php
 
-namespace UPRESS;
+namespace SPRESS;
 
 /**
  * Handles authentication for the REST API
  *
- * @package UPRESS
+ * @package SPRESS
  */
 class Auth {
 

@@ -1,9 +1,9 @@
 <?php
 
-namespace UPRESS\Speed;
+namespace SPRESS\Speed;
 
-use UPRESS\App\Config;
-use UPRESS\Speed;
+use SPRESS\App\Config;
+use SPRESS\Speed;
 
 use Wa72\Url\Url;
 use MatthiasMullie\Minify;
@@ -13,7 +13,7 @@ use MatthiasMullie\Minify;
  * page load times. It caches processed CSS files, rewrites URLs, and integrates 
  * with the WordPress enqueue system to serve optimized CSS assets.
  * 
- * @package UPRESS
+ * @package SPRESS
  */
 class CSS {
 
@@ -442,7 +442,7 @@ class CSS {
         $generation_res = Config::get('speed_css', 'generation_res');
 
         // Enqueue our js script.
-        wp_enqueue_script( self::$script_name, UPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), UPRESS_VER, true );
+        wp_enqueue_script( self::$script_name, SPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), SPRESS_VER, true );
 
 		wp_localize_script(
 			self::$script_name,
@@ -470,7 +470,7 @@ class CSS {
      */
     public static function public_enqueue_partytown() {
 
-        $plugin_dir_relative = str_replace(content_url(), '', UPRESS_PLUGIN_URL);
+        $plugin_dir_relative = str_replace(content_url(), '', SPRESS_PLUGIN_URL);
         $party_path = '/wp-content' . $plugin_dir_relative . 'assets/partytown/';
 
         ?>
@@ -489,9 +489,9 @@ class CSS {
 
         wp_enqueue_script(
             'partytown js-extra',
-            UPRESS_PLUGIN_URL . 'assets/partytown/partytown.min.js',
+            SPRESS_PLUGIN_URL . 'assets/partytown/partytown.min.js',
             array(),
-            UPRESS_VER,
+            SPRESS_VER,
             false
         );  
         

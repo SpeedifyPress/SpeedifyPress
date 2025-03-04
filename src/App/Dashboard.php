@@ -1,13 +1,14 @@
 <?php
 
-namespace UPRESS\App;
+namespace SPRESS\App;
 
-use UPRESS\Speed\CSS;
+use SPRESS\Speed\CSS;
+
 
 /**
- * Handles the display of the UPRESS dashboard. 
+ * Handles the display of the SPRESS dashboard. 
  * 
- * @package UPRESS
+ * @package SPRESS
  */
 class Dashboard {
 
@@ -22,6 +23,7 @@ class Dashboard {
 
     $data = array();
     $data['cache_data'] = CSS::get_cache_data();
+    $data['license_data'] = License::get_license_data();
 
     return $data;
 
