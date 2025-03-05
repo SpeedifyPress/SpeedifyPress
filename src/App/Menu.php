@@ -98,7 +98,7 @@ class Menu {
             $update_url = wp_nonce_url(self_admin_url('update.php?action=upgrade-plugin&plugin=' . $plugin_file), 'upgrade-plugin_' . $plugin_file);
         
             echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
-                    <td colspan='3' class='plugin-update'>
+                    <td colspan='4' class='plugin-update'>
                         <div class='update-message notice inline notice-warning notice-alt'>
                             <p>There is a new version of SpeedifyPress available. 
                                 <a href='{$update_url}'
@@ -163,38 +163,29 @@ class Menu {
             return $result;
         }
 
-        #$current = get_site_transient( 'update_plugins' );
-        #$current->last_checked = "1740663797";
-        #set_site_transient( 'update_plugins', $current );
-        #rint_r($current);
-        //echo date();
-        #die("LC");        
-
-        $release_file = dirname(__FILE__) . "/../../release.json";
+        //$release_file = dirname(__FILE__) . "/../../release.json";
+        $release_url = "https://speedifypress.com/license/release/";
     
-        if (file_exists($release_file)) {
+        //Get last release data
+        $release_data = json_decode(file_get_contents($release_url), true);
 
-            //Get last release data
-            $release_data = json_decode(file_get_contents($release_file), true);
+        // Ensure the data is valid and matches the expected WordPress format
+        if (is_array($release_data)) {
 
-            // Ensure the data is valid and matches the expected WordPress format
-            if (is_array($release_data)) {
+            //Add latest version
+            $release_data['version'] = License::get_latest_version();
 
-                //Add latest version
-                $release_data['version'] = License::get_latest_version();
-
-                //Add download link for latest version
-                if($release_data['version'] > SPRESS_VER
-                   && get_option('spress_namespace_EMAIL') !== false) {
-                    $release_data['download_link'] = License::get_download_link();
-                }
-
-                //Add correct slug
-                $release_data['slug'] = SPRESS_DIR_NAME;
-
-                //Set correct format
-                $result = (object) array_filter(array_merge((array) $result, $release_data));
+            //Add download link for latest version
+            if($release_data['version'] > SPRESS_VER
+                && get_option('spress_namespace_EMAIL') !== false) {
+                $release_data['download_link'] = License::get_download_link();
             }
+
+            //Add correct slug
+            $release_data['slug'] = SPRESS_DIR_NAME;
+
+            //Set correct format
+            $result = (object) array_filter(array_merge((array) $result, $release_data));
         }
     
         return $result;

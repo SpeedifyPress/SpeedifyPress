@@ -285,6 +285,7 @@ class CSS {
                 $baseurl = Url::parse($sheet_url);
                 $sheet_url_lookup = $baseurl->makeAbsolute($baseurl)->write();  
                 $sheet_url_lookup = preg_replace("@^//@", isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https://' : 'http://', trim($sheet_url_lookup));
+                $sheet_url_lookup = html_entity_decode($sheet_url_lookup);
 
                 if(isset($lookup->$sheet_url_lookup)) {   
 

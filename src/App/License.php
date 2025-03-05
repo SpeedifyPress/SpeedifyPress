@@ -80,7 +80,7 @@ class License {
             return false; 
         }
 
-        return 'https://speedifypress.com/license/download/?email=' . urlencode(get_option('spress_namespace_EMAIL')). '&filename='.urlencode(SPRESS_DIR_NAME);
+        return 'https://speedifypress.com/license/download/?email=' . urlencode(get_option('spress_namespace_EMAIL')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
 
     }
 
@@ -118,7 +118,7 @@ class License {
         }
 
         // Build the license check URL with proper URL encoding.
-        $check_url = "https://speedifypress.com/license/check/?email=" . urlencode($email);
+        $check_url = "https://speedifypress.com/license/check/?email=" . urlencode($email) . "&host=" . urlencode($_SERVER['HTTP_HOST'] ?? null);
 
         // Make a remote GET request using WordPress HTTP API.
         $response = wp_remote_get($check_url);
@@ -135,8 +135,18 @@ class License {
 
         // If the response is not "0" and not empty, assume it returns a valid timestamp.
         if ($body !== '0' && !empty($body)) {
+
+            $subscription = json_decode($body);
+
+            //Error message
+            if($subscription->error) {
+
+                return array("error"=>$subscription->error);
+
+            } else if($subscription->success) {
+            
             // Cast the response to an integer timestamp.
-            $subscription_ends = (int) $body;
+            $subscription_ends = (int) $subscription->success;
             // Calculate the number of seconds until the subscription ends.
             $expires_in = $subscription_ends - time();
 
@@ -149,6 +159,8 @@ class License {
             set_transient('spress_subscription_ends', $subscription_ends, $expires_in);
 
             return true;
+
+            }
         } else {
             // If the response indicates an inactive license, recheck after 24 hours.
             set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
