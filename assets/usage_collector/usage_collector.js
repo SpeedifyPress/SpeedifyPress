@@ -898,12 +898,12 @@ class CSSUsageCollector {
                     
                     // Add path, width, and height to the array
                     invisibleElementsData.push({
-                        uid: element.dataset.uid,
-                        width: element.offsetWidth,
+                        spuid: element.dataset.spuid,
+                        /*width: element.offsetWidth,
                         height: element.offsetHeight,
                         element: element,
                         position: {elemTop,elemRight,elemBottom,elemLeft},
-                        viewport: {viewportTop,viewportRight,viewportBottom,viewportLeft}
+                        viewport: {viewportTop,viewportRight,viewportBottom,viewportLeft}*/
                     });
     
                     return;

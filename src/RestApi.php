@@ -77,6 +77,18 @@ class RestApi {
                 'permission_callback' => '__return_true', // Admin-only access as after auth check
             )
         );  
+
+        // Route for clearing page cache
+        register_rest_route(
+            'speedifypress',
+            '/clear_page_cache/?',
+            array(
+                'methods' => array('GET'),
+                'callback' => array(__CLASS__, 'clear_page_cache'),
+                'permission_callback' => '__return_true', // Admin-only access as after auth check
+            )
+        );  
+        
         
         // Route for clearing unused CSS cache
         register_rest_route(
@@ -111,6 +123,7 @@ class RestApi {
         }
 
         App\Config::update_config($config);
+        Speed\Cache::write_advanced_cache();
     }
 
 
@@ -132,7 +145,7 @@ class RestApi {
      */
     public static function get_css_data() {
         $data['cache_data'] = Speed\CSS::get_cache_data();
-        $data['stats_data'] = Speed\CSS::get_stats_data();
+        $data['stats_data'] = Speed\CSS::get_stats_data();        
         return $data;
     }
 	
@@ -147,6 +160,18 @@ class RestApi {
         return $data;
 
     }
+
+    /**
+     * Clears the page cache directory.
+     *
+     * @return array Empty array (no data returned).
+     */
+    public static function clear_page_cache() {          
+
+        $data = Speed\Cache::clear_cache();
+        return $data;
+
+    }    
 
     /**
      * Checks the user's license

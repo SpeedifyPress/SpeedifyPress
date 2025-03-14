@@ -269,14 +269,31 @@ class Menu {
             'title' => 'Clear CSS Cache',
             'href' => '#',
             'meta' => [
-              'onclick' => 'clear_cache();return false;',
+              'onclick' => 'clear_cache("css");return false;',
             ],
-          ]);          
+          ]);   
+          
+          $admin_bar->add_menu([
+            'id' => self::$menu_slug . '-clearpage',
+            'parent' => self::$menu_slug,
+            'title' => 'Clear Page Cache',
+            'href' => '#',
+            'meta' => [
+              'onclick' => 'clear_cache("page");return false;',
+            ],
+          ]);             
 
           ?>
             <script>
-            function clear_cache() {
-                var id = '<?php echo esc_js(self::$menu_slug . '-clear'); ?>';
+            function clear_cache(cache_type) {
+
+                if(cache_type == "page") {
+                    var id = '<?php echo esc_js(self::$menu_slug . '-clearpage'); ?>';                
+                    var resturl = '<?php echo esc_url(rest_url("speedifypress/clear_page_cache")); ?>';
+                } else {
+                    var id = '<?php echo esc_js(self::$menu_slug . '-clear'); ?>';                
+                    var resturl = '<?php echo esc_url(rest_url("speedifypress/clear_css_cache")); ?>';
+                }
                 var elem = document.querySelector('#wp-admin-bar-' + id + ' > a');
                 if (!elem) return;
 
@@ -288,8 +305,7 @@ class Menu {
                 elem.appendChild(spinner);
 
                 var xhr = new XMLHttpRequest();
-                xhr.open('GET', '<?php echo esc_url(rest_url("speedifypress/clear_css_cache")); ?>', true);
-                xhr.setRequestHeader('X-WP-Nonce', '<?php echo esc_js(wp_create_nonce("wp_rest")); ?>');
+                xhr.open('GET', resturl, true);
                 
                 xhr.onload = function () {
                     elem.innerText = originalText;

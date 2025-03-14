@@ -3,6 +3,9 @@
 namespace SPRESS;
 
 use SPRESS\Speed\CSS;
+use SPRESS\Speed\Cache;
+use SPRESS\Speed\JS;
+use SPRESS\AdvancedCache;
 
 use SPRESS\App\Config;
 use simplehtmldom\HtmlDocument;
@@ -22,6 +25,18 @@ class Speed {
 
     //The hostname of the current site
     public static $hostname;     
+
+    //An array to holder uids, preventing duplicates
+    public static $spuid_holder = array();     
+
+    //Used to overwrite the dected URL, if required
+    public static $injected_url;
+
+    // array to hold URLs already purged this session
+    public static $done_purge = array();           
+    
+    // start time for performance tracking
+    public static $start_time;
 
     /**
      * Initializes the Speed class by setting up output buffering, CSS optimizations,
@@ -53,7 +68,7 @@ class Speed {
 	
 						//Get date value
 						preg_match('/\{\{(.*?)\}\}/', $value, $matches);
-						if($matches[1]) {
+						if (!empty($matches) && isset($matches[1])) {
 							$day_match = strtotime($matches[1]);						
 							//If cache control value is seconds from now
 							if(preg_match('@Cache-Control|Retry-After|Access-Control-Max-Age|Keep-Alive@i',$key)) {
@@ -75,11 +90,15 @@ class Speed {
 				
 		});        
 
+        // Initialize Cache speed optimizations
+        Cache::init();        
+
         // Initialize CSS  speed optimizations
-        Speed\CSS::init();
+        CSS::init();
 
         // Initialize JS  speed optimizations
-        Speed\JS::init();        
+        JS::init();        
+
         
         // Start output buffering and process output
         // Hook to init to ensure it runs before other plugins
@@ -101,7 +120,7 @@ class Speed {
      *
      * @return string The cache path
      */
-    public static function get_permanent_cache_path() {
+    public static function get_pre_cache_path() {
 
         return ABSPATH . "wp-content/cache/".self::$cache_directory;
 
@@ -112,7 +131,7 @@ class Speed {
      *
      * @return string The root cache URL.
      */
-    public static function get_permanent_cache_url() {
+    public static function get_pre_cache_url() {
 
         return site_url() . "/wp-content/cache/".self::$cache_directory;
 
@@ -154,6 +173,7 @@ class Speed {
             return $output;
         }        
 
+
         // Set a custom error handler inside the callback
         set_error_handler(function($errno, $errstr, $errfile, $errline) {
 
@@ -180,9 +200,13 @@ class Speed {
 
         try {
 
+        //Start time
+        self::$start_time = microtime(true);
+
         $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags first
-        $output = Speed\CSS::rewrite_css($output); // Rewrite CSS for performance improvements
-        $output = Speed\JS::rewrite_js($output); // Rewrite JS for performance improvements
+        $output = CSS::rewrite_css($output); // Rewrite CSS for performance improvements
+        $output = JS::rewrite_js($output); // Rewrite JS for performance improvements
+        $output = Cache::do_cache($output); // Rewrite JS for performance improvements
 
         } catch (\Exception $e) {
             // Handle exception here if necessary, but PHP may not fully respect try-catch within ob_start callback
@@ -217,8 +241,6 @@ class Speed {
         // Start from the body or root element
         $depthThreshold = 13;
         self::traverse_and_tag($body, 1, $depthThreshold, $displayElements);
-
-
 
         return $dom;
          
@@ -267,8 +289,6 @@ class Speed {
 
         // Iterate over each <script> tag
         foreach ((array)$scripts as $script) {
-
-            $script->outertext = $script->outertext;   
 
             if(strstr($script->outertext,"/gtag/")) {                 
                 
@@ -324,22 +344,22 @@ class Speed {
 	public static function download_gtag( $remote_file = null, $force_version_update = false ) {
 
         //Set the version file
-        $version_file = self::get_permanent_cache_path() . "/local_tag/version.json";
+        $version_file = self::get_pre_cache_path() . "/local_tag/version.json";
 
         //For debugging
-        $error_file = self::get_permanent_cache_path() . "/local_tag/error.log";
+        $error_file = self::get_pre_cache_path() . "/local_tag/error.log";
 
         //Set the directory
-        $path = self::get_permanent_cache_path() . "/local_tag/";
+        $path = self::get_pre_cache_path() . "/local_tag/";
 
         //Set the filename
         $local_filename = "local_tag.js";
 
         //Set the file
-        $js_file = self::get_permanent_cache_path() . "/local_tag/" . $local_filename;
+        $js_file = self::get_pre_cache_path() . "/local_tag/" . $local_filename;
 
         //Set the URL
-        $url = self::get_permanent_cache_url() . "/local_tag/";
+        $url = self::get_pre_cache_url() . "/local_tag/";
 
         //Return if found
         if(file_exists($js_file) && $force_version_update == false) {
@@ -396,7 +416,7 @@ class Speed {
 
         //Increase version
         $version['version']++;
-        $dir = self::get_permanent_cache_path() . "/local_tag/";
+        $dir = self::get_pre_cache_path() . "/local_tag/";
                 
         // Create the cache directory if it does not exist
         !is_dir($dir) && mkdir($dir, 0755, true);  
@@ -438,13 +458,13 @@ class Speed {
 
     }
 
-    private static function add_invisible_elements($dom) {        
+    public static function add_invisible_elements($dom) {        
 
         //Get current URL
-        $current_url = self::get_current_uri();
+        $current_url = self::get_url();
 
         //See if there is a lookup file
-        $lookup_file = Speed\CSS::get_lookup_file( $current_url );
+        $lookup_file = CSS::get_lookup_file( $current_url );
         if(!file_exists($lookup_file)) {
             return $dom;
         }
@@ -473,12 +493,12 @@ class Speed {
                 }
                 $element_height  = $element->height * $diff;                    
                 
-                //Get element and current uid
-                $uid = $element->uid ?? false;  
+                //Get element and current spuid
+                $spuid = $element->spuid ?? false;  
 
-                if($uid) {
+                if($spuid) {
 
-                    $element = $dom->find('[data-uid="' . $uid . '"]', 0);
+                    $element = $dom->find('[data-spuid="' . $spuid . '"]', 0);
                     if($element) {
                         $element->addClass('unused-invisible');
                         $element->style .= ' content-visibility: auto; contain-intrinsic-size: auto ' . (int)$element_height . 'px;';
@@ -605,61 +625,47 @@ class Speed {
 
     }    
 
-    /**
-     * Recursively traverses the HTML element tree and assigns a unique "data-uid" attribute
-     * to each element with a tag matching one of the display elements in the specified
-     * array, that is also at a depth greater than the specified threshold. The attribute
-     * is constructed as "d{depth}-s{position}" where {depth} is the depth of the element
-     * and {position} is the sibling position of the element.
-     * 
-     * @param HtmlElement $element The element to traverse and tag.
-     * @param int $currentDepth The current depth of the element being traversed.
-     * @param int $depthThreshold The threshold depth at which to start tagging elements.
-     * @param array $displayElements An array of display elements to tag.
-     */
-    private static function traverse_and_tag($element, $currentDepth, $depthThreshold, $displayElements, $passed_parentId = null) {
+    private static function traverse_and_tag($element, $currentDepth, $depthThreshold, $displayElements, $parentKey = '') {
 
-        // Check if the current depth exceeds the threshold and tag matches specified elements
+        // Check if this element is one of our target display elements at the desired depth
         if ($currentDepth < $depthThreshold && in_array($element->tag, $displayElements)) {
-
-            //Get identifiers
-            $current_element_outertext = $element->outertext ?? '';
-            $parent_element_outertext = $element->parent->outertext ?? '';
-            $currentSibling = self::get_sibling_position($element);
-            $parentId = $element->parent->getAttribute('id') ?? '';
-
-            // Construct a (mostly) unique uid
-            $ident = substr(md5($parentId . $current_element_outertext . $parent_element_outertext . $currentDepth . $currentSibling . $passed_parentId),0,8);
-            if(!$parentId) { 
-                //Just add for tracking
-                $element->parent->setAttribute('id',$parentId);
-            }
-
-            $uid = 'd' . $currentDepth . '-s' . $currentSibling . $ident;
-            $element->setAttribute('data-uid', $uid);
-            $element->setAttribute('data-udepth', $currentDepth);
-        }      
     
-        // Traverse child elements
+            // Create a canonical representation for the element: tag, sorted attributes, and normalized inner text
+            $canonical = $element->tag . '|' . self::get_canonical_attributes($element) . '|' . trim($currentDepth);
+            
+            // Combine with parent's stable key to generate the hash source
+            $hashSource = $parentKey . '>' . $canonical;
+            $ident = substr(md5($hashSource), 0, 8);
+
+            //Add to holder array
+            self::$spuid_holder[$ident][] = $hashSource;
+            
+            // Construct a spuid
+            $spuid = 'd' . $currentDepth . '-' . $ident . '-' . count(self::$spuid_holder[$ident]);
+            $element->setAttribute('data-spuid', $spuid);
+            $element->setAttribute('data-spudepth', $currentDepth);
+    
+            // Use the current element’s UID as the new parent key for children
+            $parentKey = $spuid;
+        }
+    
+        // Recursively tag child elements, passing along the current stable key
         foreach ($element->children as $child) {
-            // Recursively tag each child element
-            self::traverse_and_tag($child, $currentDepth + 1, $depthThreshold, $displayElements, ($parentId ?? ''));
+            self::traverse_and_tag($child, $currentDepth + 1, $depthThreshold, $displayElements, $parentKey);
         }
-
-
     }
     
-    // Helper function to get the sibling position
-    private static function get_sibling_position($element) {
-        $position = 1; // Start sibling count at 1
-        foreach ($element->parent->children as $sibling) {
-            if ($sibling === $element) {
-                return $position;
-            }
-            $position++;
+    // Helper function to get a canonical, sorted string of the element's attributes
+    private static function get_canonical_attributes($element) {
+        $attrs = $element->getAllAttributes();
+        ksort($attrs);
+        $attrStr = '';
+        foreach ($attrs as $key => $value) {
+            $attrStr .= $key . '=' . $value . ';';
         }
-        return $position;
+        return $attrStr;
     }
+    
       
 
     public static function is_frontend() {
@@ -676,7 +682,7 @@ class Speed {
         }
 
         // Check if it's a REST API request by looking at the URI
-        $request_uri = self::get_current_uri();
+        $request_uri = self::get_url();
         if (strpos($request_uri, '/wp-json/') === 0) {
             return false;
         }
@@ -764,7 +770,7 @@ class Speed {
 
             $end_time = microtime(true);
             $elapsed_time = $end_time - $start_time;
-            $html .=  "<!-- Elapsed " . $elapsed_time . "-->";
+            $html .=  "<!-- Elapsed CSS " . number_format($elapsed_time,2) . "-->";
 
         }
 
@@ -1089,21 +1095,255 @@ class Speed {
 	}
 
     /**
-     * Gets the current URL, taking into account WEGLOT's polyglot URLs
-     * if installed.
+     * Retrieves the current uri
      *
-     * @return string The current URL.
+     * @return string The full URL, with ignored query strings removed.
      */
-    public static function get_current_uri() {
+    public static function get_uri($get_original=true) {
 
-        $current_url = $_SERVER['REQUEST_URI'] ?? '';
-        if(function_exists('weglot_get_current_full_url')) {
-            $current_url = str_replace(home_url(),"",weglot_get_current_full_url());
+        //Get the request URI before plugins may have messed with it
+        if(class_exists("SPRESS\\AdvancedCache")
+        && isset(AdvancedCache::$original_uri)
+        && $get_original) {
+            $request_uri = AdvancedCache::$original_uri;
+        } else {
+            $request_uri = $_SERVER['REQUEST_URI'];
         }
 
-        return $current_url;
+        return $request_uri;
 
+    }
+
+    /**
+     * Retrieves the current full url, optionally removing ignored query strings.
+     *
+     * If self::$ignore_querystrings is set, the method parses the query string
+     * and removes any key specified in the list.
+     * 
+     * @param bool $get_original whether to use the original url before anything may have modded it
+     *
+     * @return string The full URL, with ignored query strings removed.
+     */
+    public static function get_url($get_original=true) {
+
+        //Allow URL overrides 
+        if(isset(self::$injected_url)) {
+            return self::$injected_url;
+        }
+
+        $request_uri = self::get_uri($get_original);
+
+        // Determine protocol and host.
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
+        $host = $_SERVER['HTTP_HOST'];        
+        $full_url = $protocol . $host . $request_uri;
+
+        // Remove query strings that should be ignored.
+        if (!empty(Cache::$ignore_querystrings)) {
+            $ignore_keys = array_filter(array_map('trim', explode("\n", Cache::$ignore_querystrings)));
+            $parsed_url = parse_url($full_url);
+            $query = [];
+            if (isset($parsed_url['query'])) {
+                parse_str($parsed_url['query'], $query);
+                foreach ($ignore_keys as $key) {
+                    if (isset($query[$key])) {
+                        unset($query[$key]);
+                    }
+                }
+            }
+            // Rebuild the query string.
+            $query_string = http_build_query($query);
+            $full_url = $protocol . $host . $parsed_url['path'] . ($query_string ? '?' . $query_string : '');
+        }
+        return $full_url;
     }    
+
+    /**
+     * Retrieves the cache path for a given URL.
+     *
+     * @param string $url The URL for which to retrieve the cache path.
+     * @return string The cache path for the given URL.
+     */
+    public static function get_cache_dir_from_url($url) {
+
+        // Remove any unnecessary query strings using get_clean_url().
+        $clean_url = self::get_clean_url($url);
+    
+        // Extract the relative path from the clean URL.
+        $relative_path = parse_url($clean_url, PHP_URL_PATH);
+        // Normalize: if the relative path is "/" (or empty), set it to an empty string.
+        $relative_path = trim($relative_path, '/') ? trim($relative_path, '/') : "";
+    
+        // Parse the query parameters from the clean URL.
+        $parsed_url = parse_url($clean_url);
+        $query_array = [];
+        if (isset($parsed_url['query'])) {
+            parse_str($parsed_url['query'], $query_array);
+        }
+    
+        // Remove any ignored keys.
+        $ignore_keys = array_map('trim', explode("\n", Cache::$ignore_querystrings));
+        $query_strings = array_diff_key($query_array, array_flip($ignore_keys));
+    
+        // Build a directory-safe string from the remaining query parameters.
+        $query_dir = "";
+        if (!empty($query_strings)) {
+            $safe_query_parts = [];
+            foreach ($query_strings as $key => $value) {
+                // Sanitize both key and value to allow only alphanumerics, underscores, and dashes.
+                $safe_key = preg_replace('/[^A-Za-z0-9_\-]/', '', $key);
+                $safe_value = preg_replace('/[^A-Za-z0-9_\-]/', '', $value);
+                $safe_query_parts[] = $safe_value !== '' ? $safe_key . '-' . $safe_value : $safe_key;
+            }
+            // Join the parts with a dash.
+            $query_dir = implode('-', $safe_query_parts);
+        }
+    
+        // Build the base cache directory from the root.
+        $base = rtrim(Speed::get_root_cache_path(), '/');
+        // If there's a relative path, append it; otherwise, use the base as-is.
+        $cache_dir = $relative_path !== "" ? $base . '/' . $relative_path : $base;
+        // If query parameters exist, add them as an extra directory.
+        if ($query_dir !== "") {
+            $cache_dir .= '/' . $query_dir;
+        }
+
+        //Ensure ends with trailing slash
+        $cache_dir = rtrim($cache_dir, '/') . '/';
+        
+        return $cache_dir;        
+  
+    }   
+
+
+    
+    /**
+     * Build and return the full URL after stripping ignored query strings.
+     *
+     * @return string The cleaned full URL.
+     */
+    public static function get_clean_url($full_url = null, $ignore_querystrings=null) {
+
+        //Allow ignore querystrings to be passed
+        if(!$ignore_querystrings) {
+            $ignore_querystrings = Cache::$ignore_querystrings;
+        }
+
+        if (!$full_url) {
+            $protocol    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+            $host        = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+            $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+            $full_url    = $protocol . $host . $request_uri;
+        } else {
+            $parsed = parse_url($full_url);
+            $protocol = isset($parsed['scheme']) ? $parsed['scheme'] . '://' : 'http://';
+            $host = isset($parsed['host']) ? $parsed['host'] : '';
+        }
+    
+        // Remove ignored query strings.
+        if (!empty($ignore_querystrings)) {
+            $ignore_keys = array_filter(array_map('trim', explode("\n", $ignore_querystrings)));
+            $parsed_url  = parse_url($full_url);
+            $query       = [];
+            if (isset($parsed_url['query'])) {
+                parse_str($parsed_url['query'], $query);
+                foreach ($ignore_keys as $key) {
+                    if (isset($query[$key])) {
+                        unset($query[$key]);
+                    }
+                }
+            }
+            $query_string = http_build_query($query);
+            $path = isset($parsed_url['path']) ? $parsed_url['path'] : '';
+            $full_url = $protocol . $host . $path . ($query_string ? '?' . $query_string : '');
+        }
+        return $full_url;
+    }
+    
+
+    /**
+     * Purges the cache file(s) for a given URL.
+     *
+     *
+     * @param string $url The URL for which to purge the cache.
+     */
+    public static function purge_cache($url, $file_types = array("html", "gz")) {
+
+        // Check not already purged
+        if (isset(Speed::$done_purge[$url])) {
+            return;
+        }
+    
+        // Get the file path from the URL
+        $cache_path = self::get_cache_dir_from_url($url);
+    
+    
+        // Delete files
+        Speed::deleteSpecificFiles($cache_path, $file_types);
+    
+        // Additionally, check the lookup_uris.json for modified URLs corresponding to the original URL.
+        $lookup_file = Speed::get_root_cache_path() . "/lookup_uris.json";
+        if (file_exists($lookup_file)) {
+            $contents = file_get_contents($lookup_file);
+            $current_lookup = $contents ? json_decode($contents, true) : [];
+
+            // If the lookup contains our original URL as a key...
+            if (isset($current_lookup[$url]) && is_array($current_lookup[$url])) {
+                foreach ($current_lookup[$url] as $modified_url => $flag) {
+                    // Get the cache directory for the modified URL.
+                    if($modified_url) {
+                        $modified_cache_path = self::get_cache_dir_from_url($modified_url);
+                        Speed::deleteSpecificFiles($modified_cache_path, $file_types);
+                    }
+                }
+            }
+        }
+    
+        // Save as purged
+        Speed::$done_purge[$url] = true;
+    }
+    
+
+    /**
+     * Deletes all files and subfolders in a given directory.
+     *
+     * @param string $dir The path to the directory to delete.
+     * @param array $extensions array of extensions to delete
+     *
+     * @return void
+     */
+    public static function deleteSpecificFiles($dir, $patterns) {
+    
+        // Ensure the directory exists
+        if (!is_dir($dir)) {
+            return;
+        }
+    
+        // Create a RecursiveDirectoryIterator to iterate through the directory and subdirectories
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+    
+        // Normalize patterns: Ensure all patterns are lowercase for case-insensitive matching
+        $patterns = array_map('strtolower', $patterns);
+    
+        // Loop through each item (file/folder) in the directory
+        foreach ($iterator as $file) {
+            if ($file->isFile()) {
+                $filename = strtolower($file->getFilename());
+    
+                // Check if the filename ends with any of the patterns
+                foreach ($patterns as $pattern) {
+                    if (substr($filename, -strlen($pattern)) === $pattern) {
+                        unlink($file->getRealPath());
+                        break; // Stop checking other patterns once a match is found
+                    }
+                }
+            }
+        }
+    }
+        
 
 
 }

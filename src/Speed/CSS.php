@@ -4,9 +4,11 @@ namespace SPRESS\Speed;
 
 use SPRESS\App\Config;
 use SPRESS\Speed;
+use SPRESS\Speed\Cache;
 
 use Wa72\Url\Url;
 use MatthiasMullie\Minify;
+use simplehtmldom\HtmlDocument;
 
 /**
  * This `CSS` class is responsible for optimizing and managing CSS files for faster 
@@ -35,9 +37,6 @@ class CSS {
 
         //Set the inclusion mode
         self::$inclusion_mode = Config::get('speed_css','inclusion_mode');
-
-        //Get current URI
-        $current_uri = Speed::get_current_uri();
 
         //Enqueue the script for our CSS processing
         if((self::$mode == "enabled" || self::$mode == "stats" || self::$mode == "preview") && Speed::is_frontend() === true) {
@@ -74,17 +73,17 @@ class CSS {
      * @param int $post_id The id of the post if available
      * @param array $post_types An array of post types
      * @param array $invisible An array of invisible post types
-     * @param array $used_font_fules An array of used font files
+     * @param array $used_font_rules An array of used font files
      * @param array $lcp_image An array of LCP images
      * @return void
      */
-    public static function process_css( $array, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_fules = null, $lcp_image = null ) {
+    public static function process_css( $array, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_rules = null, $lcp_image = null ) {
 
         //A lookup of old to new filesname
         $lookup = array();
 
         //Get cache directory for the URL
-        $cache_dir =  self::get_cache_path_from_url($source_url);
+        $cache_dir =  Speed::get_cache_dir_from_url($source_url);
 
         //Set lookup file
         $lookup_file = $cache_dir . "lookup.json";
@@ -123,10 +122,19 @@ class CSS {
 
         }
         
-        //Get current lookup
-        $current_lookup = json_decode((string)file_get_contents($lookup_file));
-        $current_lookup = (array) $current_lookup->lookup;      
-        
+        //Get current lookup        
+        // Ensure file exists before attempting to read
+        if (!file_exists($lookup_file) || !is_readable($lookup_file)) {
+            $current_lookup = [];
+        } else {
+            $file_contents = file_get_contents($lookup_file);
+            $data = json_decode($file_contents, true); // Decode as an associative array
+
+            // Ensure lookup key exists and is an array
+            $current_lookup = isset($data['lookup']) && is_array($data['lookup']) ? $data['lookup'] : [];
+        }
+
+
         //Merge
         $merged_lookup = array_merge($current_lookup,$lookup);
 
@@ -137,7 +145,7 @@ class CSS {
             'post_id' => $post_id,
             'post_types' => $post_types,
             'invisible' => $invisible,
-            'used_font_fules' => $used_font_fules,
+            'used_font_rules' => $used_font_rules,
             'lcp_image' => $lcp_image
 
         );
@@ -145,78 +153,36 @@ class CSS {
         //Save the lookup
         file_put_contents($lookup_file, (string)json_encode($data));  
 
-        //Refresh cache
+        //Updated cached file
         if($post_id) {
-            $post_object = get_post( $post_id );
-
-            self::remove_non_cache_purge_clean_hooks_from_post_updated();
-
-            //Works fine with some caching plugins, but not all
-            do_action( 'post_updated', (int) $post_id, $post_object, $post_object );
             
-            //WP Super Cache
-            if(function_exists('wp_cache_post_edit')) {
-                prune_super_cache( get_supercache_dir(), true );
-            }  
-            
-            //WP Optimize
-            if(class_exists('WPO_Page_Cache')) {
-                \WPO_Page_Cache::delete_single_post_cache((int) $post_id);
-            }              
+            //Override the URL
+            Speed::$injected_url = $source_url;
+
+            //Get currently cached content
+            $cache_file = Cache::get_cache_filepath($source_url,"html");
+            $output = file_get_contents($cache_file);
+
+            //Rewrite with new CSS
+            $output = self::rewrite_css($output,$source_url);
+
+            //Add invisible elements
+            $dom = (new HtmlDocument(""))->load($output,true, false);   
+            $dom = Speed::add_invisible_elements($dom);  
+            $output = $dom->outertext;
+
+            Cache::save_cache($cache_file,$output," | CSS done");
 
             //Nginx Helper
-            if(class_exists('Nginx_Helper')) {
-                do_action( 'transition_post_status', 'publish', 'publish', $post_object );
-            }
+            if(class_exists('Nginx_Helper') && class_exists('Purger')) {
+                $purger = new Purger();
+                $purger->purge_post($post_id); // Purge by post id
+            }            
 
         }
+
 
     }    
-
-
-    /**
-     * Removes non-cache/purge/clean hooks from the 'post_updated' action.
-     *
-     * This function is used internally by the CSS class to remove hooks that
-     * are not related to cache, purge, or clean operations when the
-     * 'post_updated' action is triggered.
-     *
-     */
-    private static function remove_non_cache_purge_clean_hooks_from_post_updated() {
-        global $wp_filter;
-    
-        // Define the regex pattern to match 'cache', 'purge', or 'clean'
-        $pattern = '/cache|purge|clean/i'; // Case-insensitive pattern
-    
-        // Check if 'post_updated' action exists
-        if (isset($wp_filter['post_updated'])) {
-            $hooks = $wp_filter['post_updated'];
-    
-            // Loop through each priority level
-            foreach ($hooks->callbacks as $priority => $functions) {
-                foreach ($functions as $hook_key => $function) {
-                    // Determine the function name
-                    $function_name = '';
-    
-                    if (is_string($function['function'])) {
-                        // Simple function
-                        $function_name = $function['function'];
-                    } elseif (is_array($function['function'])) {
-                        // Class method
-                        $class_name = is_object($function['function'][0]) ? get_class($function['function'][0]) : $function['function'][0];
-                        $method_name = $function['function'][1];
-                        $function_name = $class_name . '::' . $method_name;
-                    }
-    
-                    // Use regex to check if the function name matches the pattern 'cache', 'purge', or 'clean'
-                    if (!preg_match($pattern, $function_name)) {
-                        // If it doesn't match the pattern, remove the action
-                        remove_action('post_updated', $function['function'], $priority);
-                    }
-                }
-            }
-        }
-    }
 
 
     /**
@@ -224,6 +190,7 @@ class CSS {
      * from the lookup file.
      *
      * @param string $output The HTML output to optimize.
+     * @param string $direct Is the output being provided directly
      * @return string The optimized HTML output.
      */
     public static function rewrite_css($output) {
@@ -253,7 +220,7 @@ class CSS {
         }
 
         //Get current URL
-        $current_url = Speed::get_current_uri();
+        $current_url = Speed::get_url();
 
         //See if there is a lookup file
         $lookup_file = self::get_lookup_file( $current_url );
@@ -331,7 +298,7 @@ class CSS {
 
             //Add preloads for fonts and lcp image
             $preload = "";
-            $fonts = (array)explode("|",$data_object->used_font_fules);
+            $fonts = (array)explode("|",$data_object->used_font_rules);
             foreach($fonts AS $font) {
                 if($font) {
                     $preload .= "\n" . "<link rel='preload' href='" . $font . "' as='font' fetchpriority='high' crossorigin='anonymous'>";
@@ -370,7 +337,7 @@ class CSS {
     public static function get_lcp_image() {
 
         //Get current URL
-        $current_url = Speed::get_current_uri();        
+        $current_url = Speed::get_url();        
 
         $lookup_file = self::get_lookup_file( $current_url );
         if(!file_exists($lookup_file)) {
@@ -394,7 +361,7 @@ class CSS {
         // Get ignore URLs and cookies from config
         $ignore_urls = array_filter(explode("\n", Config::get('speed_css', 'ignore_urls')));
         $ignore_cookies = array_filter(explode("\n", Config::get('speed_css', 'ignore_cookies')));
-        $current_uri = Speed::get_current_uri();
+        $current_uri = Speed::get_url();
         $match_found = false;
 
         // Check URL patterns
@@ -557,25 +524,11 @@ class CSS {
      */
     public static function get_lookup_file($url) {
         
-        $file = self::get_cache_path_from_url($url) . "lookup.json";
+        $file = Speed::get_cache_dir_from_url($url) . "lookup.json";
         return $file;
 
 
-    }
-
-    /**
-     * Retrieves the cache path for a given URL.
-     *
-     * @param string $url The URL for which to retrieve the cache path.
-     * @return string The cache path for the given URL.
-     */
-    public static function get_cache_path_from_url($url) {
-
-      $file_relative_path = parse_url($url, PHP_URL_PATH);        
-      $file_path = Speed::get_root_cache_path()  . $file_relative_path;
-      return $file_path;
-
-    }    
+    }   
 
 
     /**
@@ -1081,12 +1034,12 @@ class CSS {
         //Don't delete if no hostname found
         if(Speed::$hostname) {
             $dir = Speed::get_root_cache_path();
-            self::deleteAllFilesAndSubfolders($dir);        
+            Speed::deleteSpecificFiles($dir,array("css","lookup.json"));        
         }
 
         //Integrations
         if(defined('FLYING_PRESS_CACHE_DIR')) {
-            self::deleteAllFilesAndSubfolders(FLYING_PRESS_CACHE_DIR);
+            Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"));
         }
         
         //Other plugins would hook into this, from WP Super Cache
@@ -1111,47 +1064,12 @@ class CSS {
         && is_user_logged_in() && current_user_can('edit_posts')) {
 
             $url = get_permalink($post_id);
-            $dir = self::get_cache_path_from_url($url);
-            self::deleteAllFilesAndSubfolders($dir);  
+            Speed::purge_cache($url,array("css","lookup.json"));
 
         }
 
-
-    }
-
-    /**
-     * Deletes all files and subfolders in a given directory.
-     *
-     * @param string $dir The path to the directory to delete.
-     *
-     * @return void
-     */
-    public static function deleteAllFilesAndSubfolders($dir) {
-        // Ensure the directory exists
-        if (!is_dir($dir)) {
-            //Directory does not exist
-            return;
-        }
-    
-        // Create a RecursiveDirectoryIterator to iterate through the directory and subdirectories
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
-    
-        // Loop through each item (file/folder) in the directory
-        foreach ($iterator as $file) {
-            if ($file->isDir()) {
-                // If it's a directory, use rmdir to remove it
-                rmdir($file->getRealPath());
-            } else {
-                // If it's a file, use unlink to delete it
-                unlink($file->getRealPath());
-            }
-        }                
 
     }    
-    
 
 
 }

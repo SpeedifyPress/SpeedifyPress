@@ -4,6 +4,50 @@
 
 # FAQ 
 
+## How to use the  Cache Settings?
+
+### Mode Selection
+
+#### Choose the Cache Mode
+
+When you first install the plugin, the mode setting will be set to 
+      Fully Disabled. 
+      This means that no caching will take place until you enable it and update the mode
+
+#### Choose the cache lifetime
+
+This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
+
+### Separate Caches
+
+#### Devices & users
+
+Allows you to create separate caches for:
+
+- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that.
+- Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
+
+### Filters
+
+#### Bypass When Cookies Present
+
+Enter a line seprate list of (partial) cookie names that, if detected, will prevent caching from taking place. For example:
+
+- 🔑 *wordpress_logged_in_* → Excludes logged-in users.
+- 🛒 *woocommerce_cart_hash* → Excludes users with an item in their cart.
+
+#### Bypass URLs
+
+Specify a line separated list of (partial) URLs where no caching should take place. For example, if you're caching logged in users you might want to add *my-account* here
+
+#### Bypass User Agents
+
+Specify a line separated list of (partial) user agents for which no caching should take place
+
+#### Ignore Querystrings
+
+Specify a line separated list of querystrings that should be ignored for caching. 
+      For example, to ensure that users arriving from a Klaviyo newsletter all get the cached content *nb_klid* is necessary here. An extensive default list comes with the plugin.
 ## How to use the  CSS Settings?
 
 ### Mode Selection

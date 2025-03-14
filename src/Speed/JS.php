@@ -104,7 +104,7 @@ class JS {
 
         $end_time = microtime(true);
         $elapsed_time = $end_time - $start_time;
-        $html .=  "<!-- Elapsed JS " . $elapsed_time . "-->";
+        $html .=  "<!-- Elapsed JS " . number_format($elapsed_time,2) . "-->";
 
 
         return $html;
@@ -274,7 +274,7 @@ class JS {
         
 
         // Get ignore URLs and cookies from config
-        $current_uri = Speed::get_current_uri();
+        $current_uri = Speed::get_uri();
         $match_found = false;
 
         // Check URL patterns
