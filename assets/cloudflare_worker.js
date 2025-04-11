@@ -105,6 +105,10 @@ class CacheHandler {
         this.mustHaveHeader = 'x-spdy-cache';
         this.mustHaveHeaderValue = 'HIT';
 
+        //Set the csrf token name and salt
+        this.csrf_name = 'spdy_csrfToken';
+        this.csrf_salt = 'X1uOzep8o3kEp7#pn Q+Ljdj&2NFu?nPCy75k-TE8j,dEgD_9/c[M{g0wnmcyeqb';
+
     }
 
     /**
@@ -156,12 +160,106 @@ class CacheHandler {
         //Not eligible for bypass, fetch and cache
         } else {
 
-            response = this.fetchAndCacheResponse(event, request, requestURL);
+            response = await this.fetchAndCacheResponse(event, request, requestURL);
 
         }
 
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('text/html')) {
+
+            const clonedResponse = response.clone(); // Clone to avoid stream lock
+            let body = await clonedResponse.text();
+
+            // the User-Agent indicates a mobile browser, remove any content between
+            // <!-- FontPreload --> and <!-- /FontPreload -->
+            const userAgent = request.headers.get('user-agent') || '';
+            const isMobile = /Mobile|Android|Silk\/|Kindle|BlackBerry|Opera Mini|Opera Mobi/i.test(userAgent);
+
+            // Replace away font preloads
+            if (isMobile && body.includes('<!-- SPRESS_preload_fonts_desktop_only -->')) {
+                body = body.replace(/<!--\s*FontPreload\s*-->[\s\S]*?<!--\s*\/FontPreload\s*-->/gi, '');                
+            }            
+
+            // Update the token every time
+            if(body.includes(this.csrf_name)) {
+
+                // Generate a new CSRF token using the current URL.
+                // generateCsrfToken is assumed to be defined and uses this.csrf_salt.
+                const newCsrfToken = await this.generateCsrfToken.call(this, requestURL);
+                // Replace the existing token in the body with the new one.
+                const csrfRegex = new RegExp(`(<script id="${this.csrf_name}">window\\.${this.csrf_name} = ")[^"]*(";<\\/script>)`, 'i');
+                body = body.replace(csrfRegex, `$1${newCsrfToken}$2`);
+
+            }    
+
+            response = new Response(body, {
+                status: response.status,
+                statusText: response.statusText,
+                headers: response.headers
+            });
+
+
+        }        
+
+
+
+
+
         return response;
 
+    }
+
+    /**
+     * Generates a CSRF token for a given URL.
+     *
+     * The token is a base64-encoded string containing:
+     *   - an expiry timestamp (Unix time in seconds, 30 seconds from now)
+     *   - a 6-byte random value (hex encoded)
+     *   - the provided URL
+     *   - an HMAC‑SHA256 signature of the above data using this.csrf_salt
+     *
+     * @param {string} url - The URL to include in the token.
+     * @returns {Promise<string>} - The base64‑encoded token.
+     */
+    async generateCsrfToken(url) {
+        const encoder = new TextEncoder();
+        // Expiry: current Unix timestamp plus 30 seconds
+        const expiry = Math.floor(Date.now() / 1000) + 30;
+        // Generate 6 random bytes and convert to hex
+        const randomBytes = new Uint8Array(6);
+        crypto.getRandomValues(randomBytes);
+        const randomHex = Array.from(randomBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+        // Combine expiry, random hex, and URL into a single data string
+        const data = `${expiry}:${randomHex}:${url}`;
+        
+        // Import the secret key (this.csrf_salt) as a CryptoKey for HMAC-SHA256
+        const keyData = encoder.encode(this.csrf_salt);
+        const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+        );
+        
+        // Sign the data string
+        const signatureBuffer = await crypto.subtle.sign(
+        'HMAC',
+        cryptoKey,
+        encoder.encode(data)
+        );
+        // Convert signature from ArrayBuffer to a hex string
+        const signatureHex = Array.from(new Uint8Array(signatureBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+        
+        // Concatenate the data and signature
+        const token = `${data}:${signatureHex}`;
+        
+        // Base64 encode the token (btoa expects a binary string; our token is ASCII-safe)
+        return btoa(token);
     }
 
 
@@ -335,8 +433,8 @@ class CacheHandler {
             bypassReasonDetails = `Caching not possible for req method ${request.method}`;
         }
 
-        // If the request is for an HTML page, check if it's an admin or API path
-        if (isHTMLContentType && this.isAdminOrAPIPath(requestURL.pathname)) {
+        // If the request is for an admin or API path
+        if (this.isAdminOrAPIPath(requestURL.pathname)) {
             bypassCache = true;
             bypassReasonDetails = 'WP Admin HTML request';
         }
@@ -406,6 +504,9 @@ class CacheHandler {
                 const cache = caches.default;
                 const cacheKey = new Request(this.urlNormalize(request.url));
                 await cache.delete(cacheKey);  // Delete the cache entry
+
+                //Refetch to fill cache
+                await fetch(request, { method: 'GET' });
 
             }
         } catch (err) {
@@ -495,9 +596,8 @@ class CacheHandler {
      * @returns {boolean} true if the path is an admin or API path, false otherwise.
      */
     isAdminOrAPIPath(pathname) {
-        const bypassAdminPath = new RegExp(/(\/(wp-admin)(\/?))/g);
-        const bypassCachePaths = new RegExp(/(\/((wp-admin)|(wc-api)|(edd-api)|(wp-json))(\/?))/g);  // Matches wp-admin, wc-api, edd-api, and wp-json paths
-        return bypassAdminPath.test(pathname) || bypassCachePaths.test(pathname);
+        const adminOrAPIRegex = /^\/(wp-admin|wc-api|edd-api|wp-json)(\/|$|\/.*)/;
+        return adminOrAPIRegex.test(pathname);
     }
     
     /**
@@ -569,4 +669,3 @@ addEventListener('fetch', event => {
     );
   }
 });
-

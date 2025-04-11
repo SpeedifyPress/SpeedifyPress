@@ -3,9 +3,8 @@
   const lazyImages = document.querySelectorAll('img[data-lazy-src]');
 
   /**
-   * Creates an IntersectionObserver instance that observes the elements with
-   * class "unused-invisible" and removes their content-visibility and
-   * contain-intrinsic-size styles when they enter the viewport.
+   * Creates an IntersectionObserver instance that observes the image elements with
+   * data-lazy-src attribute and restores the src when they enter the viewport
    */
   const intersectionObserver = new IntersectionObserver((entries, observer) => {
 
@@ -34,7 +33,7 @@
     });
 
   /**
-   * Observes all elements with class "unused-invisible" with the IntersectionObserver.
+   * Observes all elements
    */
   lazyImages.forEach(element => {
       intersectionObserver.observe(element);

@@ -18,15 +18,18 @@ use MatthiasMullie\Minify;
 class Cache {
 
     // Configuration properties (set in self::init)
-    public static $cache_mode;              // string: either 'enabled' or 'disabled'
-    public static $bypass_cookies;          // line separated list of (partial) cookie names
-    public static $bypass_urls;             // line separated list of (partial) URLs
-    public static $ignore_querystrings;     // line separated list of query string keys
-    public static $bypass_useragents;       // line separated list of (partial) user agents
-    public static $separate_cookie_cache;   // line separated list of (partial) cookie names
-    public static $cache_logged_in_users;   // string: 'true' or 'false'
-    public static $cache_mobile_separately; // string: 'true' or 'false'
-    public static $cache_lifetime;          // string: 0,2,6,12,24
+    public static $cache_mode;                 // string: either 'enabled' or 'disabled'
+    public static $bypass_cookies;             // line separated list of (partial) cookie names
+    public static $bypass_urls;                // line separated list of (partial) URLs
+    public static $ignore_querystrings;        // line separated list of query string keys
+    public static $bypass_useragents;          // line separated list of (partial) user agents
+    public static $separate_cookie_cache;      // line separated list of (partial) cookie names
+    public static $cache_logged_in_users;      // string: 'true' or 'false'
+    public static $cache_mobile_separately;    // string: 'true' or 'false'
+    public static $cache_lifetime;             // string: 0,2,6,12,24
+    public static $plugin_mode;                // string: 'enabled', 'disabled', 'partial'
+    public static $disable_urls;               // line separated list of (partial) URLs
+    public static $preload_fonts_desktop_only; //string: 'true' or 'false'
 
     /**
      * Initializes the cache settings from configuration.
@@ -43,12 +46,17 @@ class Cache {
                 self::$$key = $value['value'];
             }
         }
+        self::$plugin_mode = Config::get('plugin','plugin_mode');
+        self::$disable_urls = Config::get('plugin','disable_urls');
+        self::$preload_fonts_desktop_only = Config::get('speed_code','preload_fonts_desktop_only');
+        
 
-        // Register activation and uninstall hooks for advanced-cache.php.
+        // Register activation and deactivation hooks for advanced-cache.php.
         // Use SPRESS_FILE_NAME (a constant defined in the plugin's root file) as the main plugin file.
         if (defined('SPRESS_FILE_NAME')) {
             register_activation_hook(SPRESS_FILE_NAME, array(__CLASS__, 'install'));
-            register_uninstall_hook(SPRESS_FILE_NAME, array(__CLASS__, 'uninstall'));
+            register_deactivation_hook(SPRESS_FILE_NAME, array(__CLASS__, 'uninstall'));
+            add_action('upgrader_process_complete', array(__CLASS__, 'install'), 10, 2);
         }
 
         //Register purging hooks
@@ -88,54 +96,8 @@ class Cache {
             return $html;
         }
 
-        // Only cache GET requests
-        if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-            return $html;
-        }
-
-        // Check that the HTTP response code is 200.
-        if (function_exists('http_response_code')) {
-            $response_code = http_response_code();
-            if ($response_code !== 200) {
-                return $html;
-            }
-        }
-
-        // Skip AJAX requests.
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            return $html;
-        }
-
-        // Skip admin pages (if is_admin() is available).
-        if (function_exists('is_admin') && is_admin()) {
-            return $html;
-        }
-
-        // Skip if the URL has disallowed extensions (e.g. .txt, .xml, or .php).
-        $disallowed_extensions = ['.txt', '.xml', '.php'];
-        foreach ($disallowed_extensions as $ext) {
-            if (substr($url, -strlen($ext)) === $ext) {
-                return $html;
-            }
-        }
-
-        // Validate that the HTML contains a doctype and closing </html> tag.
-        if (!preg_match('/<!DOCTYPE\s+html/i', $html) || !preg_match('/<\/html\s*>/i', $html)) {
-            return $html;
-        }
-
-        // Do not cache amp endpoints (either via URL path or query parameter).
-        if (stripos($url, '/amp') !== false || isset($_GET['amp'])) {
-            return $html;
-        }
-
-        // --- New Check: Do not cache REST API endpoints ---
-        if (stripos($url, '/wp-json') !== false) {
-            return $html;
-        }
-
-        // Skip password-protected posts.
-        if (function_exists('post_password_required') && post_password_required()) {
+        // Various tests and checks 
+        if (self::meets_url_requirements($url, $html) === false) {
             return $html;
         }
 
@@ -156,6 +118,7 @@ class Cache {
 
 
         // If the original and modified URL differ, save in a lookup
+        // so we can purge both when required
         if ($url != $modified_url) {
             $lookup_file = Speed::get_root_cache_path() . "/lookup_uris.json";
             
@@ -191,7 +154,65 @@ class Cache {
         return $html;
     }
 
-    public static function save_cache($cache_file,$html,$msg='') {
+    public static function meets_url_requirements($url, $html) {
+
+        // Only cache GET requests
+        if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
+            return false;
+        }
+
+        // Check that the HTTP response code is 200.
+        if (function_exists('http_response_code')) {
+            $response_code = http_response_code();
+            if ($response_code !== 200) {
+                return false;
+            }
+        }
+
+        // Skip AJAX requests.
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            return false;
+        }
+
+        // Skip admin pages (if is_admin() is available).
+        if (function_exists('is_admin') && is_admin()) {
+            return false;
+        }
+
+        // Skip if the URL has disallowed extensions (e.g. .txt, .xml, or .php).
+        $disallowed_extensions = ['.txt', '.xml', '.php'];
+        foreach ($disallowed_extensions as $ext) {
+            if (substr($url, -strlen($ext)) === $ext) {
+                return false;
+            }
+        }
+
+        // Validate that the HTML contains a doctype and closing </html> tag.
+        if (!preg_match('/<!DOCTYPE\s+html/i', $html) || !preg_match('/<\/html\s*>/i', $html)) {
+            return false;
+        }
+
+        // Do not cache amp endpoints (either via URL path or query parameter).
+        if (stripos($url, '/amp') !== false || isset($_GET['amp'])) {
+            return false;
+        }
+
+        // --- New Check: Do not cache REST API endpoints ---
+        if (stripos($url, '/wp-json') !== false) {
+            return false;
+        }
+
+        // Skip password-protected posts.
+        if (function_exists('post_password_required') && post_password_required()) {
+            return false;
+        }
+
+        return true;
+
+
+    }
+
+    public static function save_cache($cache_file,$html,$msg='',$gz_only=false) {
 
         $end_time = microtime(true);
         $elapsed_time = isset(Speed::$start_time) ? $end_time - Speed::$start_time : 0;
@@ -215,10 +236,12 @@ class Cache {
         }
 
         // Save the uncompressed version.
-        file_put_contents($cache_file, $html);
+        if($gz_only === false) {
+            file_put_contents($cache_file, $html);
+        }
 
-        // If gzip is accepted, save a gzipped version separately as "index.html.gz"
-        if (self::gzip_accepted()) {
+        // If gzip is accepted, save a gzipped version separately as .gz
+        if (self::gzip_accepted() || $gz_only === true) {
             $gz_file = $cache_file . '.gz';
             file_put_contents($gz_file, gzencode($html));
         }
@@ -418,7 +441,7 @@ class Cache {
     
         $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($cache_dir));
         foreach ($rii as $file) {
-            if (!$file->isDir() && preg_match('/\.(html|html\.gz)$/', $file->getFilename())) {
+            if (!$file->isDir() && preg_match('/index(.*?)\.(html|html\.gz)$/', $file->getFilename())) {
                 $full_path = $file->getPathname();
                 // Normalize: if file ends with .gz, use the base filename without .gz.
                 $base = (substr($full_path, -3) === '.gz') ? substr($full_path, 0, -3) : $full_path;
@@ -481,6 +504,71 @@ class Cache {
         ];
     }
     
+    /**
+     * Searches through all cached HTML files in the cache directory, applies a regex search and replace,
+     * and updates both the uncompressed (.html) and its gzipped version (.html.gz) only if a replacement was made.
+     *
+     * @param string $find    The regex pattern to search for.
+     * @param string $replace The replacement string.
+     * @return void
+     */
+    public static function search_replace_in_cache($find, $replace) {
+        // Get the root cache directory.
+        $cache_dir = Speed::get_root_cache_path();
+        
+        // Use a recursive iterator to traverse the cache directory.
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($cache_dir));
+        
+        foreach ($iterator as $file) {
+            // Only process files ending in .html (skip .html.gz files).
+            if ($file->isFile() && preg_match('/\.html$/', $file->getFilename())) {
+                $filepath = $file->getPathname();
+                
+                // Read the content of the HTML file.
+                $content = file_get_contents($filepath);
+                $newContent = preg_replace($find, $replace, $content);
+                
+                if ($newContent === null) {
+                    // There was an error with the regex replacement; skip this file.
+                    continue;
+                }
+                
+                // Only update if a replacement was made.
+                if ($newContent !== $content) {
+                    // Write the updated content back to the .html file.
+                    file_put_contents($filepath, $newContent);
+                    
+                    // Update the gzipped version.
+                    $gzFile = $filepath . '.gz';
+                    $newCompressed = gzencode($newContent);
+                    file_put_contents($gzFile, $newCompressed);
+                }
+            }
+        }
+    }
+
+    public static function update_config_to_cache($config_vars,$new_config,$variable_name) {
+
+        //See if one of our vars has been updated
+        $do_update = false;
+        foreach($config_vars AS $key=>$value) {
+
+            if(isset($new_config[$key])) {
+                $do_update = true;
+            }
+
+        }
+
+        if($do_update) {
+
+            //Search through all the files in the cache and replace
+            $html = "var $variable_name = " . wp_json_encode($new_config) . ";";
+            Cache::search_replace_in_cache("@var $variable_name =[^;]+;@",$html);
+
+        }
+
+    }       
+
 
     /**
      * Purges cache files related to a specific post.
@@ -501,6 +589,9 @@ class Cache {
         // Purge cache for the individual post.
         $permalink = get_permalink($post_id);
         Speed::purge_cache($permalink);
+
+        //Purge CSS cache too
+        Speed::purge_cache($permalink,array("css","lookup.json"));
 
         // If this is a post, also purge pages that list posts.
         if (get_post_type($post_id) === 'post') {
@@ -634,13 +725,18 @@ class Cache {
 
         // Prepare configuration replacements.
         $replacements = array(
-            '%%SPRESS_CACHE_ROOT%%'              => Speed::get_root_cache_path(),
-            '%%SPRESS_SEPARATE_COOKIE_CACHE%%'   => self::$separate_cookie_cache,
-            '%%SPRESS_CACHE_LOGGED_IN_USERS%%'   => self::$cache_logged_in_users,
-            '%%SPRESS_CACHE_MOBILE_SEPARATELY%%' => self::$cache_mobile_separately,
-            '%%SPRESS_IGNORE_QUERYSTRINGS%%'     => self::$ignore_querystrings,
-            '%%SPRESS_CACHE_LIFETIME%%'          => self::$cache_lifetime,
-            '%%SPRESS_DIR_NAME%%'                => SPRESS_DIR_NAME
+            '%%SPRESS_CACHE_ROOT%%'                  => Speed::get_root_cache_path(),
+            '%%SPRESS_SEPARATE_COOKIE_CACHE%%'       => self::$separate_cookie_cache,
+            '%%SPRESS_CACHE_LOGGED_IN_USERS%%'       => self::$cache_logged_in_users,
+            '%%SPRESS_CACHE_MOBILE_SEPARATELY%%'     => self::$cache_mobile_separately,
+            '%%SPRESS_IGNORE_QUERYSTRINGS%%'         => self::$ignore_querystrings,
+            '%%SPRESS_CACHE_LIFETIME%%'              => self::$cache_lifetime,
+            '%%SPRESS_DIR_NAME%%'                    => SPRESS_DIR_NAME,
+            '%%SPRESS_PLUGIN_MODE%%'                 => self::$plugin_mode,
+            '%%SPRESS_DISABLE_URLS%%'                => self::$disable_urls,
+            '%%SPRESS_PRELOAD_FONTS_DESKTOP_ONLY%%'  => self::$preload_fonts_desktop_only,
+
+            
         );
 
         // Replace placeholders in the template with actual configuration values.

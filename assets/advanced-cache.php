@@ -19,7 +19,7 @@
 
 namespace SPRESS;
 use SPRESS\Speed\Cache;
-use SPRESS\Speed\Speed;
+use SPRESS\Speed;
 
 // Prevent direct access.
 if ( ! defined( 'ABSPATH' ) ) {
@@ -48,9 +48,23 @@ if ( ! defined( 'SPRESS_CACHE_LIFETIME' ) ) {
 if ( ! defined( 'SPRESS_DIR_NAME' ) ) {
     define( 'SPRESS_DIR_NAME', '%%SPRESS_DIR_NAME%%' );
 }
+if ( ! defined( 'SPRESS_PLUGIN_MODE' ) ) {
+    define( 'SPRESS_PLUGIN_MODE', '%%SPRESS_PLUGIN_MODE%%' );
+}
+if ( ! defined( 'SPRESS_DISABLE_URLS' ) ) {
+    define( 'SPRESS_DISABLE_URLS', '%%SPRESS_DISABLE_URLS%%' );
+}
+if ( ! defined( 'SPRESS_PRELOAD_FONTS_DESKTOP_ONLY' ) ) {
+    define( 'SPRESS_PRELOAD_FONTS_DESKTOP_ONLY', '%%SPRESS_PRELOAD_FONTS_DESKTOP_ONLY%%' );
+}
 
 //Require our SPRESS classes
-require_once __DIR__ . "/plugins/" . SPRESS_DIR_NAME . "/vendor/autoload.php";
+$file = __DIR__ . "/plugins/" . SPRESS_DIR_NAME . "/vendor/autoload.php";
+if (!file_exists($file)) {
+    exit;
+}
+
+require_once $file;
 
 /**
  * Class AdvancedCache
@@ -66,19 +80,25 @@ class AdvancedCache {
     public static $ignore_querystrings;
     public static $cache_lifetime;
     public static $original_uri;
+    public static $plugin_mode;
+    public static $disable_urls;
+    public static $preload_fonts_desktop_only;
 
     /**
      * Initialize configuration from defined constants.
      */
     public static function init() {
-        self::$cache_root              = SPRESS_CACHE_ROOT;
-        self::$separate_cookie_cache   = SPRESS_SEPARATE_COOKIE_CACHE;
-        self::$cache_logged_in_users   = SPRESS_CACHE_LOGGED_IN_USERS;
-        self::$cache_mobile_separately = SPRESS_CACHE_MOBILE_SEPARATELY;
-        self::$ignore_querystrings     = SPRESS_IGNORE_QUERYSTRINGS;
-        self::$cache_lifetime          = intval(SPRESS_CACHE_LIFETIME);
-        self::$original_uri            = $_SERVER['REQUEST_URI'];
-
+        
+        self::$cache_root                 = SPRESS_CACHE_ROOT;
+        self::$separate_cookie_cache      = SPRESS_SEPARATE_COOKIE_CACHE;
+        self::$cache_logged_in_users      = SPRESS_CACHE_LOGGED_IN_USERS;
+        self::$cache_mobile_separately    = SPRESS_CACHE_MOBILE_SEPARATELY;
+        self::$ignore_querystrings        = SPRESS_IGNORE_QUERYSTRINGS;
+        self::$cache_lifetime             = intval(SPRESS_CACHE_LIFETIME);
+        self::$original_uri               = $_SERVER['REQUEST_URI'];
+        self::$plugin_mode                = SPRESS_PLUGIN_MODE;
+        self::$disable_urls               = SPRESS_DISABLE_URLS;
+        self::$preload_fonts_desktop_only = SPRESS_PRELOAD_FONTS_DESKTOP_ONLY;
 
     }
 
@@ -88,6 +108,18 @@ class AdvancedCache {
      * @return bool True if any condition requires exiting.
      */
     protected static function should_exit() {
+        //Check if disabled
+        if(self::$plugin_mode === "disabled") {
+            return true;
+        } else if(self::$plugin_mode === "partial") {
+            //Check partial URLs
+            $partial_urls = self::$disable_urls  ? explode("\n", self::$disable_urls ) : array();			
+            foreach($partial_urls as $partial_url) {
+                if(strstr($_SERVER['REQUEST_URI'],$partial_url)){
+                    return true;
+                }
+            }        
+        }
         // Exit if WP-CLI is running.
         if ( defined('WP_CLI') && WP_CLI ) {
             return true;
@@ -199,7 +231,16 @@ class AdvancedCache {
 
             // Set extra headers if not already sent.
             if (!headers_sent()) {
-                header('x-spdy-cache: HIT');
+
+                //Check if an update is required in an external cache, 
+                // if so don't send the HIT header so that updates
+                $cache_file_base = dirname($cache_file);
+                $check_file = $cache_file_base . "/" . "update_required";
+                if (file_exists($check_file)) {
+                    unlink($check_file);
+                } else {
+                    header('x-spdy-cache: HIT');
+                }
                 header('x-spdy-source: PHP');
                 $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
                 header("Cache-Tag: $host");
@@ -214,18 +255,61 @@ class AdvancedCache {
                     exit;
                 }
             }
-            // If the file is gzipped, disable output compression and set Content-Encoding.
-            if (substr($cache_file, -3) === '.gz') {
-                ini_set('zlib.output_compression', 0);
-                header('Content-Encoding: gzip');
+
+            // Determine if the cache file is gzipped.
+            $isGz = (substr($cache_file, -3) === '.gz');
+
+            // Read the file content (decompress if gzipped).
+            if ($isGz) {
+                $raw_content = file_get_contents($cache_file);
+                $content = gzdecode($raw_content);
+            } else {
+                $content = file_get_contents($cache_file);
             }
+
+            // Generate the CSRF token.
+            $csrf_token = SPEED::generate_csrf_token(SPEED::get_url());
+            // Prepare a script block that exposes the token to JS.
+            $csrf_script = '<script id="spdy_csrfToken">window.spdy_csrfToken = "' . htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') . '";</script>';
+            // Replace the placeholder with the token script.
+            $content = preg_replace("@<script id=\"spdy_csrfToken\">.*?</script>@",$csrf_script,$content);
+
+
+            // Check if we need to strip font preload sections.
+            $shouldStrip = false;
+            if (self::$preload_fonts_desktop_only === 'true') {
+                $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
+                if (preg_match('/Mobile|Android|Silk\/|Kindle|BlackBerry|Opera (Mini|Mobi)/i', $user_agent)) {
+                    $shouldStrip = true;
+                }
+            }
+            if ($shouldStrip) {
+                // Strip anything between <!-- FontPreload --> and <!-- /FontPreload -->
+                $content = preg_replace('/<!--\s*FontPreload\s*-->.*?<!--\s*\/FontPreload\s*-->/is', '', $content);
+            }
+
+            $elapsed_time = number_format(microtime(true) - $GLOBALS['start_time'],10);
+            $content .= "<!--E: $elapsed_time-->\n";
+
+            // Set basic headers.
             header('Content-Type: text/html; charset=utf-8');
             header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $last_modified) . ' GMT');
-            readfile($cache_file);
 
+            // If originally gzipped, re-compress before output.
+            if ($isGz) {
+                ini_set('zlib.output_compression', 0);
+                header('Content-Encoding: gzip');
+                echo gzencode($content);
+            } else {
+                echo $content;
+            }
             exit;
+
         }
-    }
+    }    
+
+
+
 
     /**
      * Main serve method that ties all subroutines together.
@@ -233,6 +317,9 @@ class AdvancedCache {
      * @return void
      */
     public static function serve() {
+
+        $GLOBALS['start_time'] = microtime(true);
+
         self::init();
         if (self::should_exit()) {
             return;

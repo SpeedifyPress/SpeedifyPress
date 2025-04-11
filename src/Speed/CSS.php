@@ -5,6 +5,7 @@ namespace SPRESS\Speed;
 use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Speed\Cache;
+use SPRESS\Speed\Unused;
 
 use Wa72\Url\Url;
 use MatthiasMullie\Minify;
@@ -22,7 +23,7 @@ class CSS {
     //Enabled, previewm stats only or disabled
     public static $mode;
 
-    //Inline or file
+    //Inline, inline-grouped or file
     public static $inclusion_mode;
 
     //The default include patterns for the unused CSS script
@@ -68,7 +69,7 @@ class CSS {
      * rewrites absolute URLs, saves the processed CSS files to a cache directory. 
      * It also creates a lookup file to map original filenames to new filenames 
      * 
-     * @param array $array An array of CSS files and their corresponding URLs.
+     * @param array $force_includes An array of selectorTexts, keyed by rules, keyframes, fonts
      * @param string $source_url The URL of the source CSS file.
      * @param int $post_id The id of the post if available
      * @param array $post_types An array of post types
@@ -77,7 +78,40 @@ class CSS {
      * @param array $lcp_image An array of LCP images
      * @return void
      */
-    public static function process_css( $array, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_rules = null, $lcp_image = null ) {
+    public static function process_css( $force_includes, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_rules = null, $lcp_image = null ) {
+
+        //Get/set the elements that should be always included
+        $force_includes = self::get_update_force_includes($force_includes, $source_url);            
+
+        //Get cache directory for the URL
+        $cache_dir =  Speed::get_cache_dir_from_url($source_url);
+
+        //HTML file
+        $html_file = $cache_dir . "CSS_page_cache.html.gz";
+
+        if(!file_exists($html_file)) {
+            return;
+        }
+
+        //Get HTML
+        $html = gzdecode(file_get_contents($html_file));
+
+        //Gather all Unused CSS in document
+        $css_vars = self::get_css_vars_array();
+        
+        //Set force include patterns
+        $include_patterns = (array)json_decode($css_vars['include_patterns']);
+
+        //Merge with force includes
+        $include_patterns = array_merge($include_patterns, $force_includes);
+
+        //Get unused
+        $unused = Unused::init($html, $include_patterns, null);
+        
+        /*
+        $unused = array();
+        $unused['CSS'] = $force_includes;
+        */
 
         //A lookup of old to new filesname
         $lookup = array();
@@ -95,15 +129,11 @@ class CSS {
         $urls = array_keys((array)$array);
 
         //Run through the array
-        foreach($array AS $url=>$csstxt) {
-
-            //Minify it
-            $minifier = new Minify\CSS($csstxt);
-            $csstxt = $minifier->minify();
+        foreach((array)$unused['CSS'] AS $url=>$csstxt) {
 
             //Rewrite absolutes
             $csstxt = self::rewrite_absolute_urls($csstxt, $url);
-            
+                        
             //Save to cache            
             $original_filename = ($url);
             $new_filename = md5($csstxt) . ".css";            
@@ -161,29 +191,74 @@ class CSS {
 
             //Get currently cached content
             $cache_file = Cache::get_cache_filepath($source_url,"html");
+
+            //See if it exists
+            if(!file_exists($cache_file)) {
+                return $unused;
+            }
+
             $output = file_get_contents($cache_file);
 
-            //Rewrite with new CSS
-            $output = self::rewrite_css($output,$source_url);
+            //Rewrite with new CSS if not already done
+            if(!strstr($output,"|@@@CSSDone@@@")) {
+                
+                $output = self::rewrite_css($output,$source_url);
 
-            //Add invisible elements
-            $dom = (new HtmlDocument(""))->load($output,true, false);   
-            $dom = Speed::add_invisible_elements($dom);  
-            $output = $dom->outertext;
+                //Add invisible elements
+                $dom = (new HtmlDocument(""))->load($output,true, false);   
+                $dom = Speed::add_invisible_elements($dom);  
+                $output = $dom->outertext;
 
-            Cache::save_cache($cache_file,$output," | CSS done");
+                //Resave cache file
+                Cache::save_cache($cache_file,$output," |@@@CSSDone@@@");
+
+            }
+
+            //Mark this path as needing a Cloudflare update
+            $cache_dir  = Speed::get_cache_dir_from_url($source_url);
+            file_put_contents($cache_dir."update_required","");
 
             //Nginx Helper
-            if(class_exists('Nginx_Helper') && class_exists('Purger')) {
-                $purger = new Purger();
-                $purger->purge_post($post_id); // Purge by post id
+            if(class_exists('Nginx_Helper')) {
+                $post_object = get_post( $post_id );
+                do_action( 'transition_post_status', 'publish', 'publish', $post_object );
             }            
 
-        }
+        }    
 
+        return $unused;
 
     }    
 
+    /**
+     * Merges $force_includes with a global list of force includes, and saves
+     * the merged list back to the global list. This is used to update the
+     * force includes list when a cache is updated.
+     *
+     * @param array $force_includes The new list of force includes.
+     * @param string $source_url The source URL of the cache being updated.
+     *
+     * @return array The updated list of force includes.
+     */
+    public static function get_update_force_includes($force_includes, $source_url) {
+
+        $file = Speed::get_pre_cache_path() . "/force_includes.json";
+
+        if(file_exists($file)) {
+            $global_force_includes = (array)json_decode(file_get_contents($file),true);
+        } else {
+            $global_force_includes = array();
+        }
+        
+        //Merge, if they have the same key elements should be added
+        $force_includes = $global_force_includes[$source_url] = array_values(array_unique(array_filter(array_merge((array) $global_force_includes[$source_url], $force_includes))));       
+
+        //Save back
+        file_put_contents($file, json_encode($global_force_includes));
+
+        return $force_includes;
+
+    }
 
     /**
      * Replaces CSS links in the provided HTML output with optimized versions 
@@ -195,22 +270,10 @@ class CSS {
      */
     public static function rewrite_css($output) {
 
-        //Only run on front-end
-        if(Speed::is_frontend() === false) {
-            return $output;
-        }
+        $start_time = microtime(true);
 
-        //Don't run if we're disabled or stats only
-        if(self::$mode == "disabled") {
-            return $output;
-        }
-
-        if(self::$mode == "preview" && !current_user_can( 'manage_options' )) {
-            return $output;
-        }   
-
-        //Don't run if blocked
-        if(self::is_blocked_url() == true) {
+        // Early exit?
+        if(self::should_exit_early() === true) {
             return $output;
         }
 
@@ -236,6 +299,8 @@ class CSS {
                         
             //Get the sheets from the output
             $sheets = self::get_stylesheets($output);      
+
+            //$output .= "<!--" . print_r($sheets,true) . "-->";
             
             //Replace with lookup file
             $count = 0;
@@ -246,7 +311,39 @@ class CSS {
                     continue;
                 }
 
+                //Get sheet URL
                 $sheet_url = $sheets[1][$key];
+
+                //Remove version
+                $sheet_url = Unused::url_remove_querystring($sheet_url);
+
+                // Check if this is an inline stylesheet (key begins with "id-")
+                if (strpos($sheet_url, 'id-') === 0) {
+                    if (isset($lookup->$sheet_url)) {
+                        if (self::$mode == "stats") {
+                            // In stats mode, just mark it as processed.
+                            $new_tag = str_replace("<style", "<style data-spress-processed='true'", $tag);
+                        } else {
+                            // For inline styles, simply replace the tag in place.
+                            $file = Speed::get_root_cache_path() . "/" . $lookup->$sheet_url;
+                            if (file_exists($file)) {
+                                $newInlineCSS = file_get_contents($file);
+                                // Optionally, minify the inline CSS.
+                                $minifier = new Minify\CSS($newInlineCSS);
+                                $newInlineCSS = $minifier->minify();
+                            } else {
+                                $newInlineCSS = "";
+                            }
+                            if($newInlineCSS) {
+                                $new_tag = "<style rel='spress-inlined-".$sheet_url."' data-spcid='".$sheet_url ."'>" . $newInlineCSS . "</style>";
+                            } else {
+                                $new_tag = "";
+                            }
+                        }
+                        $output = str_replace($tag, $new_tag, $output);
+                    }
+                    continue; // Skip further processing for inline styles.
+                }
 
                 //Make URL absolute
                 $baseurl = Url::parse($sheet_url);
@@ -256,21 +353,38 @@ class CSS {
 
                 if(isset($lookup->$sheet_url_lookup)) {   
 
-                    if(self::$inclusion_mode == "inline") {
+                    if(self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped") {
 
                         $count++;
                                                 
                         $file = Speed::get_root_cache_path() . "/" . $lookup->$sheet_url_lookup;
+                        $inline_file_contents = "";
                         if(file_exists($file)) {
-                            $inline_css .= file_get_contents($file);
+                            $inline_file_contents = file_get_contents($file);
+
+                            $minifier = new Minify\CSS($inline_file_contents);
+                            $inline_file_contents = $minifier->minify();        
+
+                            if(self::$inclusion_mode == "inline") {
+
+                                $output = str_replace($tag,"<style rel='spress-inlined' data-original-href='".$sheet_url ."'>".$inline_file_contents. "</style>",$output);
+    
+                            } else {
+
+                                $inline_css .= $inline_file_contents;
+    
+                                //Save first tag for replacement
+                                if($count == 1) {
+                                    $first_tag = $tag;
+                                } else {
+                                    $output = str_replace($tag,"",$output);
+                                }
+    
+                            }
+
                         }
 
-                        //Save first tag for replacement
-                        if($count == 1) {
-                            $first_tag = $tag;
-                        } else {
-                            $output = str_replace($tag,"",$output);
-                        }
+                        
 
 
                     } else {
@@ -292,30 +406,62 @@ class CSS {
 
                     }
 
-                }                 
+                } else {
+                
+                    //Not found in lookup, mark as processed
+                    $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$tag); 
+                    $output = str_replace($tag, $new_tag, $output);
+                                    
+
+                }
 
             }
 
             //Add preloads for fonts and lcp image
             $preload = "";
-            $fonts = (array)explode("|",$data_object->used_font_rules);
-            foreach($fonts AS $font) {
-                if($font) {
-                    $preload .= "\n" . "<link rel='preload' href='" . $font . "' as='font' fetchpriority='high' crossorigin='anonymous'>";
+            $font_preload = "";
+            if(Config::get('speed_code', 'preload_fonts') === 'true'
+            && !strstr($output,"FontPreload")
+            ) {
+
+                $dont_preload_icon_fonts = Config::get('speed_code','dont_preload_icon_fonts');
+
+                $fonts = (array)explode("|",$data_object->used_font_rules);
+                foreach($fonts AS $font) {
+
+                    $local_file = Unused::url_to_local($font);
+                    if($dont_preload_icon_fonts === 'true' && self::is_icon_font($local_file) == true) {
+                        continue;
+                    }                    
+
+                    if($font) {
+                        $font_preload .= "\n" . "<link rel='preload' href='" . $font . "' as='font' fetchpriority='high' crossorigin='anonymous'>";
+                    }
+                }
+                if($font_preload != '') {
+                    $preload = "<!-- FontPreload -->".$font_preload . "<!-- /FontPreload -->";
+                    if(Config::get('speed_code', 'preload_fonts_desktop_only') === 'true') {
+                        $preload .= "<!-- SPRESS_preload_fonts_desktop_only -->";
+                    }
                 }
             }
 
             $lcp_image = $data_object->lcp_image ?? false;
             if($lcp_image) {
-                $preload .= "\n" . "<link rel='preload' href='" . $lcp_image  . "' as='image' />";
+                $preload_html = "<link rel='preload' href='" . $lcp_image  . "' as='image' />";
+                if(!strstr($output,$preload_html)) {
+                    $preload .= "\n" . $preload_html;
+                }
             }   
             
             $output = str_replace("</title>","</title>".$preload,$output);
 
-            if(self::$inclusion_mode == "inline") {
+            if(self::$inclusion_mode == "inline-grouped") {
 
+                //Minify all as a grouped set
                 $minifier = new Minify\CSS($inline_css);
-                $inline_css = $minifier->minify();
+                $inline_css = $minifier->minify(); 
+                
                 $output = str_replace($first_tag,"<style rel='spress-inlined'>".$inline_css."</style>",$output);
 
             }
@@ -323,9 +469,144 @@ class CSS {
 
         }       
 
+        $end_time = microtime(true);
+        $elapsed_time = $end_time - $start_time;
+        $output .=  "<!-- Elapsed CSS " . number_format($elapsed_time,2) . "-->";
+
+
         return $output;
 
     }       
+
+    /**
+     * Determine if a font file is likely an icon font.
+     *
+     * @param string $fontFile Path to .woff or .woff2 file
+     * @return bool
+     * @throws Exception if file not found
+     */
+    public static function is_icon_font($fontFile)    {
+
+        if (!file_exists($fontFile)) {
+            return false;
+        }
+
+        $contents = file_get_contents($fontFile);
+        $lowerContent = strtolower($contents);
+
+        // 1. Name-based heuristic for common icon font names
+        $knownIconFontNames = [
+            'fontawesome',
+            'materialicons',
+            'ionicons',
+            'feather',
+            'simplelineicons',
+            'typicons',
+            'entypo',
+            'icomoon',
+            'lineicons',
+            'iconfont',
+            'mdi',
+            'flaticon',
+            'icons',
+        ];
+
+        foreach ($knownIconFontNames as $name) {
+            if (strpos(strtolower($fontFile), $name) !== false) {
+                return true; // Found a known icon font keyword
+            }
+        }
+
+
+        return false;
+    }
+    
+
+    /**
+     * Saves the final HTML output to a cache file on disk.
+     *
+     * @param string $output The final HTML output.
+     * @return string The output, maybe modified.
+     */
+    public static function do_html_cache($output) {
+
+        // Early exit?
+        if(self::should_exit_early() === true) {
+            return $output;
+        }
+        
+        //Skips because of URL/header issues?
+        $url = Speed::get_url();  
+        if (Cache::meets_url_requirements($url, $output) === false) {
+            return $output;
+        }
+
+        //Get file
+        $path_to_file = self::get_css_pagecache_file();
+
+        if(!file_exists($path_to_file)) {
+            $output = Cache::save_cache($path_to_file, $output, "CSS html cached", true);
+        }
+        
+        return $output;
+
+
+    }
+
+    /**
+     * Retrieves the path to the CSS page cache file for the current URL.
+     *
+     * @return string The full file path for the CSS page cache file.
+     */
+    public static function get_css_pagecache_file() {
+
+        //Get original URL
+        $url = Speed::get_url();        
+
+        $cache_dir  = Speed::get_cache_dir_from_url($url);
+        $filename   = "CSS_page_cache.html";
+        $path_to_file = $cache_dir . $filename;
+
+        return $path_to_file;
+
+    }
+
+    /**
+     * Determines if the current operation should exit early based on various conditions.
+     *
+     * @return bool True if any condition for early exit is met, otherwise false.
+     * 
+     * This function checks if the current execution context should not proceed due to:
+     * - Not being on the front-end.
+     * - The mode being set to "disabled".
+     * - The mode set to "preview" and the current user lacking management permissions.
+     * - The current URL being blocked.
+     */
+
+    public static function should_exit_early() {
+
+        //Only run on front-end
+        if(Speed::is_frontend() === false) {
+            return true;
+        }
+
+        //Don't run if we're disabled or stats only
+        if(self::$mode == "disabled") {
+            return true;
+        }
+
+        if(self::$mode == "preview" && !current_user_can( 'manage_options' )) {
+            return true;
+        }   
+
+        //Don't run if blocked
+        if(self::is_blocked_url() == true) {
+            return true;
+        }
+
+        return false;
+
+    }
      
     /**
      * Get the LCP image for the current URL
@@ -402,6 +683,28 @@ class CSS {
      */
     public static function public_enqueue_css() {
 
+        // Enqueue our js script.
+        wp_enqueue_script( self::$script_name, SPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), SPRESS_VER, true );
+
+		wp_localize_script(
+			self::$script_name,
+			'speed_css_vars',
+			self::get_css_vars_array()
+		);      
+    }
+
+    /**
+     * Returns an array of variables to be localized for the usage collector JavaScript file.
+     *
+     * This function is used by the public_enqueue_css method to localize the 
+     * JavaScript file with the cache directory, include patterns, ignore URLs, and
+     * ignore cookies.
+     *
+     * @return array An array of variables to be localized for the usage collector
+     * JavaScript file.
+     */
+    public static function get_css_vars_array() {
+
         // Get include patterns, ignore URLs, and ignore cookies
         $default_patterns = self::$default_include_patterns ?? [];
         $include_pattern = self::getConfigArray('include_patterns', $default_patterns);
@@ -409,20 +712,13 @@ class CSS {
         $ignore_cookies = self::getConfigArray('ignore_cookies');    
         $generation_res = Config::get('speed_css', 'generation_res');
 
-        // Enqueue our js script.
-        wp_enqueue_script( self::$script_name, SPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), SPRESS_VER, true );
-
-		wp_localize_script(
-			self::$script_name,
-			'speed_css_vars',
-			array(
-				'cache_directory' => Speed::$cache_directory,
-                'include_patterns' => $include_pattern,
-                'ignore_urls' => $ignore_urls,
-                'ignore_cookies' => $ignore_cookies,
-                'generation_res' => $generation_res,
-			)
-		);      
+        return array(
+            'cache_directory' => Speed::$cache_directory,
+            'include_patterns' => $include_pattern,
+            'ignore_urls' => $ignore_urls,
+            'ignore_cookies' => $ignore_cookies,
+            'generation_res' => $generation_res,
+        );
 
 
     }
@@ -468,6 +764,13 @@ class CSS {
 
     }
 
+
+    public static function update_config_to_cache($new_config) {
+
+        Cache::update_config_to_cache(self::get_css_vars_array(),$new_config,"speed_css_vars");        
+
+    }
+
     
     /**
      * Retrieves an array of config values as a JSON string from the speed_css config group.
@@ -487,34 +790,52 @@ class CSS {
 
 
     /**
-     * Retrieves an array of stylesheets from the provided HTML.
+     * Extracts stylesheet tags from the provided HTML content.
      *
-     * This function uses a regular expression to match all HTML link tags 
-     * with a rel attribute set to 'stylesheet' and extracts their href attribute 
-     * values.
+     * This function retrieves both external stylesheet <link> tags (with rel="stylesheet")
+     * and inline <style> tags from the given HTML string. It returns an array containing two elements:
+     * - Index 0: an array of the full HTML tags.
+     * - Index 1: an array of corresponding keys. For external stylesheets, the key is the href attribute,
+     *   and for inline stylesheets, a unique ID is assigned.
      *
-     * @param string $html The HTML string to parse for stylesheets.
-     * @return array An array of stylesheets, where [0] is an array of tags and [1] is an array of URLs.
+     * @param string $html The HTML content to search for stylesheet tags.
+     * @return array An array where the first element is the list of stylesheet tags and the second element is the list of keys.
      */
     public static function get_stylesheets($html) {
 
-        // run preg match all to grab all the tags
-        $pattern = '/<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*\shref=[\'"]([^\'"]+)[\'"][^>]*>/i';
-        preg_match_all($pattern, $html, $stylesheets);
-
-        if(isset($stylesheets[0])) {
-            
-            return $stylesheets;
-
-        } else {
-
-            return array();
-
+        // Pattern for external stylesheet <link> tags.
+        $link_pattern = '/<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*\shref=[\'"]([^\'"]+)[\'"][^>]*>/i';
+        preg_match_all($link_pattern, $html, $link_matches);
+        
+        // Pattern for inline <style> tags.
+        $style_pattern = '/<style[^>]*>(.*?)<\/style>/is';
+        preg_match_all($style_pattern, $html, $style_matches);
+        
+        $tags = [];
+        $urls = [];
+        
+        // Add external stylesheets.
+        if (isset($link_matches[0])) {
+            foreach ($link_matches[0] as $i => $tag) {
+                $tags[] = $tag;
+                $urls[] = $link_matches[1][$i]; // Use the captured href attribute as the key.
+            }
         }
-
-
-
+        
+        // Add inline stylesheets.
+        if (isset($style_matches[0])) {
+            foreach ($style_matches[0] as $i => $tag) {
+                $tags[] = $tag;
+                //Get content ID
+                preg_match("@data-spcid=\"(.*?)\"@",$tag,$matches);
+                $spcid = $matches[1] ?? '';
+                $urls[] = "id-".$spcid; // Use the content as the key
+            }
+        }
+        
+        return [$tags, $urls];
     }
+
 
     /**
      * Retrieves the path to the lookup file for the given URL.
@@ -746,8 +1067,19 @@ class CSS {
 
         foreach($master_data AS $path=>$data) {
 
-            ksort($data['used']);
-            ksort($data['empty']);
+            // Ensure 'used' and 'empty' indexes exist before sorting
+            if (isset($data['used']) && is_array($data['used'])) {
+                ksort($data['used']);
+            } else {
+                $data['used'] = [];
+            }
+
+            if (isset($data['empty']) && is_array($data['empty'])) {
+                ksort($data['empty']);
+            } else {
+                $data['empty'] = [];
+            }
+
 
             $plugin_data[$path] = array("sortkey"=>$path,
                                    "full_urls"=>$data['full_urls'],
@@ -862,44 +1194,54 @@ class CSS {
      *         ...
      *     ]
      */
-    private static function get_by_posttype($master_data) {
-        
-        $plugin_data = array();
-
-        foreach($master_data AS $path=>$data) {
-
-            $post_types = $data['post_types'];
-            foreach($post_types AS $type) {
-
-                if(!isset($plugin_data[$type])) {
-                    $plugin_data[$type] = array('sortkey' => $type,
-                                                'empty_css_count' => 0,
-                                                'found_css_count' => 0,
-                                                "full_urls"=>[],                                                
-                                                'empty_urls' => [],
-                                                'found_urls' => []
-                                                );
+    private static function get_by_posttype(array $master_data): array {
+    
+        $plugin_data = [];
+    
+        foreach ($master_data as $path => $data) {
+    
+            // Ensure 'post_types' is an array before looping
+            if (!isset($data['post_types']) || !is_array($data['post_types'])) {
+                continue;
+            }
+    
+            foreach ($data['post_types'] as $type) {
+    
+                if (!isset($plugin_data[$type])) {
+                    $plugin_data[$type] = [
+                        'sortkey'          => $type,
+                        'empty_css_count'  => 0,
+                        'found_css_count'  => 0,
+                        "full_urls"        => [],
+                        'empty_urls'       => [],
+                        'found_urls'       => []
+                    ];
                 }
-
-                $plugin_data[$type]['full_urls'] =  array_merge($plugin_data[$type]['full_urls'],$data['full_urls']);
-                $plugin_data[$type]['found_urls'] = ($plugin_data[$type]['found_urls'] + $data['used']);
-                $plugin_data[$type]['empty_urls'] = ($plugin_data[$type]['empty_urls'] + $data['empty']);
-
+    
+                // Ensure arrays exist before merging
+                $data['full_urls'] = $data['full_urls'] ?? [];
+                $data['used'] = $data['used'] ?? [];
+                $data['empty'] = $data['empty'] ?? [];
+    
+                // Corrected array merging
+                $plugin_data[$type]['full_urls']  = array_merge($plugin_data[$type]['full_urls'], $data['full_urls']);
+                $plugin_data[$type]['found_urls'] = array_merge($plugin_data[$type]['found_urls'], $data['used']);
+                $plugin_data[$type]['empty_urls'] = array_merge($plugin_data[$type]['empty_urls'], $data['empty']);
+    
+                // Count elements
                 $plugin_data[$type]['empty_css_count'] = count($plugin_data[$type]['empty_urls']);
                 $plugin_data[$type]['found_css_count'] = count($plugin_data[$type]['found_urls']);
-
+    
+                // Sorting - no need for `ksort()` on indexed arrays
                 ksort($plugin_data[$type]['full_urls']);
                 ksort($plugin_data[$type]['found_urls']);
                 ksort($plugin_data[$type]['empty_urls']);
-
             }
-
-
         }
 
         return $plugin_data;
-
     }
+    
 
     /**
      * Retrieves statistical information about the CSS cache.
@@ -1034,7 +1376,7 @@ class CSS {
         //Don't delete if no hostname found
         if(Speed::$hostname) {
             $dir = Speed::get_root_cache_path();
-            Speed::deleteSpecificFiles($dir,array("css","lookup.json"));        
+            Speed::deleteSpecificFiles($dir,array("css","lookup.json","CSS_page_cache.html.gz"));        
         }
 
         //Integrations
@@ -1042,8 +1384,6 @@ class CSS {
             Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"));
         }
         
-        //Other plugins would hook into this, from WP Super Cache
-        do_action( 'wp_cache_cleared' );
 
     }
 

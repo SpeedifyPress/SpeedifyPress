@@ -131,6 +131,82 @@
             "install-path": "../matthiasmullie/path-converter"
         },
         {
+            "name": "sabberworm/php-css-parser",
+            "version": "dev-main",
+            "version_normalized": "dev-main",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/MyIntervals/PHP-CSS-Parser.git",
+                "reference": "639366092026f296465a6f5fefe996ed91d6ec43"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/MyIntervals/PHP-CSS-Parser/zipball/639366092026f296465a6f5fefe996ed91d6ec43",
+                "reference": "639366092026f296465a6f5fefe996ed91d6ec43",
+                "shasum": ""
+            },
+            "require": {
+                "ext-iconv": "*",
+                "php": "^7.2.0 || ~8.0.0 || ~8.1.0 || ~8.2.0 || ~8.3.0 || ~8.4.0"
+            },
+            "require-dev": {
+                "php-parallel-lint/php-parallel-lint": "1.4.0",
+                "phpstan/extension-installer": "1.4.3",
+                "phpstan/phpstan": "1.12.16 || 2.1.2",
+                "phpstan/phpstan-phpunit": "1.4.2 || 2.0.4",
+                "phpstan/phpstan-strict-rules": "1.6.2 || 2.0.3",
+                "phpunit/phpunit": "8.5.41",
+                "rector/rector": "1.2.10 || 2.0.7",
+                "rector/type-perfect": "1.0.0 || 2.0.2"
+            },
+            "suggest": {
+                "ext-mbstring": "for parsing UTF-8 CSS"
+            },
+            "time": "2025-03-20T09:30:23+00:00",
+            "default-branch": true,
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "9.0.x-dev"
+                }
+            },
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "Sabberworm\\CSS\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Raphael Schweikert"
+                },
+                {
+                    "name": "Oliver Klee",
+                    "email": "github@oliverklee.de"
+                },
+                {
+                    "name": "Jake Hotson",
+                    "email": "jake.github@qzdesign.co.uk"
+                }
+            ],
+            "description": "Parser for CSS Files written in PHP",
+            "homepage": "https://www.sabberworm.com/blog/2010/6/10/php-css-parser",
+            "keywords": [
+                "css",
+                "parser",
+                "stylesheet"
+            ],
+            "support": {
+                "issues": "https://github.com/MyIntervals/PHP-CSS-Parser/issues",
+                "source": "https://github.com/MyIntervals/PHP-CSS-Parser/tree/main"
+            },
+            "install-path": "../sabberworm/php-css-parser"
+        },
+        {
             "name": "simplehtmldom/simplehtmldom",
             "version": "2.0-RC2",
             "version_normalized": "2.0.0.0-RC2",

@@ -3,7 +3,7 @@
         'name' => '__root__',
         'pretty_version' => 'dev-master',
         'version' => 'dev-master',
-        'reference' => '3c5665766d60e5a4fc6c1086fbd8c8ab0234af84',
+        'reference' => 'a7cf4845fd89103add9e26ae862879d833983464',
         'type' => 'library',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         '__root__' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '3c5665766d60e5a4fc6c1086fbd8c8ab0234af84',
+            'reference' => 'a7cf4845fd89103add9e26ae862879d833983464',
             'type' => 'library',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -35,6 +35,17 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../matthiasmullie/path-converter',
             'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'sabberworm/php-css-parser' => array(
+            'pretty_version' => 'dev-main',
+            'version' => 'dev-main',
+            'reference' => '639366092026f296465a6f5fefe996ed91d6ec43',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../sabberworm/php-css-parser',
+            'aliases' => array(
+                0 => '9.0.x-dev',
+            ),
             'dev_requirement' => false,
         ),
         'simplehtmldom/simplehtmldom' => array(

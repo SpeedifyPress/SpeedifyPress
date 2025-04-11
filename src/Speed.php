@@ -4,6 +4,7 @@ namespace SPRESS;
 
 use SPRESS\Speed\CSS;
 use SPRESS\Speed\Cache;
+use SPRESS\Speed\Unused;
 use SPRESS\Speed\JS;
 use SPRESS\AdvancedCache;
 
@@ -37,6 +38,9 @@ class Speed {
     
     // start time for performance tracking
     public static $start_time;
+
+    // set the name
+    public static $csrf_name = "spdy_csrfToken";
 
     /**
      * Initializes the Speed class by setting up output buffering, CSS optimizations,
@@ -199,14 +203,24 @@ class Speed {
         });        
 
         try {
-
+            
         //Start time
         self::$start_time = microtime(true);
 
-        $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags first
+        $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags firs
+
         $output = CSS::rewrite_css($output); // Rewrite CSS for performance improvements
         $output = JS::rewrite_js($output); // Rewrite JS for performance improvements
-        $output = Cache::do_cache($output); // Rewrite JS for performance improvements
+
+        //Run again to replace in new output
+        $output = self::find_replace($output);
+
+        //Remove comments
+        $output = str_replace(['@@@replaced@@@', '@@@/replaced@@@'], '', $output);
+
+        //Save ouput to cache
+        $output = Cache::do_cache($output); 
+        $output = CSS::do_html_cache($output);
 
         } catch (\Exception $e) {
             // Handle exception here if necessary, but PHP may not fully respect try-catch within ob_start callback
@@ -232,18 +246,52 @@ class Speed {
 
         // Define display elements we want to tag
         $displayElements = [
-            'div', 'section', 'article', 'header', 'footer', 'main', 'aside', 'nav'
+            'div', 'section', 'article', 'header', 'footer', 'main', 'aside', 'nav', 'style', 'link'
         ];
 
-        // Start traversal from the <body> element
-        $body = $dom->find('body', 0); // Find the <body> tag
+        // Start traversal from the <html> element
+        $html = $dom->find('html', 0); // Find the <html> tag
 
         // Start from the body or root element
         $depthThreshold = 13;
-        self::traverse_and_tag($body, 1, $depthThreshold, $displayElements);
+        self::traverse_and_tag($html, 0, $depthThreshold, $displayElements);
 
         return $dom;
          
+    }
+
+    /**
+     *
+     * 
+     * @param \simple_html_dom $dom The DOM structure to modify.
+     * @return \simple_html_dom The modified DOM structure with the stand-in
+     *                          script included.
+     */
+    private static function add_template_js($dom) {
+        
+        //Set file
+        $template_js = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/restore_template_content.js');
+
+        //Minify it
+        $minifier = new Minify\JS($template_js);
+        $template_js = $minifier->minify();
+
+        // Create a new script element
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->setAttribute('rel', 'js-extra spress_template_restore');//
+        $scriptElement->innertext = $template_js;
+
+        // Append the script element directly to the head
+        $headElement = $dom->find('head', 0);
+        if($headElement) {
+            $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
+        }
+
+        //Always exclude
+        JS::$delay_exclude .= "\n" . "spress_template_restore";
+
+        return $dom;
+
     }
 
     /**
@@ -267,7 +315,7 @@ class Speed {
 
         // Create a new script element
         $scriptElement = $dom->createElement('script');
-        $scriptElement->setAttribute('rel', 'js-extra standin');
+        $scriptElement->setAttribute('rel', 'js-extra spress_jquery_standin');
         $scriptElement->innertext = $simple_jquery_standin;
 
         // Append the script element directly to the head
@@ -276,7 +324,8 @@ class Speed {
             $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
         }
 
-
+        //Always exclude
+        JS::$delay_exclude .= "\n" . "spress_jquery_standin";
 
         return $dom;
 
@@ -496,7 +545,7 @@ class Speed {
                 //Get element and current spuid
                 $spuid = $element->spuid ?? false;  
 
-                if($spuid) {
+                if($spuid && $element->tag != 'style' && $element->tag != 'link') {
 
                     $element = $dom->find('[data-spuid="' . $spuid . '"]', 0);
                     if($element) {
@@ -518,6 +567,24 @@ class Speed {
         }
 
 
+
+        return $dom;
+
+    }
+
+    private static function add_csrf_token($dom) {  
+
+        // Create a new script element
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->setAttribute('id', self::$csrf_name);
+        $csrf_token = self::generate_csrf_token(self::get_url());
+        $scriptElement->innertext = 'window.' . self::$csrf_name . ' = "' . htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') . '";'; 
+
+        //Add after head
+        $headElement = $dom->find('html', 0);
+        if($headElement) {
+            $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
+        }        
 
         return $dom;
 
@@ -644,6 +711,12 @@ class Speed {
             $spuid = 'd' . $currentDepth . '-' . $ident . '-' . count(self::$spuid_holder[$ident]);
             $element->setAttribute('data-spuid', $spuid);
             $element->setAttribute('data-spudepth', $currentDepth);
+
+            //For style tags, give a content ID
+            if($element->tag == "style") {
+                $content_id = md5($element->innertext);
+                $element->setAttribute('data-spcid', $content_id);
+            }
     
             // Use the current element’s UID as the new parent key for children
             $parentKey = $spuid;
@@ -710,10 +783,6 @@ class Speed {
 			return $html;
 		}
 
-		if ( isset( $_SERVER['HTTP_USER_AGENT'] ) && preg_match( '@HeadlessChrome@', $_SERVER['HTTP_USER_AGENT'] ) ) {
-			return $html;
-		}
-
 		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) ) {
 			return $html;
 		}
@@ -743,6 +812,14 @@ class Speed {
             //add jquery standing
             $dom = self::add_jquery_standin($dom);
 
+            //add jquery standing
+            $dom = self::add_template_js($dom);            
+
+            //Force system fonts for mobile
+            if(Config::get('speed_code', 'system_fonts') === 'true') {
+                $dom = self::add_mobile_system_fonts($dom);
+            }            
+
             //add self hosted gtag
             if(Config::get('external_scripts','gtag_locally') === "true") {
                 $dom = self::add_gtag($dom);
@@ -755,7 +832,10 @@ class Speed {
             $dom = self::add_intersection_observer($dom);            
 
             //HTML replacements, must be done after templates added
-            $dom = self::set_onload($dom);               
+            $dom = self::set_onload($dom);            
+            
+            //Add CRF token
+            $dom = self::add_csrf_token($dom);                 
             
             //Refresh dom
             $dom = self::refresh_dom($dom);
@@ -764,17 +844,45 @@ class Speed {
             $dom = self::add_partytown($dom);                
             
             //Add image lazy loading //requires dom refresh
-            $dom = self::add_image_lazyload($dom);          
+            $dom = self::add_image_lazyload($dom);               
 
             $html = $dom->outertext;
 
             $end_time = microtime(true);
             $elapsed_time = $end_time - $start_time;
-            $html .=  "<!-- Elapsed CSS " . number_format($elapsed_time,2) . "-->";
+            $html .=  "<!-- Elapsed HTML " . number_format($elapsed_time,2) . "-->";
 
         }
 
         return $html;
+
+    }
+
+    /**
+     * Add mobile system fonts to the document. This adds a style to the head of the document
+     * which sets the font-family of all h1-5, p and non-icon elements to the browser's
+     * default sans-serif font. This is useful for performance optimization on mobile devices.
+     *
+     * @param \simplehtmldom\HtmlDocument $dom
+     * @return void
+     */
+    public static function add_mobile_system_fonts($dom) {
+
+        // Create a new style element
+        $styleElement = $dom->createElement('style');
+        $styleElement->innertext = '@media (max-width: 800px) {
+                h1, h2, h3, h4, h5, p, :not(.fa):not(.fab):not(.fas):not(.far):not([class*=" awb-icon-"]):not([class^="awb-icon-"]):not(.ld-icon):not([class*="fusion-icon"]):not([class*="icon"]):not(input) {
+                font-family: -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif!important;
+            }
+        }';
+
+        // Append the script element directly to the head
+        $headElement = $dom->find('head', 0);
+        if($headElement) {
+            $headElement->children(0)->outertext = $styleElement->outertext . $headElement->children(0)->outertext;        
+        }        
+
+        return $dom;
 
     }
 
@@ -798,26 +906,50 @@ class Speed {
      *   is only performed on the first occurrence of the string.
      */
     private static function find_replace($html) {
-
-        $replace = Config::get('speed_replace', 'speed_find_replace');
-        if($replace && is_array($replace)) {
-            foreach ($replace as $rep) {
+        $replacements = Config::get('speed_replace', 'speed_find_replace');
+        if ($replacements && is_array($replacements)) {
+            foreach ($replacements as $rep) {
                 $find = $rep['find'];
-                $replace = $rep['replace'];
+                $replacementText = $rep['replace'];
                 $scope = $rep['scope'];
-
-                if ($scope == "") {
-                    $html = str_replace($find, $replace, $html);
-                } elseif ($scope == "first") {
-                    $find = preg_quote($find, '@'); // Escape regex characters in the find string
-                    $html = preg_replace('@' . $find . '@', $replace, $html, 1);
+    
+                // Prepare the marked replacement text using raw markers.
+                $markedReplacement = '@@@replaced@@@' . $replacementText . '@@@/replaced@@@';
+    
+                // Build a pattern that captures both raw markers and their HTML-encoded counterparts.
+                $pattern = '/((?:@@@replaced@@@).*?(?:@@@\/replaced@@@))/s';
+    
+                // Split the HTML into segments that are either within markers or not.
+                $parts = preg_split(
+                    $pattern,
+                    $html,
+                    -1,
+                    PREG_SPLIT_DELIM_CAPTURE
+                );
+    
+                // Process only segments not already within markers.
+                foreach ($parts as $index => $segment) {
+                    // Check for either the raw or encoded marker block.
+                    if (!preg_match('/^(?:@@@replaced@@@.*?@@@\/replaced@@@)$/s', $segment)) {
+                        if ($scope == "") {
+                            $parts[$index] = str_replace($find, $markedReplacement, $segment);
+                        } elseif ($scope == "first") {
+                            $parts[$index] = preg_replace(
+                                '@' . preg_quote($find, '@') . '@',
+                                $markedReplacement,
+                                $segment,
+                                1
+                            );
+                        }
+                    }
                 }
-            } 
-        }   
-
+                // Reassemble the HTML.
+                $html = implode('', $parts);
+            }
+        }
         return $html;
-
     }
+    
 
     /**
      * Refreshes the simple_html_dom object
@@ -1270,7 +1402,7 @@ class Speed {
     public static function purge_cache($url, $file_types = array("html", "gz")) {
 
         // Check not already purged
-        if (isset(Speed::$done_purge[$url])) {
+        if (isset(Speed::$done_purge[$url.implode('',$file_types)])) {
             return;
         }
     
@@ -1300,7 +1432,7 @@ class Speed {
         }
     
         // Save as purged
-        Speed::$done_purge[$url] = true;
+        Speed::$done_purge[$url.implode('',$file_types)] = true;
     }
     
 
@@ -1344,6 +1476,90 @@ class Speed {
         }
     }
         
+    /**
+     * Generates a CSRF token that can be used to secure a form from
+     * cross-site request forgery attacks.
+     *
+     * The token is a base64-encoded string that contains a 30-second
+     * expiration timestamp and a 16-byte random value. The token is
+     * signed using the HMAC-SHA256 algorithm and the NONCE_SALT secret
+     * key.
+     *
+     * @return string A base64-encoded CSRF token.
+     */
+    public static function generate_csrf_token($url) {
+        global $secret_key;
+        $secret_key = NONCE_SALT;
+        $expiry = time() + 30; // Token expires in 30 seconds
+        $random = bin2hex(random_bytes(6)); // Generate a random string
+        // Combine expiry and random value into a single string.
+        $data = $expiry . ':' . $random . ":" . $url;
+        // Create a signature using HMAC-SHA256.
+        $signature = hash_hmac('sha256', $data, $secret_key);
+        // Concatenate the data and the signature.
+        $token = $data . ':' . $signature;
+        // Base64 encode the token so it can be safely included in HTML.
+        return base64_encode($token);
+    }
+
+    /**
+     * Decodes and verifies a CSRF token.
+     *
+     * The token is expected to be a base64-encoded string in the format:
+     *   expiry:random:url:signature
+     * where the URL may itself contain colons.
+     *
+     * @param string $token The base64-encoded CSRF token.
+     * @return array|false Returns an associative array with keys 'expiry', 'random', 'url', and 'signature'
+     *                     if the token is valid and not expired. Returns false otherwise.
+     */
+    public static function decode_csrf_token($token) {
+
+        // Decode the token from base64.
+        $decoded = base64_decode($token, true);
+        if ($decoded === false) {
+            return false; // Invalid base64 encoding.
+        }
+        
+        // Split the decoded string on colons.
+        $parts = explode(':', $decoded);
+        
+        // We need at least 4 parts: expiry, random, url, signature.
+        if (count($parts) < 4) {
+            return false;
+        }
+        
+        // Extract the first part as expiry and the second as random.
+        $expiry = array_shift($parts);
+        $random = array_shift($parts);
+        
+        // The signature is the last element; the URL is everything in between
+        // safer if the url has a colon
+        $signature = array_pop($parts);
+        $url = implode(':', $parts);
+        
+        // Check if the expiry is numeric and not in the past.
+        if (!is_numeric($expiry) || time() > (int)$expiry) {
+            //return false; // Token expired.
+        }
+        
+        // Recompute the signature based on the expiry, random, and URL.
+        $data = $expiry . ':' . $random . ':' . $url;
+        $expected_signature = hash_hmac('sha256', $data, NONCE_SALT);
+        
+        // Use hash_equals to mitigate timing attacks.
+        if (!hash_equals($expected_signature, $signature)) {
+            return false; // Invalid signature.
+        }
+        
+        // Return the token components if everything checks out.
+        return [
+            'expiry'    => (int)$expiry,
+            'random'    => $random,
+            'url'       => $url,
+            'signature' => $signature,
+        ];
+    }
 
 
 }

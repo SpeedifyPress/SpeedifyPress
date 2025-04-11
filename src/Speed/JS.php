@@ -128,7 +128,9 @@ class JS {
      */
     private static function processScripts($dom, $exclude_scripts, callable $handler) {
         $exclude_scripts_array = array_filter(array_map('trim', explode("\n", $exclude_scripts)));
-        $exclude_scripts_array[] = self::$script_name; // Always exclude our own script
+        $exclude_scripts_array[] = self::$script_name; // Always exclude our own scripts
+        $exclude_scripts_array[] = CSS::$script_name."-js-extra"; // Always exclude our own scripts data
+        $exclude_scripts_array[] = Speed::$csrf_name; // Always exclude our csrf token
         $scripts = $dom->find('script');
     
         foreach ((array) $scripts as $script) {
@@ -145,15 +147,9 @@ class JS {
      * @param bool $isExcluded - Whether the script is excluded.
      */
     private static function handleDeferScript($script, $isExcluded) {
-        if (!$isExcluded && isset($script->src)) {
+        if (!$isExcluded) {
             $script->setAttribute('defer', true);
-        } elseif (
-            !$isExcluded &&
-            !isset($script->src) &&
-            self::isInlineJavaScript($script)
-        ) {
-            self::convertInlineScript($script, 'src');
-        }
+        } 
     }
     
     /**
@@ -310,22 +306,48 @@ class JS {
      */
     public static function public_enqueue_js() {
 
-        // Enqueue our js script.
+        // Enqueue our js script, deferred
         wp_enqueue_script( self::$script_name, SPRESS_PLUGIN_URL . 'assets/js_delay/js_delay.min.js', array(), SPRESS_VER, true );
+        add_filter( 'script_loader_tag', function ( $tag, $handle ) {
+            if ( self::$script_name === $handle ) {
+                return str_replace( '></script>', ' defer></script>', $tag );
+            }
+            return $tag;
+        }, 10, 2 );
+
 
 		wp_localize_script(
 			self::$script_name,
 			'speed_js_vars',
-			array(
-				'delay_seconds' => self::$delay_seconds,
-                'delay_callback' => self::$delay_callback,
-                'script_load_first' => self::$script_load_first,
-                'script_load_last' => self::$script_load_last,
-			)
+             self::get_js_vars_array()
 		);      
 
+    }
+
+    /**
+     * Returns an array of JavaScript variables.
+     *
+     * This function returns an array containing key-value pairs of variables that will be exposed to JavaScript.
+     *
+     * @return array An array of JavaScript variables, including delay settings and script load order.
+     */
+    public static function get_js_vars_array() {
+
+       return array(
+            'delay_seconds' => self::$delay_seconds,
+            'delay_callback' => self::$delay_callback,
+            'script_load_first' => self::$script_load_first,
+            'script_load_last' => self::$script_load_last,
+       );
+
+    }    
+
+    public static function update_config_to_cache($new_config) {
+
+        Cache::update_config_to_cache(self::get_js_vars_array(),$new_config,"speed_js_vars");        
 
     }
+ 
 
     /**
      * Enqueues the partytown script if required by the plugin configuration.

@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.45.0
+- Add Inline, grouped CSS setting
+- Update Cloudflare worker to ignore API paths
+- Improve onload to handle down-page loads
+- Fix CSS cache purge issue
+- Improve inline CSS animation detection
+
+### 0.44.0
+- Fixes to clear buttons not always working
+
+### 0.43.0
+- Add number of hosts to licensing check
+
+### 0.42.1
+- Tweak font detection function
+
+### 0.42.0
+- Add option to prevent icon fonts from preloading
+
+### 0.41.0
+- csrf fixes for Unused CSS function
+
+### 0.40.0
+- Move Unused processing to backend
+
+### 0.39.1
+- Font preloading tweaks
+
+### 0.39.0
+- Font preloading options
+
+### 0.38.1
+- Full and partial disabling of plugin also in advanced-cache.php
+
+### 0.38
+- Allow full and partial disabling of plugin
+
+### 0.37
+-  Fixes:
+    - Uninstall doesn't remove advanced-cache.php
+    - Advanced-cache should exit if autoload not found
+    - speed_css_vars should be updated in cached files when changhed
+    - When you save a skip reload image it removes the Current image from preload
+    - Find/replace not working to replace in spress-inlined
+
 ### 0.36
 -  Add page caching class and options
 

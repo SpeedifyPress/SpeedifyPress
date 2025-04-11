@@ -13,6 +13,7 @@ class ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b
         ),
         'S' => 
         array (
+            'Sabberworm\\CSS\\' => 15,
             'SPRESS\\' => 7,
         ),
         'M' => 
@@ -26,6 +27,10 @@ class ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b
         'Wa72\\Url\\' => 
         array (
             0 => __DIR__ . '/..' . '/wa72/url/src/Wa72/Url',
+        ),
+        'Sabberworm\\CSS\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/sabberworm/php-css-parser/src',
         ),
         'SPRESS\\' => 
         array (

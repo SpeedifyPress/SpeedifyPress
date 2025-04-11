@@ -29,11 +29,6 @@ class Menu {
     public static $menu_slug = 'speedify_press';
 
     /**
-     * @var array Data that will be passed to the JavaScript frontend for display.
-     */
-    public static $display = array();
-
-    /**
      * Initialize the class by hooking the 'add_menu' method to the 'admin_menu' action.
      * This ensures that the admin menu is added when the admin dashboard is being loaded.
      *
@@ -79,7 +74,7 @@ class Menu {
             $settings_url = admin_url('admin.php?page='.self::$menu_slug);
 
             echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
-            <td colspan='3' class='plugin-update'>
+            <td colspan='4' class='plugin-update'>
                 <div class='update-message notice inline notice-warning notice-alt'>
                     <p>Please <a href='" . $settings_url . "'>activate your license</a> to enable plugin updates</p>
                 </div>
@@ -441,7 +436,7 @@ class Menu {
         $ajax_url =  admin_url( 'admin-ajax.php' );
 
         // Output the necessary data for the frontend into a JavaScript object.
-        echo "<script>window.spress_namespace={config:$config,version:'$version',display:".json_encode(self::$display).",ajaxurl:'$ajax_url'}</script>";
+        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url'}</script>";
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';

@@ -217,7 +217,27 @@ class Config {
 				'name'   => 'Preload Image',
 				'helper' => 'Choose an image for the preload. This image will be displayed before lazyload. SVG recommended.',
 				'value' => '',
-			),										
+			),	
+			'preload_fonts' => array(
+				'name'   => 'Preload Fonts',
+				'helper' => 'Detect fonts and preload them. This works in conjunction with the CSS cache.',
+				'value' => 'false',
+			),	
+			'dont_preload_icon_fonts' => array(
+				'name'   => "Don't preload icon fonts",
+				'helper' => "Do not preload a font if it's an icon font",
+				'value' => 'false',
+			),
+			'preload_fonts_desktop_only' => array(
+				'name'   => 'Preload Fonts only on Desktop',
+				'helper' => 'Will attempt to detected mobile devices and not preload fonts on mobile. This will not work for desktop responsive screens. Only works if page caching is enabled.',
+				'value' => 'false',
+			),	
+			'system_fonts' => array(
+				'name'   => 'Use system fonts',
+				'helper' => 'Use high-speed system fonts for mobile devices. Will automatically prevent preloading standard fonts on mobile devices.',
+				'value' => 'false',
+			),																			
 		),		
 		'speed_replace'  => array(
 			'speed_find_replace' => array(
@@ -236,7 +256,17 @@ class Config {
 				'helper' => '',
 				'value' => 'false',
 			)	
-		),				
+		),		
+		'plugin'  => array(
+			'plugin_mode' => array(
+				'name'   => 'Plugin Mode',
+				'value' => 'disabled',
+			),		
+			'disable_urls' => array(
+				'name'   => 'URLs to disable plugin on',
+				'value' => '',
+			),						
+		),						
 	);
 
 	/**
@@ -265,6 +295,50 @@ class Config {
 		#$update = array("config_key"=>"docs","iframe"=>$docs['iframe']['value']);
 		#self::update_config($update);
 
+
+	}
+
+	/**
+	 * Checks if the plugin should be enabled or not
+	 *
+	 * Checks the mode of the plugin and returns true if it should be enabled, or exits if it should be disabled.
+	 * If the mode is partial, it checks if the current URL matches any of the partial URLs.
+	 *
+	 * @return bool True if enabled, otherwise exits.
+	 */
+	public static function check_enabled() {
+
+		$current_url = $_SERVER['REQUEST_URI'];
+
+		//Still allow speedifypress backend admin
+		if(strstr($current_url,"/wp-json/speedifypress/")){
+			return true;
+		}		
+
+		//get mode
+		$mode = self::get('plugin','plugin_mode');
+
+		//evaluate
+		if($mode === "enabled") {
+			return true;
+		} else if($mode === "disabled") {
+			return false;
+		} else if($mode === "partial") {
+
+			//Partial URLs
+			$partial_urls = self::get('plugin','disable_urls');
+			$partial_urls = $partial_urls ? explode("\n", $partial_urls) : array();			
+
+			//Check if there's a match
+			foreach($partial_urls as $partial_url) {
+				if(strstr($current_url,$partial_url)){
+					return false;
+				}
+			}
+
+		}
+
+		return true;
 
 	}
 
@@ -394,13 +468,18 @@ class Config {
 						//Save to file
 						if($new_config[ $key_to_update ]) {
 
-							$file = Speed::save_data_image( $new_config[ $key_to_update ], Speed::get_permanent_cache_path() . "/preload_image/" );
+							$file = Speed::save_data_image( $new_config[ $key_to_update ], Speed::get_pre_cache_path() . "/preload_image/" );
 							$url = str_replace(WP_CONTENT_DIR,content_url(),$file);
 							$new_config[ $key_to_update ] = $url;
 
 							echo $url;
 							
 						}
+					}
+
+					//If disabling page cache, purge it
+					if($key_to_update == "cache_mode" && $new_config[ $key_to_update ] == "disabled") {
+						Speed\Cache::clear_cache();
 					}
 					
 					$frame[ $key_to_update ]['value'] = $new_config[ $key_to_update ];

@@ -25,6 +25,15 @@ class CSSUsageCollector {
         this.stylesheetsCSS = {};
 
         /**
+         * Object to store collected CSS selectorTexts
+         * @type {Object<string, string>}
+         */
+        this.selectorTexts = {};        
+        this.selectorTexts['rules'] = {};
+        this.selectorTexts['keyframes'] = {};
+        this.selectorTexts['fonts'] = {};
+
+        /**
          * The host of the current document.
          * @type {string}
          */
@@ -90,7 +99,7 @@ class CSSUsageCollector {
          * Classes used in the dom
          * @type {Set<string>}
          */
-        this.usedKeyframes = new Set();        
+        this.usedKeyframes = new Set();              
 
         /**
          * Add a string here to debug selectors
@@ -102,9 +111,33 @@ class CSSUsageCollector {
          * General debugging enabled or not
          * @type <bool>
          */
-        this.debug = false;
+        this.debug = true;
 
     }
+
+    /**
+     * Collects CSS usage when the browser is in an idle state. This is useful for cases
+     * where you want to avoid collecting CSS usage while the user is actively interacting
+     * with the page.
+     */
+    collect_when_idle() {
+
+        if (typeof this.scrollListener !== "undefined") {
+            window.removeEventListener('scroll', this.scrollListener); 
+        }
+
+        // Only run the collector when idle
+        requestIdleCallback(() => {
+            if(this.has_collected == false) {
+                if(this.debug) {
+                    console.log("Collecting after idle");
+                }
+                this.flash_scroll();
+                this.collect();                
+            }            
+        });
+
+    }    
 
     /**
      * Initiates the CSS collection process by iterating over all stylesheets
@@ -117,473 +150,54 @@ class CSSUsageCollector {
             console.log("Start collect");
         }
 
+        if(this.has_collected == true) {
+            if(this.debug) {
+                console.log("Already collected");
+            }
+            return;
+        }
+
         //Show any hidden or template contained areas
         if(typeof window.unused_css_restoreTemplateContent === "function") {
             window.unused_css_restoreTemplateContent();
         }
 
-        this.has_collected = true;
+        this.has_collected = true;      
 
-        //Add collected classes to always include
-        this.observedClasses.forEach(className => {
-            this.includePatterns.push(new RegExp(`\\.${className}(\\.|\s|,|{)`));
-        });        
-
-        window.spress_includePatterns = this.includePatterns;
-
-        
-        // Process styles and include used variables
-        for (let sheet of document.styleSheets) {
-            if (this.shouldProcessSheet(sheet)) {
-                if(this.debug) {
-                    console.log("Processing fonts for sheet",sheet);
-                }                 
-                await this.processFonts(sheet);
-            }
-        }
-
-        // Process styles and include used variables
-        for (let sheet of document.styleSheets) {
-            if (this.shouldProcessSheet(sheet)) {
-                if(this.debug) {
-                    console.log("Processing sheet",sheet);
-                }                 
-                await this.processSheet(sheet);
-            }
-        }
-
-        const cssClean = this.getResults();
+        var bodyClass = document.body.className;
+        var classList = bodyClass.split(/\s+/);
+        var regex = /^(rtl|home|blog|privacy-policy|archive|date|search(-[a-zA-Z0-9-_]+)?|paged|attachment|error404|[a-zA-Z0-9-__]+-template|single(-[a-zA-Z0-9-_]+)?|page(-[a-zA-Z0-9-_]+)?|post-type-archive(-[a-zA-Z0-9-_]+)?|author(-[a-zA-Z0-9-_]+)?|category(-[a-zA-Z0-9-_]+)?|tag(-[a-zA-Z0-9-_]+)?|tax(-[a-zA-Z0-9-_]+)?|term(-[a-zA-Z0-9-_]+)?)$/;
+        var post_types = classList.filter(function(cls) {
+            return regex.test(cls);
+        });
 
         if(this.debug) {
-            console.log("Got results",cssClean);
-        }        
+            console.log("Set vars 1");
+        } 
 
-        if (Object.keys(cssClean).length > 0) {
+        var invisibleElements = this.getAllInvisibleElements();
 
-            var bodyClass = document.body.className;
-            var classList = bodyClass.split(/\s+/);
-            var regex = /^(rtl|home|blog|privacy-policy|archive|date|search(-[a-zA-Z0-9-_]+)?|paged|attachment|error404|[a-zA-Z0-9-__]+-template|single(-[a-zA-Z0-9-_]+)?|page(-[a-zA-Z0-9-_]+)?|post-type-archive(-[a-zA-Z0-9-_]+)?|author(-[a-zA-Z0-9-_]+)?|category(-[a-zA-Z0-9-_]+)?|tag(-[a-zA-Z0-9-_]+)?|tax(-[a-zA-Z0-9-_]+)?|term(-[a-zA-Z0-9-_]+)?)$/;
-            var post_types = classList.filter(function(cls) {
-              return regex.test(cls);
-            });
-
-            if(this.debug) {
-                console.log("Set vars 1");
-            } 
-
-            var invisibleElements = this.getAllInvisibleElements();
-
-            if(this.debug) {
-                console.log("Got invisible element");
-            }
-
-            await this.getLcpImage().then((image) => {
-                
-                this.updateConfig({ css: cssClean, 
-                                    url: document.location.href, 
-                                    post_id: (document.body.className.split(' ').find(cls => cls.startsWith('postid-') || cls.startsWith('page-id-'))?.replace(/(postid-|page-id-)/, '') || null), 
-                                    post_types: post_types,
-                                    invisible: {elements: invisibleElements, viewport: { width:window.innerWidth, height: window.innerHeight }},
-                                    usedFontRules: [...this.getFontsDownloaded()].join("|"),
-                                    lcp_image: image,
-                                    reduction: this.calculatePercentageDifference() 
-                                }
-                                );
-
-            });
+        if(this.debug) {
+            console.log("Got invisible element");
         }
 
-        return this.stylesheetsCSS;
-    }
-
-    /**
-     * Processes an individual stylesheet, collecting font-family 
-     * and keyframe usage 
-     * @param {CSSStyleSheet} sheet - The stylesheet to process.
-     */
-    async processFonts(sheet) {
-    
-        // First pass: Collect font-family and keyframe animation usage
-        try {
-            if (!sheet.cssRules) {
-                this.warn(`Stylesheet '${sheet.href}' has no cssRules.`);
-                return;
-            }
-    
-            // Debugging: Log stylesheet information
-            if (this.debug && /fusion-styles/.test(sheet.href)) {
-                console.log("Sheet length:", sheet.cssRules.length);
-            }
-    
-            for (let i = 0; i < sheet.cssRules.length; i++) {
-                const rule = sheet.cssRules[i];
-    
-                // Debugging: Log rule type
-                if (this.debug && /fusion-styles/.test(sheet.href)) {
-                    //console.log("Rule type:", rule.type, "Index:", i);
-                }
-    
-                if (rule.type === CSSRule.STYLE_RULE) {
-
-                    if (this.shouldIncludeSelector(rule.selectorText) || this.doesSelectorMatch(rule)) {
-
-                        const fontFamily = rule.style?.getPropertyValue('font-family')?.trim();
-
-                        // If font-family is not explicitly set, check the shorthand font property
-                        if (!fontFamily) {
-                            const fontShorthand = rule.style?.getPropertyValue('font')?.trim();
-                            if (fontShorthand) {
-                                // Extract font-family from the shorthand
-                                fontFamily = fontShorthand.split('/').pop().split(' ').pop(); // Assumes the last part is the font-family
+        await this.getLcpImage().then((image) => {
+            
+            this.updateConfig({ csrf: window.spdy_csrfToken, 
+                                force_includes: [ ...this.observedClasses], 
+                                url: document.location.href, 
+                                post_id: (document.body.className.split(' ').find(cls => cls.startsWith('postid-') || cls.startsWith('page-id-'))?.replace(/(postid-|page-id-)/, '') || null), 
+                                post_types: post_types,
+                                invisible: {elements: invisibleElements, viewport: { width:window.innerWidth, height: window.innerHeight }},
+                                usedFontRules: [...this.getFontsDownloaded()].join("|"),
+                                lcp_image: image
                             }
-                        }                        
-        
-                        // Debugging: Log font-family if available
-                        if (this.debug && fontFamily) {
-                            //console.log("Font-family:", fontFamily, "Index:", i);
-                        }
+                            );
 
-                        if (fontFamily) {
-                            if (fontFamily.startsWith('var(')) {
-                                // Resolve CSS variables recursively
-                                const resolveVariable = (varName) => {
-                                    const element = document.querySelector(rule.selectorText);
-                                    if (!element) return null;
-                            
-                                    const value = getComputedStyle(element).getPropertyValue(varName).trim();
-                                    
-                                    // Check if the value itself is another var(...)
-                                    if (value.startsWith('var(')) {
-                                        const nestedVarName = value.match(/var\((--[^)]+)\)/)?.[1];
-                                        if (nestedVarName) {
-                                            return resolveVariable(nestedVarName); // Resolve the nested variable
-                                        }
-                                    }
-                            
-                                    return value; // Return the resolved value
-                                };
-                            
-                                const varName = fontFamily.match(/var\((--[^)]+)\)/)?.[1];
-                                if (varName) {
-                                    const resolvedValue = resolveVariable(varName);
-                                    if (resolvedValue) {
-                                        // Split by commas and normalize each font-family value
-                                        resolvedValue.split(',').forEach(family => {
-                                            const normalizedValue = family.trim().replace(/^["']|["']$/g, '');
-                                            this.foundFamilies.add(normalizedValue);
-                                        });
-                                    }
-                                }
-                            } else {
-                                // Normalize and add font-family values to the set
-                                fontFamily.split(',').forEach(family => {
-                                    const normalizedFamily = family.trim().replace(/^["']|["']$/g, '');
-                                    this.foundFamilies.add(normalizedFamily);
-                                });
-                            }
-                        }        
-                    
-                    }
-    
-                    // Collect keyframes
-                    const animationName = rule.style?.getPropertyValue('animation-name')?.trim();
-                    if (animationName && animationName !== 'none') {
-                        this.usedKeyframes.add(animationName);
-                    }
-                }
-            }
-        } catch (e) {
-            this.warn(`Error processing stylesheet '${sheet.href}':`, e);
-        }
-    
-        // Debugging: Log collected font families
-        if (this.debug) {
-            console.log("Found families:", this.foundFamilies);
-        }
-
-
-    }
-
-    /**
-     * Processes an individual stylesheet, collecting font-family usage and processing rules.
-     * Includes matching selectors, @font-face rules, and rules that match include patterns.
-     * @param {CSSStyleSheet} sheet - The stylesheet to process.
-     */
-    async processSheet(sheet) {
-        let cssTxt = '';
-
-        //Process rules, including @font-face and matching selectors
-        try {
-            for (let rule of sheet.cssRules) {
-                if (rule.type === CSSRule.IMPORT_RULE) {
-                    // Handle @import rules by processing the imported stylesheet
-                    const importedSheet = rule.styleSheet;
-                    if (importedSheet) {
-                        await this.processSheet(importedSheet);
-                    }
-                } else if (rule.type === CSSRule.MEDIA_RULE) {
-                    // Handle media queries
-                    let mediaContent = ''; // Temporary content holder for media rules
-    
-                    for (let innerRule of rule.cssRules) {
-                        if (innerRule.type === CSSRule.STYLE_RULE && (this.shouldIncludeSelector(innerRule.selectorText) || this.doesSelectorMatch(innerRule))) {
-                            const reconstructedRule = this.reconstructRule(innerRule);
-                            mediaContent += `  ${reconstructedRule}\n`;
-                        }
-                    }
-    
-                    // Only add @media block if it has content
-                    if (mediaContent.trim()) {
-                        cssTxt += `@media ${rule.media.mediaText} {\n${mediaContent}}\n`;
-                    }
-                } else if (rule.type === CSSRule.KEYFRAMES_RULE) {
-                    // Collect keyframes content in a temporary variable
-                    let keyframesContent = '';
-                    // Only include @keyframes if it's used in the document
-                    if (this.usedKeyframes.has(rule.name)) {
-                        for (let keyframe of rule.cssRules) {
-                            if (keyframe.type === CSSRule.KEYFRAME_RULE) {
-                                keyframesContent += `  ${keyframe.keyText} { ${keyframe.style.cssText} }\n`;
-                            }
-                        }
-    
-                        // Only add @keyframes block if it has content and is used
-                        if (keyframesContent.trim()) {
-                            cssTxt += `@keyframes ${rule.name} {\n${keyframesContent}}\n`;
-                        }
-                    }
-                } else if (rule.type === CSSRule.FONT_FACE_RULE) {
-                    const fontFamily = rule.style?.getPropertyValue('font-family')?.trim().replace(/['"]/g, '');
-    
-                    if (fontFamily) {
-                        // Split the fontFamily string by commas to check each family individually
-                        const families = fontFamily.split(',').map(family => family.trim());
-
-                        if(this.debug && /fusion-styles/.test(sheet.href)) {
-                            console.log("Families:", families);
-                        }
-    
-                        // Check if any of the individual families exist in this.foundFamilies
-                        const hasMatchingFamily = families.some(family => this.foundFamilies.has(family));
-    
-                        if (hasMatchingFamily) {
-                            cssTxt += rule.cssText + '\n';
-                            //If the rules isn't a data URI
-                            if (!/data:/.test(rule.cssText)) {
-                                const src = rule.style.getPropertyValue('src');
-                                if (src) {
-
-                                    const baseHref = sheet.href ? new URL(sheet.href, document.baseURI).href : document.baseURI;
-                                    // Extract URLs from the src value using regex
-                                    const match = src.match(/url\(["']?(.+?)["']?\)/); // Match the first URL pattern
-                                    if (match && match[1]) {
-                                        const relativeUrl = match[1]; // Extract the relative URL
-                                        const absoluteUrl = new URL(relativeUrl, baseHref).href; // Resolve relative URL to absolute
-                                        this.usedFontRules.add(absoluteUrl); // Add to your set of used font rules
-                                    }
-    
-                                }                                                            
-                            }
-                        }
-                    }
-                } else if (rule.selectorText) {
-                    try {
-                        // Track original length
-                        this.totalOriginalLength += rule.cssText.length;
-    
-                        if (this.shouldIncludeSelector(rule.selectorText) || this.doesSelectorMatch(rule)) {
-                            const reconstructedRule = this.reconstructRule(rule);
-                            cssTxt += reconstructedRule + '\n';
-    
-                            // Track filtered length
-                            this.totalFilteredLength += reconstructedRule.length;
-    
-                            // Debugging: Log the selector if debug_selector matches
-                            if (this.debug_selector && new RegExp(this.debug_selector).test(rule.selectorText)) {
-                                console.log("Selector matches debug_selector:", rule.selectorText);
-                                console.log("Should include selector:", this.shouldIncludeSelector(rule.selectorText));
-                                console.log("Does selector match:", this.doesSelectorMatch(rule, true));
-                            }
-                        }
-                    } catch (e) {
-                        this.warn(`Error testing selector '${rule.selectorText}':`, e);
-                    }
-                }
-            }
-        } catch (e) {
-            this.warn(`Error processing stylesheet '${sheet.href}':`, e);
-        }
-    
-        // Ensure href is always included in the result, even if no cssTxt is found
-        if (sheet.href) {
-            this.stylesheetsCSS[sheet.href] = (this.stylesheetsCSS[sheet.href] || '') + cssTxt;
-        }
-    }
-    
-
-    /**
-     * Determines whether a stylesheet should be processed based on its host and path.
-     * @param {CSSStyleSheet} sheet - The stylesheet to evaluate.
-     * @returns {boolean} - True if the stylesheet should be processed, otherwise false.
-     */
-    shouldProcessSheet(sheet) {
-        if (!sheet.href) {
-            if(this.debug) {
-                console.log("No href for",sheet);
-            }             
-            return false;
-        }
-        try {
-            const sheetURL = new URL(sheet.href);
-            if(this.debug) {
-                console.log("Sheet URL is",sheetURL);
-            }             
-            //For stats mode, don't reproceed if already processed
-            const isProcessed = (typeof sheet.ownerNode.dataset.spressProcessed == "string") && sheet.ownerNode.dataset.spressProcessed == "true";
-            return sheetURL.host === this.currentHost && !sheetURL.pathname.includes(this.cacheDir) && !isProcessed;
-        } catch (e) {
-            this.warn(`Error processing stylesheet '${sheet.href}':`, e);
-            return false;
-        }
-    }
-
-    /**
-     * Reconstructs a CSS rule into a string, ensuring proper formatting and handling shorthand properties,
-     * CSS variables, and complex selectors.
-     * @param {CSSStyleRule} rule - The CSS rule to reconstruct.
-     * @returns {string} - The reconstructed CSS rule as a string.
-     */
-    reconstructRule(rule) {
-        // Get the full CSS rule as text
-        let ruleText = rule.cssText;
-    
-        // Check if the rule has a 'content' property that needs to be escaped
-        const style = rule.style;
-        for (let i = 0; i < style.length; i++) {
-            const propName = style[i];
-    
-            // If the property is 'content', replace it with the re-escaped version
-            if (propName === 'content') {
-                let originalContent = style.getPropertyValue(propName);
-                let escapedContent = this.reEscapeContent(originalContent);
-    
-                // Replace the original 'content' in the ruleText with the escaped version
-                ruleText = ruleText.replace(`content: ${originalContent}`, `content: ${escapedContent}`);
-            }
-        }
-    
-        return ruleText;
-    }    
-
-    /**
-     * Re-escapes content property values to preserve special characters in CSS content strings.
-     * @param {string} content - The content value to re-escape.
-     * @returns {string} - The re-escaped content value.
-     */
-    reEscapeContent(content) {
-        return content.replace(/[\uE000-\uF8FF]/g, function (ch) {
-            return '\\' + ch.charCodeAt(0).toString(16).padStart(4, '0');
         });
+
     }
 
-    /**
-     * Checks if a selector matches any elements in the document.
-     * Strips dynamic pseudo-classes for matching purposes.
-     * @param {CSSStyleRule} rule - The CSS rule to test.
-     * @returns {boolean} - True if the selector matches any elements, otherwise false.
-     */
-    doesSelectorMatch(rule, debug) {
-
-        const selector = rule.selectorText;
-
-        try {
-
-            // Special case: :root should always match
-            if (selector.trim() === ':root') {
-                return true;
-            }
-
-            if (!this.isValidSelector(selector)) {
-                this.warn(`Invalid selector: '${selector}'`);
-                return false;
-            }
-
-            // Strip dynamic pseudo-classes like :hover, :focus, :active for matching purposes
-            var cleanedSelector = selector.replace(/\s:not/,'*:not').replace(/:not\([^)]+\)/g, '').replace(/,\s*$/, '');
-            cleanedSelector = cleanedSelector.replace(/:(hover|active|focus|visited|focus-within|focus-visible)/g, '');
-
-            const baseSelector = cleanedSelector.replace(/::?(before|after|first-line|first-letter|marker|backdrop|placeholder|selection|spelling-error|grammar-error)/g, '');
-            const pseudoElementMatch = /::?[\w-]+/.test(cleanedSelector);
-
-            if(debug) {
-                console.log(selector,"CLEANED",cleanedSelector,"SEP",baseSelector,"COUNT",document.querySelectorAll(baseSelector).length);
-            }
-
-            const elements = document.querySelectorAll(baseSelector);
-            if (elements.length === 0) {
-                return false;
-            }
-
-            if (!pseudoElementMatch) {
-                return true;
-            }
-
-            // Use matchAll to find all pseudo-elements in cleanedSelector
-            const pseudoMatches = Array.from(cleanedSelector.matchAll(/::?[\w-]+/g)).map(match => match[0]);
-
-            //We need to find if any pseudo element within the matched selectors is visible
-            for (const element of elements) {
-                // Iterate over each matched pseudo-element and check its computed style
-                for (const pseudo of pseudoMatches) {
-                    const style = window.getComputedStyle(element, pseudo);
-                    if (style.content !== 'none' && style.display !== 'none') {
-                        return true;
-                    }
-                }
-            }
-
-            //Finally, it's still possible we have a selector with both pseudo and
-            //non-pseudo, so match the non pseudo
-            const selectorParts = selector.split(',');
-            for (let part of selectorParts) {
-
-                let elements = document.querySelectorAll(part);
-                if (elements.length > 0) {
-                    return true;  
-                }
-
-            }
-
-            return false;
-        } catch (e) {
-            this.warn(`Error querying selector '${selector}':`, e);
-            return false;
-        }
-    }
- 
-
-    /**
-     * Checks if a selector should be included based on user-defined regex patterns.
-     * @param {string} selector - The CSS selector to check.
-     * @returns {boolean} - True if the selector matches any include pattern, otherwise false.
-     */
-    shouldIncludeSelector(selector) {
-        return this.includePatterns.some(pattern => pattern.test(selector));
-    }
-
-    /**
-     * Validates whether a CSS selector is properly formatted and supported by the browser.
-     * @param {string} selector - The CSS selector to validate.
-     * @returns {boolean} - True if the selector is valid, otherwise false.
-     */
-    isValidSelector(selector) {
-        try {
-            document.createElement('div').querySelector(selector);
-            return true;
-        } catch (e) {
-            return false;
-        }
-    }
 
     /**
      * Sends the collected CSS data to the server via a POST request.
@@ -732,14 +346,6 @@ class CSSUsageCollector {
     }
 
     /**
-     * Retrieves the collected CSS rules organized by stylesheet href.
-     * @returns {Object<string, string>} - The collected CSS rules.
-     */
-    getResults() {
-        return this.stylesheetsCSS;
-    }
-
-    /**
      * Logs a warning to the console if logging is enabled.
      * @param  {...any} args - Arguments to pass to console.warn.
      */
@@ -747,16 +353,6 @@ class CSSUsageCollector {
         if (this.logWarnings) {
             console.warn(...args);
         }
-    }
-
-    /**
-     * Calculates the percentage difference between the total original and filtered CSS lengths.
-     * @returns {number} - The percentage difference.
-     */
-    calculatePercentageDifference() {
-        if (this.totalOriginalLength === 0) return 0;
-        const difference = this.totalOriginalLength - this.totalFilteredLength;
-        return (difference / this.totalOriginalLength) * 100;
     }
 
 
@@ -919,13 +515,6 @@ class CSSUsageCollector {
         checkVisibility(root);
         return invisibleElementsData;
     }
-
-    observe_contain() {
-
-        
-
-
-    }
     
     /**
      * Records the initial classes set on all elements in the document.
@@ -997,9 +586,6 @@ class CSSUsageCollector {
             this.debug = true;
         }
 
-        // Observer contain intrinsic
-        this.observe_contain();
-
         // Collect added classes
         this.start_collect_added_classes();
 
@@ -1018,6 +604,14 @@ class CSSUsageCollector {
 
 
         };
+
+        setTimeout(() => {
+            if(this.debug) {
+                console.log("Collecting after timeout");
+            }
+            window.removeEventListener('scroll', this.scrollListener);
+            this.collect_when_idle();
+        }, 5000);  // 5000ms delay to collect anyway
 
         // Add the scroll event listener
         window.addEventListener('scroll', this.scrollListener);  
@@ -1061,29 +655,7 @@ class CSSUsageCollector {
 
     }
 
-    /**
-     * Collects CSS usage when the browser is in an idle state. This is useful for cases
-     * where you want to avoid collecting CSS usage while the user is actively interacting
-     * with the page.
-     */
-    collect_when_idle() {
 
-        if (typeof this.scrollListener !== "undefined") {
-            window.removeEventListener('scroll', this.scrollListener); 
-        }
-
-        // Only run the collector when idle
-        requestIdleCallback(() => {
-            if(this.has_collected == false) {
-                if(this.debug) {
-                    console.log("Collecting after idle");
-                }
-                this.flash_scroll();
-                this.collect();                
-            }            
-        });
-
-    }
 
 }
 
@@ -1103,7 +675,9 @@ class CSSUsageCollector {
         deviceType = 'desktop';
     }    
 
-    if(resolutions[deviceType] === 'true') {
+    let num_inlined = document.querySelectorAll("style[rel='spress-inlined']").length;
+
+    if(resolutions[deviceType] === 'true' && num_inlined === 0) {
         var includePatterns = JSON.parse(speed_css_vars.include_patterns); // patterns to always include
         includePatterns = includePatterns.map(pattern => new RegExp(pattern.replace(/\\\\/g, '\\')));
         const collector = new CSSUsageCollector(false, includePatterns); // Pass false to disable warning logging

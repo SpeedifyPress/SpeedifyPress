@@ -2,6 +2,8 @@
 
 namespace SPRESS;
 
+use SPRESS\Speed;
+
 use WP_REST_Server;
 
 /**
@@ -122,8 +124,17 @@ class RestApi {
             }
         }
 
+        //Save the config
         App\Config::update_config($config);
+
+        //If the config contains vars written
+        //to the doc, update cache files
+        Speed\CSS::update_config_to_cache($config);        
+        Speed\JS::update_config_to_cache($config);   
+
+        //Write advanced cache
         Speed\Cache::write_advanced_cache();
+        
     }
 
 
@@ -156,8 +167,30 @@ class RestApi {
      */
     public static function clear_css_cache() {          
 
-        $data = Speed\CSS::clear_cache();
-        return $data;
+        //Start a timer
+        $start_time = microtime(true);        
+
+        //Clear the cache
+        $count = 1;
+        $counter = 0;
+        while($count > 0 & $counter < 10) {
+
+            $data = Speed\CSS::clear_cache();
+            $cache_data = Speed\CSS::get_cache_data();
+            $count = $cache_data['num_css_files'];
+            $counter++;
+
+        }
+
+        $elapsed_time = microtime(true) - $start_time;
+
+        //If elapsed time is less than 2 seconds, sleep for remainder using usleep
+        if($elapsed_time < 1) {
+            $remainder = (1 - $elapsed_time) * 1000000;
+            usleep($remainder);
+        }
+
+        return $data;        
 
     }
 
@@ -168,7 +201,31 @@ class RestApi {
      */
     public static function clear_page_cache() {          
 
-        $data = Speed\Cache::clear_cache();
+        //Start a timer
+        $start_time = microtime(true);        
+
+        //Clear the cache        
+        $count = 1;
+        $counter = 0;
+        while($count > 0 & $counter < 10) {
+            
+            $data = Speed\Cache::clear_cache();
+
+            //Check if the cache was cleared        
+            $page_cache_data = Speed\Cache::get_cache_data();
+            $count = $page_cache_data['count'];
+
+            $counter++; //add this to ensure no infinte loops
+        }
+
+        $elapsed_time = microtime(true) - $start_time;
+
+        //If elapsed time is less than 2 seconds, sleep for remainder using usleep
+        if($elapsed_time < 1) {
+            $remainder = (1 - $elapsed_time) * 1000000;
+            usleep($remainder);
+        }
+
         return $data;
 
     }    
@@ -181,7 +238,11 @@ class RestApi {
     public static function check_license($request) {          
 
         $json = $request->get_json_params();
-        $data = App\License::check_license(base64_decode($json['license_email']));
+        $data = array();
+        $license = App\License::check_license(base64_decode($json['license_email']));
+        $data['success'] = $license;
+        $data['allowed_hosts'] = App\License::$allowed_hosts;
+        $data['num_current_hosts'] = App\License::$num_current_hosts;
         return $data;
 
     }    
@@ -204,9 +265,28 @@ class RestApi {
             die(json_encode(['error' => $errorMsg]));
         }
 
-        Speed\CSS::process_css($json['css'], $json['url'], $json['post_id'], $json['post_types'], $json['invisible'], $json['usedFontRules'], $json['lcp_image']);
-        echo json_encode(['reduction' => number_format( $json['reduction'], 2)]);
-        die();
+        // Validate csrf
+        $csrf = $json['csrf'];
+        $decode = Speed::decode_csrf_token($csrf);
+
+        if ($decode == false) {
+            die(json_encode(['error' => 'invalid csrf token']));
+        }
+
+        // Get reliable URL
+        $url = $decode['url'];
+
+        // Something strange?
+        if($url != $json['url']) {
+            die(json_encode(['error' => 'invalid url']));
+        }
+
+        $unused = Speed\CSS::process_css($json['force_includes'], $json['url'], $json['post_id'], $json['post_types'], $json['invisible'], $json['usedFontRules'], $json['lcp_image']);
+        echo json_encode(['reduction' => $unused['percent_reduction'] ]);
+        die();    
+
+    
+
     }
 
 
