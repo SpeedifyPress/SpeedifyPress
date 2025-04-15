@@ -109,11 +109,11 @@ class License {
      */
     public static function get_download_link() {
 
-        if(get_option('spress_namespace_EMAIL') === false || get_option('spress_namespace_EMAIL') === ''){ 
+        if(get_option('spress_namespace_INVOICE_NUMBER') === false || get_option('spress_namespace_INVOICE_NUMBER') === ''){ 
             return false; 
         }
 
-        return 'https://speedifypress.com/license/download/?email=' . urlencode(get_option('spress_namespace_EMAIL')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
+        return 'https://speedifypress.com/license/download/?invoice=' . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
 
     }
 
@@ -130,88 +130,68 @@ class License {
     }
 
     /**
-     * Checks the license for the given email address.
+     * Checks the license for the given invoice number.
      *
-     * If no email is provided, the stored license email from the options table is used.
-     * If an email is provided, it updates the stored option.
+     * If no number is provided, the stored license number from the options table is used.
+     * If a number is provided, it updates the stored option.
      *
      * Sends a request to the licensing server and sets a transient with the subscription end timestamp.
      * If the license check fails or returns '0', it schedules a recheck in 24 hours.
      *
-     * @param string|null $email The email associated with the license. Defaults to null.
-     * @return bool True if the license is valid and active, false otherwise.
+     * @param string|null $number The invoice number associated with the license. Defaults to null.
+     * @return bool|array True if valid, false otherwise or error array.
      */
-    public static function check_license($email = null) {
+    public static function check_license($number = null) {
         
-        // Retrieve or update the stored license email.
-        if (!$email) {
-            $email = get_option('spress_namespace_EMAIL');
+        // Retrieve or update the stored license invoice number.
+        if (!$number) {
+            $number = get_option('spress_namespace_INVOICE_NUMBER');
         } else {
-            update_option('spress_namespace_EMAIL', $email, false);
+            update_option('spress_namespace_INVOICE_NUMBER', $number, false);
         }
 
-        // Build the license check URL with proper URL encoding.
-        $check_url = "https://speedifypress.com/license/check/?email=" . urlencode($email) . "&host=" . urlencode($_SERVER['HTTP_HOST'] ?? null);
+        // Build the license check URL using invoice number.
+        $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($_SERVER['HTTP_HOST'] ?? null);
 
-        // Make a remote GET request using WordPress HTTP API.
+        // Remote GET request to the licensing server
         $response = wp_remote_get($check_url);
 
-        // Check for errors in the response.
         if (is_wp_error($response)) {
-            // In case of error, set a transient to recheck after 24 hours.
             set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
             return false;
         }
 
-        // Retrieve the response body.
         $body = wp_remote_retrieve_body($response);
 
-        // If the response is not "0" and not empty, assume it returns a valid timestamp.
         if ($body !== '0' && !empty($body)) {
-
             $subscription = json_decode($body);
 
-            //Error message
-            if($subscription->error) {
-
-                // If the response indicates an inactive license, recheck after 24 hours.
+            if ($subscription->error) {
                 set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
-
-                return array("error"=>$subscription->error);
-
-            } else if($subscription->success) {
-            
-                // Cast the response to an integer timestamp.
+                return array("error" => $subscription->error);
+            } elseif ($subscription->success) {
                 $subscription_ends = (int) $subscription->success;
-                // Calculate the number of seconds until the subscription ends.
                 $expires_in = $subscription_ends - time();
+                $expires_in = max($expires_in, 0);
 
-                // Ensure that the expiration time is not negative.
-                if ($expires_in < 0) {
-                    $expires_in = 0;
-                }
-
-                // Store the subscription end timestamp in a transient.
                 set_transient('spress_subscription_ends', $subscription_ends, $expires_in);
 
-                //Set number of allowed hosts
                 self::$allowed_hosts = (int) $subscription->allowed_hosts;
                 self::$num_current_hosts = (int) $subscription->current_hosts;
 
-                set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts , $expires_in);
+                set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $expires_in);
 
-            return true;
-
+                return true;
             }
-        } else {
-            // If the response indicates an inactive license, recheck after 24 hours.
-            set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
-            return false;
         }
+
+        set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
+        return false;
     }
 
+
     /**
-     * Retrieves the current license status and associated email.
+     * Retrieves the current license status and associated invoice number.
      *
      * Checks a transient that stores the subscription end timestamp to determine if the license is active.
      * If the transient is missing or invalid, it attempts to recheck the license status.
@@ -219,7 +199,8 @@ class License {
      * @return array {
      *     An associative array containing:
      *     @type string $license_status 'active' if the license is valid; 'inactive' otherwise.
-     *     @type string $license_email  The email stored in the options table.
+     *     @type string $allowed_hosts  Number of current/allowed hosts.
+     *     @type string $license_number  The invoice number stored in the options table.
      * }
      */
     public static function get_license_data() {
@@ -247,7 +228,7 @@ class License {
         return array(
             'license_status' => $license_status,
             'allowed_hosts'  => $allowed_hosts,
-            'license_email'  => (get_option('spress_namespace_EMAIL') ? get_option('spress_namespace_EMAIL') : ''),
+            'license_number'  => (get_option('spress_namespace_INVOICE_NUMBER') ? get_option('spress_namespace_INVOICE_NUMBER') : ''),
         );
     }
 }

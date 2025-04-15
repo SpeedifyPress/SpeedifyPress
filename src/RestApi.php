@@ -239,7 +239,7 @@ class RestApi {
 
         $json = $request->get_json_params();
         $data = array();
-        $license = App\License::check_license(base64_decode($json['license_email']));
+        $license = App\License::check_license(base64_decode($json['license_number']));
         $data['success'] = $license;
         $data['allowed_hosts'] = App\License::$allowed_hosts;
         $data['num_current_hosts'] = App\License::$num_current_hosts;
