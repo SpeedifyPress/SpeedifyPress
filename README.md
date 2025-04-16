@@ -1,8 +1,65 @@
-# SpeedifyPress 
+<img src="assets/speedify_banner.jpg" alt="SpeedifyPress">
 
-<img src="assets/logo.svg" alt="SpeedifyCSS" width="200">
+# SpeedifyPress - Real-World WP Speed, Engineered for Pros
 
-# FAQ 
+SpeedifyPress is a performance optimization toolkit for WordPress, built for developers and agencies who need real-world speed and precision control. Combining advanced techniques with practical configurability, SpeedifyPress goes beyond typical plugins to deliver fast, scalable, and reliable results — all without compromising compatibility or flexibility. From smart unused CSS handling to Cloudflare-ready caching, it's your personal speed stack, engineered for pros.
+
+<img src="assets/speedify_screenshot.jpg" alt="SpeedifyPress Screenshot">
+
+# 🔑 Key Capabilities
+
+- **Unused CSS Handling (Done Right)**  
+  Smart removal of unused CSS with a custom approach that avoids common pitfalls of other solutions.
+
+- **Advanced Page Caching**  
+  Cache pages with full support for language/currency plugins, background processing, and seamless Cloudflare integration.
+
+- **Configurable JavaScript Delay**  
+  Delay JavaScript (including jQuery!) for better performance — with fine-tuned control for real-world use cases.
+
+- **Local Google Analytics (gtag.js)**  
+  Serve Google Analytics locally for faster load times and better privacy.
+
+- **Partytown Integration**  
+  Move third-party scripts to web workers for minimal main thread impact.
+
+- **Image Lazyloading + Preload**  
+  Lazyload images with a custom preloader and automatically preload your LCP image for faster perceived load.
+
+- **HTML Lazyloading**  
+  Defer rendering of below-the-fold HTML for a faster initial paint.
+
+- **HTML Find/Replace**  
+  Modify your site's HTML on-the-fly with advanced find/replace rules — ideal for agency or power users.
+
+- **Cloudflare Worker Script**  
+  Use a custom Cloudflare Worker for intelligent, edge-level caching — with an easy way to clear the cache.
+
+- **Expert Font Loading**  
+  Automatically preload the right fonts and fall back to fast system fonts on mobile where appropriate.
+
+## ⚡ Quick Start
+
+1. **Subscribe to the Newsletter**  
+   SpeedifyPress is available exclusively to paid subscribers. [Subscribe here](https://adventuresinwordpressing.substack.com/) to get access.
+
+2. **Download SpeedifyPress**  
+   After subscribing, you'll receive a link to download the latest version of the plugin. Or you can download it from this repository.
+
+3. **Install the Plugin on Your WordPress Site**  
+   - Log in to your WordPress dashboard  
+   - Go to **Plugins → Add New → Upload Plugin**  
+   - Upload the `.zip` file and click **Install Now**  
+   - Activate the plugin
+
+4. **Get Personal Help with Setup**  
+   As a subscriber, you get direct help with installation and configuration. We'll make sure it’s dialed in perfectly for your setup.
+
+5. **Enjoy the Speed**  
+   Your site is now equipped with professional-grade optimization tools — faster load times, improved performance scores, and happier users.
+
+> 💬 Need help? Reach out via the subscriber portal or email for expert support.
+# 📚 Documentation 
 
 ## How to use the  Cache Settings?
 
