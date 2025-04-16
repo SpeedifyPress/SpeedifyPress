@@ -2,7 +2,7 @@
 
 # SpeedifyPress - Real-World WP Speed, Engineered for Pros
 
-SpeedifyPress is a performance optimization toolkit for WordPress, built for developers and agencies who need real-world speed and precision control. Combining advanced techniques with practical configurability, SpeedifyPress goes beyond typical plugins to deliver fast, scalable, and reliable results — all without compromising compatibility or flexibility. From smart unused CSS handling to Cloudflare-ready caching, it's your personal speed stack, engineered for pros.
+SpeedifyPress is a performance optimization toolkit for WordPress, built for developers and agencies who need real-world speed and precision control. Combining advanced techniques with practical configurability, SpeedifyPress goes beyond typical plugins to deliver fast, scalable, and reliable results — all without compromising compatibility or flexibility. From smart unused CSS handling to Cloudflare-ready caching, it's your personal speed stack, engineered for you.
 
 <img src="assets/speedify_screenshot.jpg" alt="SpeedifyPress Screenshot">
 
@@ -276,3 +276,19 @@ Enter any script name or partial script names here to push them to the end of th
 
 Enter JavaScript here that should be run after all the scripts have finished loading.  
                 Enter complete JavaScript with no script tags.
+## 📝 License
+
+SpeedifyPress is licensed under the **GNU General Public License v2.0 or later (GPL)**.  
+You are free to use, study, modify, and redistribute the source code under the terms of the GPL.
+
+### Subscription Benefits
+
+A paid subscription unlocks:
+
+- Access to the latest official build of SpeedifyPress  
+- Automatic updates via our private update server  
+- Personal installation and configuration support  
+- Unlocking of plugin functionality (the plugin is soft-locked without an active license)
+
+> ⚠️ While the GPL allows code redistribution and modification, unlocking premium features requires a valid subscription.  
+> The locking mechanism is designed to encourage support and continued development, but it does not restrict your legal rights under the GPL.
