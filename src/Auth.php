@@ -16,6 +16,14 @@ class Auth {
    */
   public static function is_allowed()  {
 
+    if ( ! is_user_logged_in() ) {
+      return false;
+    }
+
+    if ( current_user_can( 'manage_options' ) ) {
+      return true;
+    }    
+
     $current_user = wp_get_current_user();
     $allowed_roles = ['administrator'];
 

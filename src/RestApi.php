@@ -114,15 +114,8 @@ class RestApi {
         $config = $request->get_json_params();
         $config = self::transform_btoa($config);
 
-        //Transform checkbox arrays
-        foreach($config AS $key=>$value) {
-
-            if(strstr($key,".")) {
-                $data = explode(".", $key);
-                unset($config[$key]);
-                $config[$data[0]][$data[1]] = $value;
-            }
-        }
+        //Test and sanitize
+        $config = App\Config::ensure_valid($config);
 
         //Save the config
         App\Config::update_config($config);
@@ -239,7 +232,10 @@ class RestApi {
 
         $json = $request->get_json_params();
         $data = array();
-        $license = App\License::check_license(base64_decode($json['license_number']));
+
+        //Decode from base64
+        $license_number = self::get_decoded($json,'license_number');
+        $license = App\License::check_license($license_number);
         $data['success'] = $license;
         $data['allowed_hosts'] = App\License::$allowed_hosts;
         $data['num_current_hosts'] = App\License::$num_current_hosts;
@@ -252,42 +248,161 @@ class RestApi {
      *
      * @param WP_REST_Request $request The request object containing CSS data.
      */
-    public static function update_css($request) {
+    public static function update_css( \WP_REST_Request $request ) {
+    
         $json = $request->get_json_params();
-        $compressedData = base64_decode($json['compressedData']);
-        $uncompressedData = gzdecode($compressedData);
-        $json = json_decode($uncompressedData, true);
-
-        // Check if JSON decoding failed
-        if ($json === null && json_last_error() !== JSON_ERROR_NONE) {
-            // Handle the error: JSON decoding failed
-            $errorMsg = json_last_error_msg();
-            die(json_encode(['error' => $errorMsg]));
+    
+        // 1) Base64 decode
+        $b64 = self::get_decoded( $json, 'compressedData' );
+        if ( $b64 === null ) {
+            return new \WP_Error(
+                'missing_data',
+                'No compressedData provided',
+                [ 'status' => 400 ]
+            );
+        }
+    
+        // 2) GZIP decompress (suppress PHP warnings)
+        $uncompressed = @gzdecode( $b64 );
+        if ( $uncompressed === false ) {
+            return new \WP_Error(
+                'decompression_failed',
+                'Failed to decompress CSS payload',
+                [ 'status' => 400 ]
+            );
+        }
+    
+        // 3) JSON parse
+        $data = json_decode( $uncompressed, true );
+        if ( $data === null && json_last_error() !== JSON_ERROR_NONE ) {
+            return new \WP_Error(
+                'json_parse_error',
+                json_last_error_msg(),
+                [ 'status' => 400 ]
+            );
         }
 
-        // Validate csrf
-        $csrf = $json['csrf'];
-        $decode = Speed::decode_csrf_token($csrf);
-
-        if ($decode == false) {
-            die(json_encode(['error' => 'invalid csrf token']));
+        // 4) CSRF & URL validation
+        $csrf    = $data['csrf'] ?? '';
+        $decoded = Speed::decode_csrf_token( $csrf );
+        if ( ! $decoded || ! isset( $decoded['url'], $data['url'] ) || $decoded['url'] !== $data['url'] ) {
+            return new \WP_Error(
+                'invalid_request',
+                'Invalid CSRF token or URL mismatch',
+                [ 'status' => 403 ]
+            );
         }
-
-        // Get reliable URL
-        $url = $decode['url'];
-
-        // Something strange?
-        if($url != $json['url']) {
-            die(json_encode(['error' => 'invalid url']));
+    
+        // 5) Sanitize inputs
+    
+        // force_includes: array of selectors/patterns
+        $force_includes = [];
+        if ( ! empty( $data['force_includes'] ) && is_array( $data['force_includes'] ) ) {
+            foreach ( $data['force_includes'] as $item ) {
+                $force_includes[] = sanitize_textarea_field( (string) $item );
+            }
         }
+    
+        // url: must be valid
+        $url = esc_url_raw( $data['url'] );
+    
+        // post_id: integer
+        $post_id = isset( $data['post_id'] ) ? intval( $data['post_id'] ) : 0;
+    
+        // post_types: array of slugs
+        $post_types = [];
+        if ( ! empty( $data['post_types'] ) && is_array( $data['post_types'] ) ) {
+            foreach ( $data['post_types'] as $pt ) {
+                $post_types[] = sanitize_key( (string) $pt );
+            }
+        }
+    
+        // invisible: nested structure
+        $invisible = [
+            'elements' => [],
+            'viewport' => [ 'width' => 0, 'height' => 0 ],
+        ];
+        if ( ! empty( $data['invisible'] ) && is_array( $data['invisible'] ) ) {
+            // Elements: each must be array with spuid
+            if ( ! empty( $data['invisible']['elements'] ) && is_array( $data['invisible']['elements'] ) ) {
+                foreach ( $data['invisible']['elements'] as $elem ) {
+                    if ( is_array( $elem ) && isset( $elem['spuid'] ) ) {
+                        $invisible['elements'][] = [
+                            'spuid' => sanitize_text_field( (string) $elem['spuid'] ),
+                        ];
+                    }
+                }
+            }
+            // Viewport: width/height ints
+            if ( ! empty( $data['invisible']['viewport'] ) && is_array( $data['invisible']['viewport'] ) ) {
+                $vp = $data['invisible']['viewport'];
+                if ( isset( $vp['width'] ) ) {
+                    $invisible['viewport']['width'] = intval( $vp['width'] );
+                }
+                if ( isset( $vp['height'] ) ) {
+                    $invisible['viewport']['height'] = intval( $vp['height'] );
+                }
+            }
+        }
+    
+        // usedFontRules: either a pipe‑separated string or an array of URLs
+        $used_font_rules = [];
+        if ( ! empty( $data['usedFontRules'] ) ) {
+            // If it’s a string, split on |
+            if ( is_string( $data['usedFontRules'] ) ) {
+                $candidates = explode( '|', $data['usedFontRules'] );
+            }
+            // If it’s already an array, use it directly
+            elseif ( is_array( $data['usedFontRules'] ) ) {
+                $candidates = $data['usedFontRules'];
+            } else {
+                $candidates = [];
+            }
 
-        $unused = Speed\CSS::process_css($json['force_includes'], $json['url'], $json['post_id'], $json['post_types'], $json['invisible'], $json['usedFontRules'], $json['lcp_image']);
-        echo json_encode(['reduction' => $unused['percent_reduction'] ]);
-        die();    
+            // Sanitize each URL – note $rule_url here, not $url
+            foreach ( $candidates as $rule_url ) {
+                $clean_url = esc_url_raw( trim( (string) $rule_url ) );
+                if ( ! empty( $clean_url ) ) {
+                    $used_font_rules[] = $clean_url;
+                }
+            }
+        }
+    
+        // lcp_image: full URL or data-URL
+        $lcp_image = '';
+        if ( ! empty( $data['lcp_image'] ) ) {
+            $raw = trim( $data['lcp_image'] );
+            if ( strpos( $raw, 'http' ) === 0 ) {
+                $lcp_image = esc_url_raw( $raw );
+            } elseif ( preg_match( '#^data:image/[^;]+;base64,#', $raw ) ) {
+                // Normalize prefix, keep base64 payload
+                $lcp_image = preg_replace(
+                    '#^data:image/[^;]+;base64,#',
+                    'data:image/png;base64,',
+                    $raw
+                );
+            }
+        }
+    
+        // 6) Process CSS
+        $unused = Speed\CSS::process_css(
+            $force_includes,
+            $url,
+            $post_id,
+            $post_types,
+            $invisible,
+            $used_font_rules,
+            $lcp_image
+        );
+
 
     
-
-    }
+        // 7) Return REST response
+        return rest_ensure_response( [
+            'reduction' => $unused['percent_reduction'],
+        ] );
+    }   
+    
 
 
     /**
@@ -316,6 +431,21 @@ class RestApi {
         }
     
         return $formDataJson;
+    }
+
+
+    public static function get_decoded($json, $key) {
+
+        if (!isset($json[$key]) || !is_string($json[$key])) {
+            die(json_encode(['error' => 'invalid compressed data']));
+        }
+        $data = base64_decode($json[$key], true);
+        if ($data === false) {
+            die(json_encode(['error' => 'invalid base64 encoding']));
+        }
+
+        return $data;
+
     }
     
 

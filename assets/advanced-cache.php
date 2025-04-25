@@ -95,7 +95,7 @@ class AdvancedCache {
         self::$cache_mobile_separately    = SPRESS_CACHE_MOBILE_SEPARATELY;
         self::$ignore_querystrings        = SPRESS_IGNORE_QUERYSTRINGS;
         self::$cache_lifetime             = intval(SPRESS_CACHE_LIFETIME);
-        self::$original_uri               = $_SERVER['REQUEST_URI'];
+        self::$original_uri               = Speed::get_sanitized_uri($_SERVER['REQUEST_URI']);
         self::$plugin_mode                = SPRESS_PLUGIN_MODE;
         self::$disable_urls               = SPRESS_DISABLE_URLS;
         self::$preload_fonts_desktop_only = SPRESS_PRELOAD_FONTS_DESKTOP_ONLY;
@@ -113,12 +113,14 @@ class AdvancedCache {
             return true;
         } else if(self::$plugin_mode === "partial") {
             //Check partial URLs
-            $partial_urls = self::$disable_urls  ? explode("\n", self::$disable_urls ) : array();			
-            foreach($partial_urls as $partial_url) {
-                if(strstr($_SERVER['REQUEST_URI'],$partial_url)){
+            $partial_urls = array_filter( array_map('trim', explode("\n", self::$disable_urls)) );
+            foreach ( $partial_urls as $partial ) {
+                // treat it as a literal substring
+                $needle = preg_quote( $partial, '/' );
+                if ( preg_match( "/{$needle}/", self::$original_uri ) ) {
                     return true;
                 }
-            }        
+            }    
         }
         // Exit if WP-CLI is running.
         if ( defined('WP_CLI') && WP_CLI ) {
@@ -242,7 +244,9 @@ class AdvancedCache {
                     header('x-spdy-cache: HIT');
                 }
                 header('x-spdy-source: PHP');
-                $host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
+                $host = isset($_SERVER['HTTP_HOST'])
+                ? preg_replace( '/[^A-Za-z0-9\.\-]/', '', $_SERVER['HTTP_HOST'] )
+                : '';                
                 header("Cache-Tag: $host");
                 header('CDN-Cache-Control: max-age=2592000');
                 header('Cache-Control: no-cache, must-revalidate');

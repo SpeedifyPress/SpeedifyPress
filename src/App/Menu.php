@@ -372,7 +372,8 @@ class Menu {
 
         //Different menu icon when on our page
         $menu_icon = self::$menu_icon;
-        if(isset($_GET['page']) && $_GET['page'] == self::$menu_slug) {
+        $page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+        if($page == self::$menu_slug) {
             $menu_icon = self::$menu_icon_selected;
         }
 

@@ -94,7 +94,10 @@ class CSS {
         }
 
         //Get HTML
-        $html = gzdecode(file_get_contents($html_file));
+        $html = @gzdecode(file_get_contents($html_file));
+        if ( $html === false ) {
+            return;
+        }
 
         //Gather all Unused CSS in document
         $css_vars = self::get_css_vars_array();
@@ -143,7 +146,7 @@ class CSS {
 
             //Save to root path
             if(!file_exists($cache_file_path)) {
-                file_put_contents($cache_file_path, $csstxt);                             
+                file_put_contents($cache_file_path, $csstxt, LOCK_EX);                             
             }
 
             //Create lookup
@@ -181,7 +184,7 @@ class CSS {
         );
 
         //Save the lookup
-        file_put_contents($lookup_file, (string)json_encode($data));  
+        file_put_contents($lookup_file, (string)json_encode($data), LOCK_EX);  
 
         //Updated cached file
         if($post_id) {
@@ -254,7 +257,7 @@ class CSS {
         $force_includes = $global_force_includes[$source_url] = array_values(array_unique(array_filter(array_merge((array) $global_force_includes[$source_url], $force_includes))));       
 
         //Save back
-        file_put_contents($file, json_encode($global_force_includes));
+        file_put_contents($file, json_encode($global_force_includes),LOCK_EX);
 
         return $force_includes;
 
@@ -426,7 +429,10 @@ class CSS {
 
                 $dont_preload_icon_fonts = Config::get('speed_code','dont_preload_icon_fonts');
 
-                $fonts = (array)explode("|",$data_object->used_font_rules);
+                $fonts = array();
+                if(is_array($data_object->used_font_rules)) {
+                    $fonts = $data_object->used_font_rules;
+                }
                 foreach($fonts AS $font) {
 
                     $local_file = Unused::url_to_local($font);

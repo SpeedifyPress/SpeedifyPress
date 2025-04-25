@@ -308,7 +308,7 @@ class Config {
 	 */
 	public static function check_enabled() {
 
-		$current_url = $_SERVER['REQUEST_URI'];
+		$current_url = Speed::get_sanitized_uri($_SERVER['REQUEST_URI']);
 
 		//Still allow speedifypress backend admin
 		if(strstr($current_url,"/wp-json/speedifypress/")){
@@ -432,6 +432,106 @@ class Config {
 		}
 
 	}
+
+
+    /**
+     * Validates & sanitises a single‐section config array,
+     * supporting dot‐notation for nested array fields.
+     *
+     * Expects:
+     *   [
+     *     'config_key' => 'section_name',
+     *     'simple_field' => 'value',
+     *     'array_field.subkey1' => 'val1',
+     *     'array_field.subkey2' => 'val2',
+     *     // …
+     *   ]
+     *
+     * Returns the same shape (including config_key) but only with keys
+     * defined in $initial_config[section_name], and all values cleaned.
+     *
+     * @param array $config Raw config (must include 'config_key').
+     * @return array Sanitised config, or [] if invalid.
+     */
+    public static function ensure_valid(array $config) {
+        // 1) Must specify which section we're validating
+        if (empty($config['config_key'])) {
+            return [];
+        }
+        $section = $config['config_key'];
+
+        // 2) That section must exist in our defaults
+        if (!isset(self::$initial_config[$section])) {
+            return [];
+        }
+        $section_meta = self::$initial_config[$section];
+
+        // Prepare normalized input: handle dot notation for array fields
+        $normalized = [];
+        foreach ($config as $key => $value) {
+            // skip the config_key entry itself
+            if ($key === 'config_key') {
+                continue;
+            }
+            // skip completely empty keys
+            if ($key === '' || $key === null) {
+                continue;
+            }
+            // dot notation: e.g. array_field.subkey
+            if (strpos($key, '.') !== false) {
+                list($root, $sub) = explode('.', $key, 2);
+                // only group if the root key exists and its default value is array
+                if (isset($section_meta[$root]) && is_array($section_meta[$root]['value'])) {
+                    $normalized[$root][$sub] = $value;
+                    continue;
+                }
+            }
+            // otherwise, keep as-is
+            $normalized[$key] = $value;
+        }
+
+        // Build cleaned output, preserving config_key
+        $clean = ['config_key' => $section];
+
+        // 3) Loop through each normalized key
+        foreach ($normalized as $key => $raw_value) {
+            // only accept known fields
+            if (!isset($section_meta[$key])) {
+                continue;
+            }
+
+            // special case: HTML find/replace array passes raw
+            if ($section === 'speed_replace' && $key === 'speed_find_replace' && is_array($raw_value)) {
+                $clean[$key] = array_values(array_filter($raw_value, function ($item) {
+                    return is_array($item);
+                }));
+                continue;
+            }
+
+            // special case: raw JS snippet allowed
+            if ($section === 'speed_js' && $key === 'load_complete_js') {
+                $clean[$key] = (string)$raw_value;
+                continue;
+            }
+
+            // array field: sanitize each nested value
+            if (is_array($raw_value)) {
+                $sanitized = [];
+                foreach ($raw_value as $subkey => $subval) {
+                    // flatten: cast to string and sanitize textarea
+                    $sanitized[$subkey] = sanitize_textarea_field((string)$subval);
+                }
+                $clean[$key] = $sanitized;
+            }
+            // scalar field: sanitize as textarea
+            else {
+                $clean[$key] = sanitize_textarea_field((string)$raw_value);
+            }
+        }
+
+        return $clean;
+    }
+
 
 	/**
 	 * Update the config with new values

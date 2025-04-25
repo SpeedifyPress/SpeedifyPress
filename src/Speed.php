@@ -42,6 +42,9 @@ class Speed {
     // set the name
     public static $csrf_name = "spdy_csrfToken";
 
+    // allow OB debugging
+    public static $debug_output_buffer = false;
+
     /**
      * Initializes the Speed class by setting up output buffering, CSS optimizations,
      * HTML rewriting, and registering filters and actions for third-party plugins.
@@ -179,28 +182,30 @@ class Speed {
 
 
         // Set a custom error handler inside the callback
-        set_error_handler(function($errno, $errstr, $errfile, $errline) {
+        if(self::$debug_output_buffer === true) {
+            set_error_handler(function($errno, $errstr, $errfile, $errline) {
 
-            // Capture the backtrace
-            $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-            
-            // Format the trace as a readable string
-            $traceString = "";
-            foreach ($trace as $index => $frame) {
-                $file = isset($frame['file']) ? $frame['file'] : '[internal function]';
-                $line = isset($frame['line']) ? $frame['line'] : '';
-                $function = $frame['function'];
-                $traceString .= "#$index $file($line): $function()\n";
-            }
+                // Capture the backtrace
+                $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
+                
+                // Format the trace as a readable string
+                $traceString = "";
+                foreach ($trace as $index => $frame) {
+                    $file = isset($frame['file']) ? $frame['file'] : '[internal function]';
+                    $line = isset($frame['line']) ? $frame['line'] : '';
+                    $function = $frame['function'];
+                    $traceString .= "#$index $file($line): $function()\n";
+                }
 
-            // Output the error message and trace in HTML comments
-            if(current_user_can( 'manage_options' )) {
-                echo "<!--Caught error in output buffer callback: [$errno] $errstr in $errfile on line $errline\nTrace:\n$traceString-->\n";
-            }
+                // Output the error message and trace in HTML comments
+                if(current_user_can( 'manage_options' )) {
+                    echo "<!--Caught error in output buffer callback: [$errno] $errstr in $errfile on line $errline\nTrace:\n$traceString-->\n";
+                }
 
-            // Returning true prevents the PHP error handler from continuing
-            return true;
-        });        
+                // Returning true prevents the PHP error handler from continuing
+                return true;
+            });        
+        }
 
         try {
             
@@ -224,7 +229,8 @@ class Speed {
 
         } catch (\Exception $e) {
             // Handle exception here if necessary, but PHP may not fully respect try-catch within ob_start callback
-            if(current_user_can( 'manage_options' )) {
+            if(current_user_can( 'manage_options' )
+            && self::$debug_output_buffer === true) {
                 echo "<!--Caught exception: " . $e->getMessage() . "-->";
             }
         }
@@ -475,7 +481,7 @@ class Speed {
 
         //Write the file
         $path =  $dir . $local_filename;
-        file_put_contents($path, $file_contents);
+        file_put_contents($path, $file_contents, LOCK_EX);
 
 		return $url . $local_filename . "?v=".$version['version'];
 
@@ -519,8 +525,11 @@ class Speed {
         }
 
         //Check if we have a lookup file
-        $data_object = json_decode((string)file_get_contents($lookup_file));        
-        
+        $contents = @file_get_contents($lookup_file);
+        $data_object = ($contents !== false && ($decoded = json_decode($contents)) && json_last_error() === JSON_ERROR_NONE && is_object($decoded))
+            ? $decoded
+            : (object)[];        
+
         //Mark invisible elements
         if(isset($data_object->invisible) && isset($data_object->invisible->elements) && count($data_object->invisible->elements) >0 ) {
 
@@ -1237,14 +1246,69 @@ class Speed {
         if(class_exists("SPRESS\\AdvancedCache")
         && isset(AdvancedCache::$original_uri)
         && $get_original) {
-            $request_uri = AdvancedCache::$original_uri;
+            $raw = AdvancedCache::$original_uri;
         } else {
-            $request_uri = $_SERVER['REQUEST_URI'];
+            //Directly grab from $_SERVER, cast to string, default to “/” if missing
+            $raw = isset( $_SERVER['REQUEST_URI'] )
+            ? (string) $_SERVER['REQUEST_URI']
+            : '/';
         }
+    
+        $safe = self::get_sanitized_uri($raw);
+    
+        return $safe;
 
-        return $request_uri;
 
     }
+
+    /**
+     * Cleans an arbitrary URL fragment  and returns
+     * a fully‑qualified, sanitized URL pointing to this site.
+     *
+     * @param  string $raw  The raw URL or URI fragment to sanitize.
+     * @return string       A full, safe URI fragment.
+     */
+    public static function get_sanitized_uri(string $raw): string
+    {
+        // 1. Strip null bytes and ASCII control characters
+        $raw = preg_replace('/[\x00-\x1F\x7F]/u', '', $raw) ?: '';
+    
+        // 2. Parse into components so we only ever honor path + query
+        $parts = parse_url($raw);
+        $path  = $parts['path']  ?? '/';
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+    
+        // 3. Normalize percent-encoding
+        //    a) Decode once
+        $path = rawurldecode($path);
+        //    b) Replace backslashes and collapse "../" and "." segments
+        $path = str_replace('\\', '/', $path);
+        $segments = explode('/', ltrim($path, '/'));
+        $normalized = [];
+        foreach ($segments as $seg) {
+            if ($seg === '' || $seg === '.') {
+                continue;
+            }
+            if ($seg === '..') {
+                array_pop($normalized);
+            } else {
+                $normalized[] = $seg;
+            }
+        }
+        //    c) Re-encode each segment to block sneaky bytes
+        $encoded = array_map('rawurlencode', $normalized);
+        $path    = '/' . implode('/', $encoded);
+    
+        // 4. Rebuild the relative URL
+        $relative = $path . $query;
+    
+        // 5. Final sanitization for output (HTML headers, attributes, etc.)
+        //    - FILTER_SANITIZE_URL strips invalid URL chars
+        //    - htmlspecialchars escapes it safe for HTML contexts
+        $relative = filter_var($relative, FILTER_SANITIZE_URL);
+        return htmlspecialchars($relative, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    }
+    
 
     /**
      * Retrieves the current full url, optionally removing ignored query strings.
@@ -1365,6 +1429,7 @@ class Speed {
             $protocol    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
             $host        = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
             $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+            $request_uri = self::get_sanitized_uri($request_uri);
             $full_url    = $protocol . $host . $request_uri;
         } else {
             $parsed = parse_url($full_url);

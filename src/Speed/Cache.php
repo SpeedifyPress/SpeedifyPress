@@ -144,7 +144,10 @@ class Cache {
             $current_lookup[$modified_url][$url] = true;
             
             // Write back the lookup data.
-            file_put_contents($lookup_file, json_encode($current_lookup));
+            $json = wp_json_encode( $current_lookup );
+            if ( json_last_error() === JSON_ERROR_NONE ) {
+                file_put_contents($lookup_file, $json, LOCK_EX);
+            }            
             
         }
 
@@ -237,13 +240,13 @@ class Cache {
 
         // Save the uncompressed version.
         if($gz_only === false) {
-            file_put_contents($cache_file, $html);
+            file_put_contents($cache_file, $html, LOCK_EX);
         }
 
         // If gzip is accepted, save a gzipped version separately as .gz
         if (self::gzip_accepted() || $gz_only === true) {
             $gz_file = $cache_file . '.gz';
-            file_put_contents($gz_file, gzencode($html));
+            file_put_contents($gz_file, gzencode($html), LOCK_EX);
         }
 
         return $html;
@@ -536,12 +539,12 @@ class Cache {
                 // Only update if a replacement was made.
                 if ($newContent !== $content) {
                     // Write the updated content back to the .html file.
-                    file_put_contents($filepath, $newContent);
+                    file_put_contents($filepath, $newContent, LOCK_EX);
                     
                     // Update the gzipped version.
                     $gzFile = $filepath . '.gz';
                     $newCompressed = gzencode($newContent);
-                    file_put_contents($gzFile, $newCompressed);
+                    file_put_contents($gzFile, $newCompressed, LOCK_EX);
                 }
             }
         }
