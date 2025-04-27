@@ -107,7 +107,7 @@ class CacheHandler {
 
         //Set the csrf token name and salt
         this.csrf_name = 'spdy_csrfToken';
-        this.csrf_salt = 'X1uOzep8o3kEp7#pn Q+Ljdj&2NFu?nPCy75k-TE8j,dEgD_9/c[M{g0wnmcyeqb';
+        this.csrf_salt = 'X1uOzep8o3kEp7#pn';
 
     }
 

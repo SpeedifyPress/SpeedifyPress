@@ -103,6 +103,17 @@ class RestApi {
             )
         );          
 
+        // Route for getting Cloudflare worker script
+        register_rest_route(
+            'speedifypress',
+            '/get_cloudflare_script/?',
+            array(
+                'methods' => array('GET'),
+                'callback' => array(__CLASS__, 'get_cloudflare_script'),
+                'permission_callback' => '__return_true', // Admin-only access as after auth check
+            )
+        );           
+
     }
 
     /**
@@ -141,6 +152,24 @@ class RestApi {
         return $data;
     }
 
+
+    public static function get_cloudflare_script() {
+
+        $script_location = __DIR__ . '/../assets/cloudflare_worker.js';
+        if(file_exists($script_location)) {
+
+            //Get contents
+            $contents = file_get_contents($script_location);
+
+            //Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
+            $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
+
+            //Return contents
+            return $contents;
+
+        }
+        
+    }
 
     /**
      * Retrieves data on the unused CSS cache

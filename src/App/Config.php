@@ -169,7 +169,7 @@ class Config {
 			'delay_js' => array(
 				'name'   => 'Delay JS',
 				'helper' => 'Delay JS execution by a certain amount of seconds',
-				'value' => '',
+				'value' => 'js-extra' . "\n" . 'local_tag',
 			),												
 			'delay_exclude' => array(
 				'name'   => 'Exclude scripts from delay',

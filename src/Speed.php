@@ -792,7 +792,7 @@ class Speed {
 			return $html;
 		}
 
-		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) ) {
+		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) || isset( $_GET['et_fb']) ) {
 			return $html;
 		}
 
