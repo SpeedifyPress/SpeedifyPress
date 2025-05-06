@@ -222,6 +222,7 @@ class Speed {
 
         //Remove comments
         $output = str_replace(['@@@replaced@@@', '@@@/replaced@@@'], '', $output);
+        $output = str_replace([base64_encode('@@@replaced@@@'), base64_encode('@@@/replaced@@@'), base64_encode('@@@replaced@@@@@@/replaced@@@')], '', $output);
 
         //Save ouput to cache
         $output = Cache::do_cache($output); 
@@ -541,6 +542,10 @@ class Speed {
 
             foreach ($elements as $element) {
 
+                if(!isset($element->tag)) {
+                    continue;
+                }
+
                 //Get an element height to fit all screens                                
                 $average_vp_width = 1536;
                 $diff = $originalViewport->width / $average_vp_width;
@@ -549,7 +554,11 @@ class Speed {
                 } else {
                     $diff = $diff / 1.2;
                 }
-                $element_height  = $element->height * $diff;                    
+                if(isset($element->height)) {
+                    $element_height  = $element->height * $diff;                    
+                } else {
+                    $element_height  = 100;                    
+                }
                 
                 //Get element and current spuid
                 $spuid = $element->spuid ?? false;  

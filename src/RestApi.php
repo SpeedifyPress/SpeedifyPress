@@ -3,6 +3,7 @@
 namespace SPRESS;
 
 use SPRESS\Speed;
+use Wa72\Url\Url;
 
 use WP_REST_Server;
 
@@ -314,14 +315,29 @@ class RestApi {
         // 4) CSRF & URL validation
         $csrf    = $data['csrf'] ?? '';
         $decoded = Speed::decode_csrf_token( $csrf );
-        if ( ! $decoded || ! isset( $decoded['url'], $data['url'] ) || $decoded['url'] !== $data['url'] ) {
+        if ( ! $decoded || ! isset( $decoded['url'], $data['url'] ) ) {
             return new \WP_Error(
                 'invalid_request',
-                'Invalid CSRF token or URL mismatch',
+                'Invalid CSRF token or missing URL',
                 [ 'status' => 403 ]
             );
         }
-    
+
+        //Compare URLs exactly
+        $url1 = Url::parse($decoded['url']);
+        $url2 = Url::parse($data['url']);
+        
+        $reconstructedUrl1 = $url1->getScheme() . '://' . $url1->getHost() . rtrim($url1->getPath(), '/');
+        $reconstructedUrl2 = $url2->getScheme() . '://' . $url2->getHost() . rtrim($url2->getPath(), '/');
+        
+        if ($reconstructedUrl1 !== $reconstructedUrl2) {
+            return new \WP_Error(
+                'invalid_request',
+                'URL mismatch ' . $reconstructedUrl1 . $reconstructedUrl2,
+                [ 'status' => 403 ]
+            );
+        }
+
         // 5) Sanitize inputs
     
         // force_includes: array of selectors/patterns
@@ -428,7 +444,7 @@ class RestApi {
     
         // 7) Return REST response
         return rest_ensure_response( [
-            'reduction' => $unused['percent_reduction'],
+            'reduction' => $unused['percent_reduction'] ?? null,
         ] );
     }   
     

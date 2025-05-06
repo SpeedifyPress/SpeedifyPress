@@ -412,6 +412,7 @@ class HtmlNode
 
 	function makeup()
 	{
+
 		// text, comment, unknown
 		if (isset($this->_[self::HDOM_INFO_TEXT])) {
 			return $this->_[self::HDOM_INFO_TEXT];
@@ -452,7 +453,10 @@ class HtmlNode
 					case self::HDOM_QUOTE_DOUBLE:
 					default:
 						$quote = '"';
-						$val = htmlentities($val, ENT_COMPAT, $this->dom->target_charset);
+						$charset = isset($this->dom) && isset($this->dom->target_charset)
+						? $this->dom->target_charset
+						: 'UTF-8';			   
+			   			$val = htmlentities($val, ENT_COMPAT, $charset);	//lc patched
 				}
 
 				$ret .= $key
