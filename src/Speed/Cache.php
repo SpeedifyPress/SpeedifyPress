@@ -640,6 +640,14 @@ class Cache {
             $dir = Speed::get_root_cache_path();
             // Speed::deleteSpecificFiles is assumed to recursively remove files matching the extensions.
             Speed::deleteSpecificFiles($dir, array("html", "gz"));
+
+            //Integrations
+            global $kinsta_cache;
+            if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
+                // Flush full-page + edge + CDN caches
+                $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+            }
+
         }
     }
 

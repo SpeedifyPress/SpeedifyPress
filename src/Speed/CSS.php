@@ -128,9 +128,6 @@ class CSS {
         // Create the cache directory if it does not exist
         !is_dir($cache_dir) && mkdir($cache_dir, 0755, true);        
 
-        //Get array of the CSS urls that we're processing
-        $urls = array_keys((array)$array);
-
         //Run through the array
         foreach((array)$unused['CSS'] AS $url=>$csstxt) {
 
@@ -221,11 +218,19 @@ class CSS {
             $cache_dir  = Speed::get_cache_dir_from_url($source_url);
             file_put_contents($cache_dir."update_required","");
 
-            //Nginx Helper
+            //Integrations
             if(class_exists('Nginx_Helper')) {
                 $post_object = get_post( $post_id );
                 do_action( 'transition_post_status', 'publish', 'publish', $post_object );
-            }            
+            }        
+            
+            global $kinsta_cache;
+            if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
+                // Flush full-page + edge + CDN caches
+                //$kinsta_cache->kinsta_cache_purge->initiate_purge( $post_id, 'post' );//didn't seem to be working properly
+                $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+            }
+                
 
         }    
 
@@ -252,6 +257,10 @@ class CSS {
         } else {
             $global_force_includes = array();
         }
+
+        if (! isset($global_force_includes[$source_url])) {
+            $global_force_includes[$source_url] = [];
+        }        
         
         //Merge, if they have the same key elements should be added
         $force_includes = $global_force_includes[$source_url] = array_values(array_unique(array_filter(array_merge((array) $global_force_includes[$source_url], $force_includes))));       
@@ -281,7 +290,7 @@ class CSS {
         }
 
         //Keep CSS inline
-        if(self::$inclusion_mode == "inline") {
+        if(self::$inclusion_mode == "inline-grouped") {
             $inline_css = "";
         }
 
@@ -401,7 +410,9 @@ class CSS {
                             if($lookup->$sheet_url_lookup == md5("").".css") {  //Blank files
                                 $new_tag = "";
                             } else {
-                                $new_tag = str_replace($sheet_url,Speed::get_root_cache_url() . "/" . $lookup->$sheet_url_lookup,$tag);//
+                                $new_tag = str_replace($sheet_url,Speed::get_root_cache_url() . "/" . $lookup->$sheet_url_lookup,$tag);
+                                //Tag as processed
+                                $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
                             }
 
                         }
@@ -453,13 +464,22 @@ class CSS {
             }
 
             $lcp_image = $data_object->lcp_image ?? false;
-            if($lcp_image) {
-                $preload_html = "<link rel='preload' href='" . $lcp_image  . "' as='image' />";
-                if(!strstr($output,$preload_html)) {
-                    $preload .= "\n" . $preload_html;
-                }
-            }   
+            if ( $lcp_image ) {
+                // Get current host (or empty string if not set)
+                $current_host = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
             
+                // Only preload if:
+                // 1) URL is relative (no "://"), OR
+                // 2) it contains the current host
+                if ( false === strstr( $lcp_image, '://' ) || false !== strstr( $lcp_image, $current_host ) ) {
+                    $preload_html = "<link rel='preload' href='" . esc_url( $lcp_image ) . "' as='image' />";
+            
+                    if ( false === strstr( $output, $preload_html ) ) {
+                        $preload .= "\n" . $preload_html;
+                    }
+                }
+            }
+                     
             $output = str_replace("</title>","</title>".$preload,$output);
 
             if(self::$inclusion_mode == "inline-grouped") {
@@ -1390,6 +1410,11 @@ class CSS {
             Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"));
         }
         
+        global $kinsta_cache;
+        if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
+            // Flush full-page + edge + CDN caches
+            $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+        }        
 
     }
 
