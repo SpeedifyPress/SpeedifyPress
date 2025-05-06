@@ -676,8 +676,9 @@ class CSSUsageCollector {
     }    
 
     let num_inlined = document.querySelectorAll("style[rel='spress-inlined']").length;
+    let num_to_process = document.querySelectorAll('link[rel="stylesheet"][href]:not([data-spress-processed="true"])').length;
 
-    if(resolutions[deviceType] === 'true' && num_inlined === 0) {
+    if(resolutions[deviceType] === 'true' && num_inlined === 0 && num_to_process > 0) {
         var includePatterns = JSON.parse(speed_css_vars.include_patterns); // patterns to always include
         includePatterns = includePatterns.map(pattern => new RegExp(pattern.replace(/\\\\/g, '\\')));
         const collector = new CSSUsageCollector(false, includePatterns); // Pass false to disable warning logging
