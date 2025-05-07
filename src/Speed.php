@@ -543,7 +543,7 @@ class Speed {
             foreach ($elements as $element) {
 
                 if(!isset($element->tag)) {
-                    continue;
+                    $element->tag = "";
                 }
 
                 //Get an element height to fit all screens                                
@@ -1313,9 +1313,8 @@ class Speed {
     
         // 5. Final sanitization for output (HTML headers, attributes, etc.)
         //    - FILTER_SANITIZE_URL strips invalid URL chars
-        //    - htmlspecialchars escapes it safe for HTML contexts
         $relative = filter_var($relative, FILTER_SANITIZE_URL);
-        return htmlspecialchars($relative, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        return $relative;
     }
     
 
@@ -1342,6 +1341,7 @@ class Speed {
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
         $host = $_SERVER['HTTP_HOST'];        
         $full_url = $protocol . $host . $request_uri;
+
 
         // Remove query strings that should be ignored.
         if (!empty(Cache::$ignore_querystrings)) {

@@ -180,59 +180,57 @@ class CSS {
 
         );
 
+
         //Save the lookup
         file_put_contents($lookup_file, (string)json_encode($data), LOCK_EX);  
 
-        //Updated cached file
-        if($post_id) {
+        //Update cached file
+
+        //Override the URL
+        Speed::$injected_url = $source_url;
+
+        //Get currently cached content
+        $cache_file = Cache::get_cache_filepath($source_url,"html");
+
+        //See if it exists
+        if(!file_exists($cache_file)) {
+            return $unused;
+        }
+        
+        $output = file_get_contents($cache_file);
+
+        //Rewrite with new CSS if not already done
+        if(!strstr($output,"|@@@CSSDone@@@")) {
             
-            //Override the URL
-            Speed::$injected_url = $source_url;
+            $output = self::rewrite_css($output,$source_url);
 
-            //Get currently cached content
-            $cache_file = Cache::get_cache_filepath($source_url,"html");
+            //Add invisible elements
+            $dom = (new HtmlDocument(""))->load($output,true, false);   
+            $dom = Speed::add_invisible_elements($dom);  
+            $output = $dom->outertext;
 
-            //See if it exists
-            if(!file_exists($cache_file)) {
-                return $unused;
-            }
+            //Resave cache file
+            Cache::save_cache($cache_file,$output," |@@@CSSDone@@@");
 
-            $output = file_get_contents($cache_file);
+        }
 
-            //Rewrite with new CSS if not already done
-            if(!strstr($output,"|@@@CSSDone@@@")) {
+        //Mark this path as needing a Cloudflare update
+        $cache_dir  = Speed::get_cache_dir_from_url($source_url);
+        file_put_contents($cache_dir."update_required","");
+
+        //Integrations
+        if(class_exists('Nginx_Helper') && $post_id) {
+            $post_object = get_post( $post_id );
+            do_action( 'transition_post_status', 'publish', 'publish', $post_object );
+        }        
+        
+        global $kinsta_cache;
+        if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
+            // Flush full-page + edge + CDN caches
+            //$kinsta_cache->kinsta_cache_purge->initiate_purge( $post_id, 'post' );//didn't seem to be working properly
+            $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+        }
                 
-                $output = self::rewrite_css($output,$source_url);
-
-                //Add invisible elements
-                $dom = (new HtmlDocument(""))->load($output,true, false);   
-                $dom = Speed::add_invisible_elements($dom);  
-                $output = $dom->outertext;
-
-                //Resave cache file
-                Cache::save_cache($cache_file,$output," |@@@CSSDone@@@");
-
-            }
-
-            //Mark this path as needing a Cloudflare update
-            $cache_dir  = Speed::get_cache_dir_from_url($source_url);
-            file_put_contents($cache_dir."update_required","");
-
-            //Integrations
-            if(class_exists('Nginx_Helper')) {
-                $post_object = get_post( $post_id );
-                do_action( 'transition_post_status', 'publish', 'publish', $post_object );
-            }        
-            
-            global $kinsta_cache;
-            if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
-                // Flush full-page + edge + CDN caches
-                //$kinsta_cache->kinsta_cache_purge->initiate_purge( $post_id, 'post' );//didn't seem to be working properly
-                $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
-            }
-                
-
-        }    
 
         return $unused;
 
