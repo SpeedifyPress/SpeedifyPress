@@ -89,6 +89,11 @@ class CacheHandler {
         'wbraid', 'webdriver', 'wing', 'wpdParentID', 'wpmp_switcher', 'wref', 'wswy', 'wtime', 'x', 'zMoatImpID', 'zarsrc', 'zeffdn'
         ];
 
+        // Build a Set for fast lookup of bypass params
+        this.bypassParams = new Set(
+            this.THIRD_PARTY_QUERY_PARAMETERS.map(p => p.toLowerCase())
+        );        
+
         //For static files so we don't mess with these
         this.STATIC_FILE_EXTENSIONS = [
         '.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.avif', '.tiff', '.ico', '.3gp', '.wmv', '.avi', '.asf', '.asx',
@@ -118,7 +123,15 @@ class CacheHandler {
     */
     async handleRequest(event) {
 
-        const request = event?.request;
+        const request = event.request;
+        const ua   = (request.headers.get('User-Agent') || '').toLowerCase();
+
+        //Special kinsta check
+        if (ua.includes('kinsta-bot')) {
+          // Pass the request straight through—no Worker interference
+          return fetch(request);
+        }        
+        
         let requestURL;
         try {
         requestURL = this.urlNormalize(event?.request?.url);  // Normalize the URL
@@ -414,7 +427,7 @@ class CacheHandler {
     checkRequestHeaders(request, requestURL) {
 
         //Allow methods
-        const allowedReqMethods = ['GET', 'HEAD'];
+        const allowedReqMethods = ['GET'];
 
         //Default doesn't bypass
         let bypassCache = false;
@@ -527,14 +540,14 @@ class CacheHandler {
     urlNormalize(url) {
         try {
 
+            //Remove search params
             const reqURL = new URL(url);
-            this.THIRD_PARTY_QUERY_PARAMETERS.forEach(param => {
-                const promoUrlQuery = new RegExp(`(&?)(${param}=\\S+)`, 'g');
-                if (promoUrlQuery.test(reqURL.search)) {
-                reqURL.searchParams.delete(param);
-                }
-            });
-            return reqURL;
+            for (const key of Array.from(reqURL.searchParams.keys())) {
+              if (this.bypassParams.has(key.toLowerCase())) {
+                reqURL.searchParams.delete(key);
+              }
+            }
+            return reqURL;            
 
         } catch (err) {        
             // If an error occurs during normalization, throw an error
@@ -645,6 +658,16 @@ class CacheHandler {
  */
 addEventListener('fetch', event => {
   try {
+
+    //Special case for uptime and status checkers
+    //like Kinsta that don't like amended headers
+    const request = event?.request;
+    if (request.method === 'HEAD') {
+        // just return the origin response verbatim
+        return fetch(request);
+    }
+
+
     // Initialize a new CacheHandler instance
     const cacheHandler = new CacheHandler();
 
