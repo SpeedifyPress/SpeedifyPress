@@ -373,7 +373,6 @@ A paid subscription unlocks:
 - Access to the latest official build of SpeedifyPress  
 - Automatic updates via our private update server  
 - Personal installation and configuration support  
-- Unlocking of plugin functionality (the plugin is soft-locked without an active license)
 
 > ⚠️ While the GPL allows code redistribution and modification, unlocking premium features requires a valid subscription.  
 > The locking mechanism is designed to encourage support and continued development, but it does not restrict your legal rights under the GPL.
