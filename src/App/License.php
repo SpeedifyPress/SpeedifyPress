@@ -33,12 +33,62 @@ class License {
 
             if (!$shown && License::check_license() !== true) {
                 
-                echo '<br><span style="color: red; font-weight: bold;">' . 'Your license is inactive. Please <a href="'. 'admin.php?page='.Menu::$menu_slug .'">activate your license</a> to receive updates.' . '</span>';
+                echo '<br><span style="color: red; font-weight: bold;">' . 'Your license is inactive. Please <a href="'. 'admin.php?page='.Menu::$menu_slug .'">activate your license</a> to receive updates. Click <a target="_blank" href="https://speedifypress.com">here</a> to purchase a license.' . '</span>';
                 $shown = true;
             }
         }, 10, 2);              
 
+        add_filter( 'upgrader_pre_download', array(__CLASS__,'check_license_before_plugin_update'), 10, 4 );
+
     }
+
+    /**
+     * Checks the license validity before allowing the plugin update to proceed.
+     *
+     * This function hooks into the 'upgrader_pre_download' filter to verify the
+     * license status for the plugin before a download attempt is made during an
+     * update. If the license is invalid or expired, it prevents the update process
+     * and displays an error message to the user.
+     *
+     * @param bool   $reply      Whether to proceed with the download. Default true.
+     * @param string $package    The package file name.
+     * @param object $updater    The instance of the upgrader class.
+     * @param array  $hook_extra Extra arguments passed to the hook.
+     * @return bool|string Return original $reply if license is valid or not our plugin,
+     *                     otherwise stops the update process.
+     */
+
+    public static function check_license_before_plugin_update( $reply, $package, $updater, $hook_extra ) {
+        
+        $plugin_slug = SPRESS_FILE_NAME; // e.g. 'speedify_press_plugin/speedify_press.php'
+    
+        // Only proceed if this update is for our plugin
+        if ( isset( $hook_extra['plugin'] ) && $hook_extra['plugin'] === $plugin_slug ) {
+    
+            // Run your license check logic
+            $license_valid = self::get_download_link(); // should return false if license is invalid
+    
+            if ( $license_valid === false ) {
+
+                // Remove .maintenance file to avoid "stuck in maintenance" issue
+                $maintenance_file = ABSPATH . '.maintenance';
+                if ( file_exists( $maintenance_file ) ) {
+                    @unlink( $maintenance_file );
+                }
+
+                // Abort update with meaningful error
+                wp_die(
+                    __( 'Update failed: License is invalid or expired.', 'speedify-press' ),
+                    __( 'Plugin Update', 'your-textdomain' ),
+                    array( 'back_link' => true )
+                );
+
+            }
+        }
+    
+        return $reply; // Proceed with update if license is valid or not your plugin
+    }
+    
 
     /**
      * Checks for an update by comparing the installed version with the latest available version.
@@ -60,29 +110,17 @@ class License {
 
         // Compare the versions
         if (version_compare($current_version, $latest_version, '<')
-        && self::get_download_link() !== false
         ) {
 
-            //Check license
-            if(self::check_license() !== true) {
+            //Always return a response here
+            //when an update is available
+            $transient->response[$plugin_slug] = (object) array(
+                'slug'         => $plugin_dir,
+                'new_version'  => $latest_version,
+                'package'      => self::get_download_link(),
+                'url'          => "https://speedifypress.com/",
+            );
 
-                $transient->response[$plugin_slug] = (object) array(
-                    'slug'         => $plugin_dir,
-                    'new_version'  => $latest_version,
-                    'package'      => ''                
-                );         
-
-
-            } else {
-
-                $transient->response[$plugin_slug] = (object) array(
-                    'slug'         => $plugin_dir,
-                    'new_version'  => $latest_version,
-                    'package'      => self::get_download_link(),
-                    'url'          => "https://speedifypress.com/",
-                );
-
-            }
 
         }
 
@@ -143,12 +181,10 @@ class License {
      */
     public static function check_license($number = null) {
         
-        // Retrieve or update the stored license invoice number.
+        // Retrieve  the stored license invoice number.
         if (!$number) {
             $number = get_option('spress_namespace_INVOICE_NUMBER');
-        } else {
-            update_option('spress_namespace_INVOICE_NUMBER', $number, false);
-        }
+        } 
 
         // Build the license check URL using invoice number.
         $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($_SERVER['HTTP_HOST'] ?? null);
@@ -167,9 +203,12 @@ class License {
             $subscription = json_decode($body);
 
             if ($subscription->error) {
+
                 set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
                 return array("error" => $subscription->error);
+
             } elseif ($subscription->success) {
+
                 $subscription_ends = (int) $subscription->success;
                 $expires_in = $subscription_ends - time();
                 $expires_in = max($expires_in, 0);
@@ -181,11 +220,18 @@ class License {
 
                 set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $expires_in);
 
+                update_option('spress_namespace_INVOICE_NUMBER', $number, false);
+
+                //Allow auto update
+                delete_site_transient( 'update_plugins' );
+                wp_update_plugins();
+
                 return true;
             }
         }
 
         set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
+        update_option('spress_namespace_INVOICE_NUMBER', "", false);
         return false;
     }
 
