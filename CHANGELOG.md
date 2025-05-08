@@ -5,44 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 0.54.0
+### 0.54.1 - 2025-05-08
+- Fix: dates should be added to changelog
+
+### 0.54.0 - 2025-05-08
 - Fix: fixes required for license handling
 
-### 0.53.0
+### 0.53.0 - 2025-05-07
 - Feat: Cloudflare worker should ignore kinsta uptime bot 
 - Fix: Cache should correctly strip querystrings 
 - Tidy: README amends
 
-### 0.52.0
+### 0.52.0 - 2025-05-06
 - Update usage collecttor for inline CSS
 
-### 0.51.0
+### 0.51.0 - 2025-05-06
 - Fix PHP Warnings
 
-### 0.50.0
+### 0.50.0 - 2025-05-06
 - Allow Unicode text to be saved from settings fields
 
-### 0.49.0
+### 0.49.0 - 2025-04-27
 - Add quick copy for Cloudflare settings
 - Improvements to documentation
 
-### 0.48.0
+### 0.48.0 - 2025-04-25
 - Various improvements to harden plugin security
 
-### 0.47.0, 0.47.1, 0.47.2
+### 0.47.0, 0.47.1, 0.47.2 - 2025-04-17
 - Update README.md
 
-### 0.46.0
+### 0.46.0 - 2025-04-15
 - Check license by invoice number, not email
 
-### 0.45.0
+### 0.45.0 - 2025-04-10
 - Add Inline, grouped CSS setting
 - Update Cloudflare worker to ignore API paths
 - Improve onload to handle down-page loads
 - Fix CSS cache purge issue
 - Improve inline CSS animation detection
 
-### 0.44.0
+### 0.44.0 - 2025-04-07
 - Fixes to clear buttons not always working
 
 ### 0.43.0
