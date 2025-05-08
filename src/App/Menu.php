@@ -61,29 +61,47 @@ class Menu {
 
     public static function show_update_notification() {
         
-        if (is_network_admin()) {
-            return; // Do not show in network admin
-        }
-
         $plugin_file = SPRESS_FILE_NAME;
-        $plugin_slug = SPRESS_DIR_NAME;        
+        $plugin_slug = SPRESS_DIR_NAME;     
+        $version = 0;   
 
         //Check for licence
         if(License::get_download_link() == false) {
 
-            $settings_url = admin_url('admin.php?page='.self::$menu_slug);
-
-            echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
-            <td colspan='4' class='plugin-update'>
-                <div class='update-message notice inline notice-warning notice-alt'>
-                    <p>Please <a href='" . $settings_url . "'>activate your license</a> to enable plugin updates</p>
-                </div>
-            </td>
-        </tr>";            
-
-        } else if(is_multisite()) {
-    
             $version = License::get_latest_version();
+
+            //Version check
+            //No update, so just give them the license warning
+            if($version <= SPRESS_VER) {
+            
+                $settings_url = admin_url('admin.php?page='.self::$menu_slug);
+
+                echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
+                <td colspan='4' class='plugin-update'>
+                    <div class='update-message notice inline notice-warning notice-alt'>
+                        <p>Please <a href='" . $settings_url . "'>activate your license</a> to enable plugin updates.</p>
+                    </div>
+                </td>
+                </tr>";         
+                
+                echo '<script>
+                    jQuery(document).ready(function($) {
+                        $("tr[data-plugin=\''. $plugin_file. '\']").addClass("update");
+                    });
+                </script>';                  
+                
+            }        
+                        
+
+        } 
+        
+        //On multisite it won't show us the update link
+        //so we need to make it ourselves
+        if(is_multisite()) {
+            
+            if(!$version) {
+                $version = License::get_latest_version();
+            }
 
             //Version check
             if($version <= SPRESS_VER) {
@@ -92,7 +110,7 @@ class Menu {
 
             $update_url = wp_nonce_url(self_admin_url('update.php?action=upgrade-plugin&plugin=' . $plugin_file), 'upgrade-plugin_' . $plugin_file);
         
-            echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
+            echo "<tr class='plugin-update-tr active update' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
                     <td colspan='4' class='plugin-update'>
                         <div class='update-message notice inline notice-warning notice-alt'>
                             <p>There is a new version of SpeedifyPress available. 
@@ -110,14 +128,20 @@ class Menu {
                     </td>
                 </tr>";
 
-        }
+                echo "<style>
+                tr.update[data-plugin='". $plugin_file. "'] th, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] th 
+                tr.update[data-plugin='". $plugin_file. "'] td, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] td {
+                    box-shadow:none !important;
+                }                    
+                </style>";                
 
-        echo "<style>
-                    tr.update[data-plugin='". $plugin_file. "'] th, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] th 
-                    tr.update[data-plugin='". $plugin_file. "'] td, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] td {
-                        box-shadow:none !important;
-                    }
-                </style>";
+                echo '<script>
+                    jQuery(document).ready(function($) {
+                        $("tr[data-plugin=\''. $plugin_file. '\']").addClass("update");
+                    });
+                </script>';                  
+
+        }
 
     }
     
@@ -172,7 +196,7 @@ class Menu {
 
             //Add download link for latest version
             if($release_data['version'] > SPRESS_VER
-                && get_option('spress_namespace_EMAIL') !== false) {
+                && get_option('spress_namespace_INVOICE_NUMBER') !== false) {
                 $release_data['download_link'] = License::get_download_link();
             }
 

@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.53.0
+Version: 0.54.0
 Text Domain: speedify-press
 Author URI: https://github.com/acid-drop
 */
@@ -21,9 +21,10 @@ $plugin_version_full = $plugin_data['Version'];
 
 // Define constants
 define('SPRESS_VER', $plugin_version_full);
-define('SPRESS_FILE_NAME', plugin_basename(__FILE__));
+define('SPRESS_FILE_NAME', plugin_basename(__FILE__)); //e.g speedify_press_plugin/speedify_press.php
 define('SPRESS_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('SPRESS_PLUGIN_DIR', plugin_dir_path(__FILE__));
+
 
 //Might already be defined in advanced-cache.php
 if ( ! defined( 'SPRESS_DIR_NAME' ) ) {

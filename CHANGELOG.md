@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.54.0
+- Fix: fixes required for license handling
+
 ### 0.53.0
 - Feat: Cloudflare worker should ignore kinsta uptime bot 
 - Fix: Cache should correctly strip querystrings 
