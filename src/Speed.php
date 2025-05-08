@@ -1507,6 +1507,8 @@ class Speed {
     
         // Save as purged
         Speed::$done_purge[$url.implode('',$file_types)] = true;
+
+
     }
     
 
@@ -1519,35 +1521,57 @@ class Speed {
      * @return void
      */
     public static function deleteSpecificFiles($dir, $patterns) {
-    
         // Ensure the directory exists
         if (!is_dir($dir)) {
             return;
         }
-    
-        // Create a RecursiveDirectoryIterator to iterate through the directory and subdirectories
+
+        // Normalize patterns for case-insensitive matching
+        $patterns = array_map('strtolower', $patterns);
+
+        // Iterate children first so we can remove empty directories
         $iterator = new \RecursiveIteratorIterator(
             new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
             \RecursiveIteratorIterator::CHILD_FIRST
         );
-    
-        // Normalize patterns: Ensure all patterns are lowercase for case-insensitive matching
-        $patterns = array_map('strtolower', $patterns);
-    
-        // Loop through each item (file/folder) in the directory
-        foreach ($iterator as $file) {
-            if ($file->isFile()) {
-                $filename = strtolower($file->getFilename());
-    
-                // Check if the filename ends with any of the patterns
+
+        foreach ($iterator as $fileInfo) {
+            $path = $fileInfo->getRealPath();
+
+            if ($fileInfo->isFile()) {
+                $filename = strtolower($fileInfo->getFilename());
+
+                // Delete files matching any of the patterns
                 foreach ($patterns as $pattern) {
                     if (substr($filename, -strlen($pattern)) === $pattern) {
-                        unlink($file->getRealPath());
-                        break; // Stop checking other patterns once a match is found
+                        @unlink($path);
+                        break;
                     }
+                }
+
+            } elseif ($fileInfo->isDir()) {
+                $subPath = $fileInfo->getRealPath();
+                $entries = [];
+                // Gather remaining items in this directory
+                foreach (new \FilesystemIterator($subPath, \FilesystemIterator::SKIP_DOTS) as $entry) {
+                    $entries[] = $entry;
+                }
+
+                // If only one file named "update_required", remove it and the folder
+                if (count($entries) === 1
+                    && $entries[0]->isFile()
+                    && strtolower($entries[0]->getFilename()) === 'update_required'
+                ) {
+                    @unlink($entries[0]->getRealPath());
+                    @rmdir($subPath);
+
+                // Else if completely empty, just remove the folder
+                } elseif (empty($entries)) {
+                    @rmdir($subPath);
                 }
             }
         }
+
     }
         
     /**
