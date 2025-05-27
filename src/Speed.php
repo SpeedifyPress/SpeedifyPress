@@ -1638,7 +1638,7 @@ class Speed {
         
         // Check if the expiry is numeric and not in the past.
         if (!is_numeric($expiry) || time() > (int)$expiry) {
-            //return false; // Token expired.
+            return false; // Token expired.
         }
         
         // Recompute the signature based on the expiry, random, and URL.
