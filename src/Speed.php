@@ -1082,8 +1082,13 @@ class Speed {
 
         }
 
-        // Add directly after title
-        $dom->outertext = str_replace("</title>","</title>".$preload_html,$dom->outertext);
+        // Add directly after the *first* </title>
+        $dom->outertext = preg_replace(
+            '/<\/title>/',
+            '</title>' . $preload_html,
+            $dom->outertext,
+            1
+        );
 
         return $dom;
 
