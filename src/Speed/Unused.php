@@ -171,6 +171,13 @@ class Unused {
             $url = $href_match[1] ?? false;
 
             if($url) {
+
+                if (strpos($url, '//') === 0) {
+                    $url = (is_ssl() ? 'https:' : 'http:') . $url;
+                } elseif (! preg_match('#^https?://#i', $url)) {
+                    $url = rtrim(home_url(), '/') . '/' . ltrim($url, '/');
+                }
+
                 $url = self::url_remove_querystring($url);
                 self::$stylesheet_urls[] = $url;
             }
