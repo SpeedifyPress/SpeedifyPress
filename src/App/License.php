@@ -205,6 +205,7 @@ class License {
             if ($subscription->error) {
 
                 set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
+                set_transient('spress_allowed_hosts', "0");
                 return array("error" => $subscription->error);
 
             } elseif ($subscription->success) {
@@ -232,6 +233,7 @@ class License {
 
         set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
         update_option('spress_namespace_INVOICE_NUMBER', "", false);
+        set_transient('spress_allowed_hosts', "0");
         return false;
     }
 

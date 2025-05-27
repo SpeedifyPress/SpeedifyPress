@@ -478,7 +478,13 @@ class CSS {
                 }
             }
                      
-            $output = str_replace("</title>","</title>".$preload,$output);
+            // only replace the first </title> with itself + $preload
+            $output = preg_replace(
+                '/<\/title>/', 
+                '</title>' . $preload, 
+                $output, 
+                1
+            );
 
             if(self::$inclusion_mode == "inline-grouped") {
 
