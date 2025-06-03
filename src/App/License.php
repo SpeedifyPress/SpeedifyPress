@@ -15,6 +15,7 @@ class License {
 
     public static $allowed_hosts;
     public static $num_current_hosts;
+    public static $plan_type;
 
     /**
      * Initializes the licensing class.
@@ -145,13 +146,19 @@ class License {
      *
      * @return string The URL to the latest plugin zip file.
      */
-    public static function get_download_link() {
+    public static function get_download_link($for_worker=false) {
 
         if(get_option('spress_namespace_INVOICE_NUMBER') === false || get_option('spress_namespace_INVOICE_NUMBER') === ''){ 
             return false; 
         }
 
-        return 'https://speedifypress.com/license/download/?invoice=' . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
+        if($for_worker === true) {
+            $stem = 'https://speedifypress.com/license/worker/?invoice=';
+        } else {
+            $stem = 'https://speedifypress.com/license/download/?invoice=';
+        }
+
+        return $stem . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
 
     }
 
@@ -210,6 +217,11 @@ class License {
 
             } elseif ($subscription->success) {
 
+                //Allow auto update
+                delete_site_transient( 'update_plugins' );
+                wp_update_plugins();                
+
+                //Set configs
                 $subscription_ends = (int) $subscription->success;
                 $expires_in = $subscription_ends - time();
                 $expires_in = max($expires_in, 0);
@@ -221,11 +233,9 @@ class License {
 
                 set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $expires_in);
 
-                update_option('spress_namespace_INVOICE_NUMBER', $number, false);
+                set_transient('spress_plan_type', $subscription->plan_type, false);
 
-                //Allow auto update
-                delete_site_transient( 'update_plugins' );
-                wp_update_plugins();
+                update_option('spress_namespace_INVOICE_NUMBER', $number, false);
 
                 return true;
             }
