@@ -5,12 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.56.0 - 2025-06-04
+- Fix: Stylesheet media attributes should be taken into account
+- Feat: A free plan is required
+
 ### 0.55.0 - 2025-05-27
 - Fix: Code incorrectly being added to the head #20
 - Fix: Unused CSS missing URLs that don't start with http(s) #21
 - Fix: Correctly set allowed hosts to 0 when required #22
 - Fix: CSRF token should expire after 30 seconds #23
-
 
 ### 0.54.2 - 2025-05-08
 - Fix: Cache clear should remove empty dirs
