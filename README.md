@@ -366,13 +366,20 @@ Enter JavaScript here that should be run after all the scripts have finished loa
 SpeedifyPress is licensed under the **GNU General Public License v2.0 or later (GPL)**.  
 You are free to use, study, modify, and redistribute the source code under the terms of the GPL.
 
-### Subscription Benefits
+### Free Plan
+
+A free subscription unlocks:
+
+- Access to all the plugin features except the Cloudflare integration
+- A single site license
+
+### Paid Plan
 
 A paid subscription unlocks:
 
-- Access to the latest official build of SpeedifyPress  
-- Automatic updates via our private update server  
+- Access to all the plugin features including the Cloudflare integration
+- An unlimited site license
 - Personal installation and configuration support  
 
-> ⚠️ While the GPL allows code redistribution and modification, unlocking premium features requires a valid subscription.  
+> ⚠️ While the GPL allows code redistribution and modification, unlocking features requires a valid subscription.  
 > The locking mechanism is designed to encourage support and continued development, but it does not restrict your legal rights under the GPL.

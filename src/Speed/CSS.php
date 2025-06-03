@@ -306,7 +306,7 @@ class CSS {
         $lookup = $data_object->lookup;
         
         if(is_object($lookup)) {
-                        
+            
             //Get the sheets from the output
             $sheets = self::get_stylesheets($output);      
 
@@ -324,6 +324,21 @@ class CSS {
                 //Get sheet URL
                 $sheet_url = $sheets[1][$key];
 
+                // Extract relevant attributes
+                $media_attr = '';
+                $title_attr = '';
+                $disabled_attr = '';
+
+                if (preg_match('/media=[\'"]([^\'"]+)[\'"]/', $tag, $matches)) {
+                    $media_attr = trim($matches[1]);
+                }
+                if (preg_match('/title=[\'"]([^\'"]+)[\'"]/', $tag, $matches)) {
+                    $title_attr = trim($matches[1]);
+                }
+                if (preg_match('/\sdisabled\b/', $tag)) {
+                    $disabled_attr = 'disabled';
+                }
+
                 //Remove version
                 $sheet_url = Unused::url_remove_querystring($sheet_url);
 
@@ -338,6 +353,7 @@ class CSS {
                             $file = Speed::get_root_cache_path() . "/" . $lookup->$sheet_url;
                             if (file_exists($file)) {
                                 $newInlineCSS = file_get_contents($file);
+
                                 // Optionally, minify the inline CSS.
                                 $minifier = new Minify\CSS($newInlineCSS);
                                 $newInlineCSS = $minifier->minify();
@@ -345,7 +361,17 @@ class CSS {
                                 $newInlineCSS = "";
                             }
                             if($newInlineCSS) {
-                                $new_tag = "<style rel='spress-inlined-".$sheet_url."' data-spcid='".$sheet_url ."'>" . $newInlineCSS . "</style>";
+                                if (!empty($media_attr)) {
+                                    $newInlineCSS = "@media {$media_attr} {" . $newInlineCSS . "}";
+                                }
+                                $attrs = "rel='spress-inlined-".$sheet_url."' data-spcid='".$sheet_url ."'";
+                                if (!empty($title_attr)) {
+                                    $attrs .= " data-original-title='" . htmlspecialchars($title_attr, ENT_QUOTES) . "'";
+                                }
+                                if (!empty($disabled_attr)) {
+                                    $attrs .= " data-original-disabled='true'";
+                                }
+                                $new_tag = "<style $attrs>" . $newInlineCSS . "</style>";
                             } else {
                                 $new_tag = "";
                             }
@@ -375,32 +401,42 @@ class CSS {
                             $minifier = new Minify\CSS($inline_file_contents);
                             $inline_file_contents = $minifier->minify();        
 
+                            if (!empty($media_attr)) {
+                                $inline_file_contents = "@media {$media_attr} {" . $inline_file_contents . "}";
+                            }
+
                             if(self::$inclusion_mode == "inline") {
 
-                                $output = str_replace($tag,"<style rel='spress-inlined' data-original-href='".$sheet_url ."'>".$inline_file_contents. "</style>",$output);
-    
+                                $attrs = "rel='spress-inlined' data-original-href='".$sheet_url."'";
+                                if (!empty($title_attr)) {
+                                    $attrs .= " data-original-title='" . htmlspecialchars($title_attr, ENT_QUOTES) . "'";
+                                }
+                                if (!empty($disabled_attr)) {
+                                    $attrs .= " data-original-disabled='true'";
+                                }
+
+                                $output = str_replace($tag,"<style $attrs>".$inline_file_contents. "</style>",$output);
+
                             } else {
 
                                 $inline_css .= $inline_file_contents;
-    
+
                                 //Save first tag for replacement
                                 if($count == 1) {
                                     $first_tag = $tag;
                                 } else {
                                     $output = str_replace($tag,"",$output);
                                 }
-    
+
                             }
 
                         }
-
-                        
-
 
                     } else {
 
                         if(self::$mode == "stats") {
                             
+                            // In stats mode, just mark it as processed.
                             $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$tag);                        
 
                         } else {
@@ -411,6 +447,17 @@ class CSS {
                                 $new_tag = str_replace($sheet_url,Speed::get_root_cache_url() . "/" . $lookup->$sheet_url_lookup,$tag);
                                 //Tag as processed
                                 $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
+
+                                // Restore missing attributes if necessary
+                                if (!empty($media_attr) && strpos($new_tag, 'media=') === false) {
+                                    $new_tag = str_replace(">", " media='" . htmlspecialchars($media_attr, ENT_QUOTES) . "'>", $new_tag);
+                                }
+                                if (!empty($title_attr) && strpos($new_tag, 'title=') === false) {
+                                    $new_tag = str_replace(">", " title='" . htmlspecialchars($title_attr, ENT_QUOTES) . "'>", $new_tag);
+                                }
+                                if (!empty($disabled_attr) && strpos($new_tag, 'disabled') === false) {
+                                    $new_tag = str_replace(">", " disabled>", $new_tag);
+                                }
                             }
 
                         }
@@ -423,7 +470,6 @@ class CSS {
                     //Not found in lookup, mark as processed
                     $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$tag); 
                     $output = str_replace($tag, $new_tag, $output);
-                                    
 
                 }
 
@@ -477,7 +523,7 @@ class CSS {
                     }
                 }
             }
-                     
+                    
             // only replace the first </title> with itself + $preload
             $output = preg_replace(
                 '/<\/title>/', 
@@ -495,7 +541,6 @@ class CSS {
                 $output = str_replace($first_tag,"<style rel='spress-inlined'>".$inline_css."</style>",$output);
 
             }
-            
 
         }       
 
@@ -503,10 +548,10 @@ class CSS {
         $elapsed_time = $end_time - $start_time;
         $output .=  "<!-- Elapsed CSS " . number_format($elapsed_time,2) . "-->";
 
-
         return $output;
+    }
 
-    }       
+     
 
     /**
      * Determine if a font file is likely an icon font.

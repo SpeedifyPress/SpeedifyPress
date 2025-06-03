@@ -251,7 +251,7 @@ class Menu {
             );
 
             //Check if Woo is installed
-            if(is_plugin_active('woocommerce/woocommerce.php')) {
+            if(function_exists('is_plugin_active') && is_plugin_active('woocommerce/woocommerce.php')) {
                 $quicklinks_array[] = array("name"=>"Products", "slug"=>"edit.php?post_type=product");
                 $quicklinks_array[] = array("name"=>"Orders", "slug"=>"edit.php?post_type=shop_order");
                 $quicklinks_array[] = array("name"=>"Logs", "slug"=>"admin.php?page=wc-status&tab=logs");

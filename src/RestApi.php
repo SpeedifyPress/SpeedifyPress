@@ -129,6 +129,22 @@ class RestApi {
         //Test and sanitize
         $config = App\Config::ensure_valid($config);
 
+        //See if allowed to enable
+        if($config['config_key'] == "plugin"
+            && ($config['plugin_mode'] == "enabled" || $config['plugin_mode'] == "partial")
+        ) {
+            
+            $can_download = App\License::get_download_link();
+            if(!$can_download) {
+                //Throw error
+                return new \WP_Error(
+                    'no_license',
+                    'No license found. Please sign up for a free license to activate the plugin.',
+                    [ 'status' => 403 ]
+                );
+            }
+        }
+
         //Save the config
         App\Config::update_config($config);
 
@@ -156,8 +172,9 @@ class RestApi {
 
     public static function get_cloudflare_script() {
 
-        $script_location = __DIR__ . '/../assets/cloudflare_worker.js';
-        if(file_exists($script_location)) {
+        $location = App\License::get_download_link(true);
+        
+        if($location) {
 
             //Get contents
             $contents = file_get_contents($script_location);
