@@ -283,9 +283,18 @@ class RestApi {
         //Decode from base64
         $license_number = self::get_decoded($json,'license_number');
         $license = App\License::check_license($license_number);
-        $data['success'] = $license;
-        $data['allowed_hosts'] = App\License::$allowed_hosts;
-        $data['num_current_hosts'] = App\License::$num_current_hosts;
+        if(isset($license['error'])
+        && $license['error'] != '') {
+            return new \WP_Error(
+                'license_failed',
+                $license['error'],
+                [ 'status' => 403 ]
+            );            
+        } else {
+            $data['success'] = $license;
+            $data['allowed_hosts'] = App\License::$allowed_hosts;
+            $data['num_current_hosts'] = App\License::$num_current_hosts;
+        }
         return $data;
 
     }    
