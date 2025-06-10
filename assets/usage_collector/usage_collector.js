@@ -676,7 +676,15 @@ class CSSUsageCollector {
     }    
 
     let num_inlined = document.querySelectorAll("style[rel='spress-inlined']").length;
+
     let num_to_process = document.querySelectorAll('link[rel="stylesheet"][href]:not([data-spress-processed="true"])').length;
+    let currentDomain = new URL(window.location.href).hostname;
+    Array.prototype.forEach.call(document.querySelectorAll('link[rel="stylesheet"][href]:not([data-spress-processed="true"])'), function(link) {
+    let linkDomain = new URL(link.href).hostname;
+        if (linkDomain !== currentDomain) {
+            num_to_process--;
+        }
+    });    
 
     if(resolutions[deviceType] === 'true' && num_inlined === 0 && num_to_process > 0) {
         var includePatterns = JSON.parse(speed_css_vars.include_patterns); // patterns to always include

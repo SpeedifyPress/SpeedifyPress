@@ -645,7 +645,7 @@ class Cache {
             global $kinsta_cache;
             if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
                 // Flush full-page + edge + CDN caches
-                $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+                $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
             }
 
         }

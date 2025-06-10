@@ -228,7 +228,7 @@ class CSS {
         if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
             // Flush full-page + edge + CDN caches
             //$kinsta_cache->kinsta_cache_purge->initiate_purge( $post_id, 'post' );//didn't seem to be working properly
-            $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+            $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
         }
                 
 
@@ -1462,7 +1462,7 @@ class CSS {
         global $kinsta_cache;
         if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
             // Flush full-page + edge + CDN caches
-            $kinsta_cache->kinsta_cache_purge->purge_complete_caches();
+            $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
         }        
 
     }
@@ -1483,7 +1483,23 @@ class CSS {
         !preg_match("@update_css|wp-cron|wp-json@",$_SERVER['REQUEST_URI'])
         && is_user_logged_in() && current_user_can('edit_posts')) {
 
+            $post = get_post($post_id);
+            $excluded_post_types = [
+                'shop_order', 'revision', 'nav_menu_item',
+                'custom_css', 'customize_changeset', 'oembed_cache',
+                'user_request', 'wp_block', 'wp_template', 'wp_template_part'
+            ];
+
+            if (in_array($post->post_type, $excluded_post_types, true)) {
+                return;
+            }            
+
             $url = get_permalink($post_id);
+
+            if (strstr($url, '?p=')) {
+                return;//Not a post
+            }
+
             Speed::purge_cache($url,array("css","lookup.json"));
 
         }

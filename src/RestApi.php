@@ -177,7 +177,7 @@ class RestApi {
         if($location) {
 
             //Get contents
-            $contents = file_get_contents($script_location);
+            $contents = file_get_contents($location);
 
             //Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
             $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
@@ -186,6 +186,8 @@ class RestApi {
             return $contents;
 
         }
+
+        return false;
         
     }
 

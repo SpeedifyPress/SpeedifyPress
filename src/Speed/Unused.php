@@ -31,6 +31,13 @@ class Unused {
         'keyframes' => [],         
     ];
 
+    /**
+     * @var array<string,string>
+     *   Maps a custom property name (e.g. "--h1_typography-font-family")
+     *   to its raw value (e.g. "Oswald, Verdana, Geneva, sans-serif")
+     */
+    protected static $css_variables = [];
+
     protected static $allow_selectors = [];
     protected static $current_stylesheet = null;
     protected static $body_classes = [];
@@ -193,6 +200,10 @@ class Unused {
 
         $parsed = self::get_parsed_sheet($url);
         if($parsed) {
+
+            // first collect all --* variables into self::$css_variables
+            self::collect_css_vars($parsed);
+
             self::find_used_fonts_keyframes_in_css($parsed, $url);
         } 
 
@@ -340,9 +351,28 @@ class Unused {
         // Extract font-family
         if (preg_match_all('/font-family\s*:\s*([^;]+);?/', $html, $matches)) {
             foreach ($matches[1] as $font) {
+
+                //  If it's using var(--some-var, optional-fallback), resolve:
+                if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)/', $font, $m)) {
+                    $var_name = $m[1];
+                    if (isset(self::$css_variables[$var_name])) {
+                        foreach (explode(',', self::$css_variables[$var_name]) as $fam) {
+                            $fam_clean = trim(trim($fam), "\"'");
+                            if ($fam_clean !== '') {
+                                self::$used_markup['fonts'][$fam_clean] = 1;
+                            }
+                        }
+                        continue;
+                    }
+                }
+
+                // Otherwise split on commas as before:
                 $families = explode(',', $font);
                 foreach ($families as $fam) {
-                    self::$used_markup['fonts'][trim(trim($fam), '\"\'')] = 1;
+                    $fam_clean = trim(trim($fam), "\"'");
+                    if ($fam_clean !== '') {
+                        self::$used_markup['fonts'][$fam_clean] = 1;
+                    }
                 }
             }
         }
@@ -399,6 +429,7 @@ class Unused {
 
                 
             } elseif ($content instanceof DeclarationBlock) {
+
                 $selectors = $content->getSelectors();
     
                 // Regular CSS rule with selectors
@@ -417,28 +448,76 @@ class Unused {
                             $val = $rule->getValue();
                             $val_str = $val instanceof \Sabberworm\CSS\Value\Value ? $val->render(OutputFormat::createCompact()) : (string) $val;
                     
+                            // If this is a CSS custom-property (starts with "--"), store it and skip:
+                            if (strpos($rule_name, '--') === 0) {
+                                self::$css_variables[$rule_name] = trim($val_str);
+                                continue;
+                            }  
+
                             // Capture font-family
                             if ($rule_name === 'font-family') {
-                                $families = explode(',', $val_str);
-                                foreach ($families as $fam) {
-                                    $fam_clean = trim(trim($fam), "\"'");
-                                    if ($fam_clean) {
-                                        self::$used_markup['fonts'][$fam_clean] = 1;
-                                    }
+
+                                $pattern = '/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)\s*(?:!important)?/i';
+
+                                // If it's using var(--some-var):
+                                if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)/', $val_str, $m)) {
+
+                                        $var_name = $m[1]; // "--h1_typography-font-family"
+
+                                        if (isset(self::$css_variables[$var_name])) {
+                                            // Get e.g. "Oswald,Verdana,Geneva,sans-serif"
+                                            $real_families = self::$css_variables[$var_name];
+                                            foreach (explode(',', $real_families) as $fam) {
+                                                // Trim any stray quotes or spaces
+                                                $fam_clean = trim(trim($fam), "\"'");
+                                                if ($fam_clean !== '') {
+                                                    self::$used_markup['fonts'][$fam_clean] = 1;
+                                                }
+                                            }
+                                        } 
+
+                                } else {
+
+                                        $families = explode(',', $val_str);
+                                        foreach ($families as $fam) {
+                                            $fam_clean = trim(trim($fam), "\"'");
+                                            if ($fam_clean) {
+                                                self::$used_markup['fonts'][$fam_clean] = 1;
+                                            }
+                                        }
+
                                 }
+
                             }
 
                             // Capture from 'font' shorthand
                             if ($rule_name === 'font') {
-                                $parts = explode(',', $val_str);
-                                foreach ($parts as $part) {
-                                    $tokens = preg_split('/\s+/', trim($part));
-                                    if (!empty($tokens)) {
-                                        $maybe_font = trim(end($tokens), "\"'");
-                                        if ($maybe_font && strtolower($maybe_font) !== 'inherit') {
-                                            self::$used_markup['fonts'][$maybe_font] = 1;
+
+                                // If it's using var(--some-var):
+                                if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)\s*\)/', $val_str, $m)) {
+                                    $var_name = $m[1];
+                                    if (isset(self::$css_variables[$var_name])) {
+                                        $real_families = self::$css_variables[$var_name];
+                                        foreach (explode(',', $real_families) as $fam) {
+                                            $fam_clean = trim(trim($fam), "\"'");
+                                            if ($fam_clean) {
+                                                self::$used_markup['fonts'][$fam_clean] = 1;
+                                            }
                                         }
                                     }
+                                } else {
+
+                                    $parts = explode(',', $val_str);
+                                    foreach ($parts as $part) {
+                                        $tokens = preg_split('/\s+/', trim($part));
+                                        if (!empty($tokens)) {
+                                            $maybe_font = trim(end($tokens), "\"'");
+                                            if ($maybe_font && strtolower($maybe_font) !== 'inherit') {
+                                                self::$used_markup['fonts'][$maybe_font] = 1;
+                                            }
+                                        }
+                                    }
+
                                 }
                             }                            
                     
@@ -739,6 +818,35 @@ class Unused {
         return $csstxt;
 
     }
+
+    /**
+     * First pass: walk the entire parsed CSS tree and collect all custom-property
+     * definitions (rules like "--foo: bar;"), storing them in self::$css_variables.
+     *
+     * @param CSSBlockList $data The parsed CSS blocklist
+     * @return void
+     */
+    protected static function collect_css_vars(CSSBlockList $data) {
+        foreach ($data->getContents() as $content) {
+            if ($content instanceof DeclarationBlock) {
+                foreach ($content->getRules() as $rule) {
+                    $rule_name = strtolower($rule->getRule());
+                    $val       = $rule->getValue();
+                    $val_str   = $val instanceof \Sabberworm\CSS\Value\Value
+                            ? $val->render(OutputFormat::createCompact())
+                            : (string)$val;
+                    if (strpos($rule_name, '--') === 0) {
+                        // Store "--foo: bar" => css_variables['--foo'] = 'bar'
+                        self::$css_variables[$rule_name] = trim($val_str);
+                    }
+                }
+            }
+            elseif ($content instanceof AtRuleBlockList) {
+                // Recurse into nested @media, etc.
+                self::collect_css_vars($content);
+            }
+        }
+    }    
 
 
     /**
