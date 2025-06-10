@@ -51,21 +51,9 @@
     }
   };
 
-  (function () {
-    function onDomReady(callback) {
-      if (document.readyState === "complete" || document.readyState === "interactive") {
-        callback();
-      } else {
-        document.addEventListener("DOMContentLoaded", () => {
-          callback();
-        });
-      }
-    }
-  
-    // Run when DOM is ready
-    onDomReady(() => {
-      //Check our position on the page, if scrolled down
-      //run this
+  // Run our restore *after* the browser has restored scroll on refresh/back/forward.
+  window.addEventListener('pageshow', () => {
+
       setTimeout(() => {
         const scrolledDownPosition = window.scrollY || window.pageYOffset;
         //console.log(scrolledDownPosition);
@@ -73,7 +61,6 @@
           //console.log("restoring template content");
           window.restoreTemplateContentAndImages();
         }          
-      },100)
-    });
-  })();
-  
+      },250);
+
+  });

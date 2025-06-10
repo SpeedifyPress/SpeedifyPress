@@ -1531,6 +1531,11 @@ class Speed {
             return;
         }
 
+        //Ensure that the directory in within the cache directory
+        if (strpos($dir, Speed::get_root_cache_path()) === false) {
+            return;
+        }
+
         // Normalize patterns for case-insensitive matching
         $patterns = array_map('strtolower', $patterns);
 
