@@ -4,7 +4,7 @@
     "author": "<a href='https:\/\/speedifypress.com'>SpeedifyPress<\/a>",
     "author_profile": "https:\/\/speedifypress.com",
     "homepage": "https:\/\/speedifypress.com",
-    "version": "0.57.0",
+    "version": "0.57.1",
     "requires": "4.7",
     "tested": "6.8.1",
     "requires_php": "7.2.24",

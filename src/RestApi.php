@@ -179,9 +179,13 @@ class RestApi {
             //Get contents
             $contents = file_get_contents($location);
 
-            //Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
-            $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
+            if(strstr($contents, 'this.csrf_salt')) {
 
+                //Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
+                $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
+
+            } 
+            
             //Return contents
             return $contents;
 
