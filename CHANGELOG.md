@@ -5,18 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.58.0 - 2025-07-11
+- Licensing tweaks
+- Improvements to intersection observer
+- Minor bug fixes to delay.js
+- Turn off debugging on usage collector
+- Better disable for builder keywords
+- Better View Details link in plugin display
+- Improved cache deletion
+
 ### 0.57.1 - 2025-06-10
-Licensing hotfixes
+- Licensing hotfixes
 
 ### 0.57.0 - 2025-06-10
-Fixes:
-- Licensing text
-- Template content restoration reliability
-- Usage collector ignoring external styles
-- RestAPI typo
-- CSS increased reliability
-- Kinsta increased reliability
-- UnusedCSS better handle font variables
+- Fixes:
+    - Licensing text
+    - Template content restoration reliability
+    - Usage collector ignoring external styles
+    - RestAPI typo
+    - CSS increased reliability
+    - Kinsta increased reliability
+    - UnusedCSS better handle font variables
 
 ### 0.56.1 - 2025-06-04
 - Fix: minor licensing fixes

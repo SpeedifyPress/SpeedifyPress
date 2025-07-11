@@ -619,7 +619,8 @@ class CSS {
         //Get file
         $path_to_file = self::get_css_pagecache_file();
 
-        if(!file_exists($path_to_file)) {
+        //Write file
+        if(!file_exists($path_to_file) && !file_exists($path_to_file.".gz")) {
             $output = Cache::save_cache($path_to_file, $output, "CSS html cached", true);
         }
         
@@ -1451,12 +1452,12 @@ class CSS {
         //Don't delete if no hostname found
         if(Speed::$hostname) {
             $dir = Speed::get_root_cache_path();
-            Speed::deleteSpecificFiles($dir,array("css","lookup.json","CSS_page_cache.html.gz"));        
+            Speed::deleteSpecificFiles($dir,array("css","lookup.json","CSS_page_cache.html.gz"),true);        
         }
 
         //Integrations
         if(defined('FLYING_PRESS_CACHE_DIR')) {
-            Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"));
+            Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"),true);
         }
         
         global $kinsta_cache;
@@ -1499,8 +1500,9 @@ class CSS {
             if (strstr($url, '?p=')) {
                 return;//Not a post
             }
+            
 
-            Speed::purge_cache($url,array("css","lookup.json"));
+            Speed::purge_cache($url,array("lookup.json","html","gz"));
 
         }
 

@@ -55,7 +55,7 @@ class Menu {
         add_action( 'after_plugin_row_' . SPRESS_FILE_NAME, array( __CLASS__, 'show_update_notification' ), 10, 2 );
 
         //Add view details link
-        //add_filter('plugin_row_meta', array(__CLASS__, 'add_view_details_link'), 10, 3);
+        add_filter('plugin_row_meta', array(__CLASS__, 'add_view_details_link'), 10, 3);
 
     }
 
@@ -156,9 +156,16 @@ class Menu {
         // Ensure this is only applied to the SPRESS plugin
         if ($plugin_file === SPRESS_FILE_NAME) {
                         
+            // Skip if WordPress already added a View Details link
+            foreach ($plugin_meta as $meta) {
+                if (stripos($meta, 'plugin-install.php') !== false && stripos($meta, 'thickbox') !== false) {
+                    return $plugin_meta; // WP already added the view link
+                }
+            }            
+
             // Define the link to the plugin details page with ThickBox support
             $view_details_link = sprintf(
-                '<a href="%s" class="thickbox" title="%s">View Details</a>',
+                '<a href="%s" class="thickbox" title="%s">View details</a>',
                 esc_url(License::get_plugin_info_url()),
                 esc_attr($plugin_data['Name'] ?? 'Plugin Details')
             );

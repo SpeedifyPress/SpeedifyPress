@@ -1525,7 +1525,7 @@ class Speed {
      *
      * @return void
      */
-    public static function deleteSpecificFiles($dir, $patterns) {
+    public static function deleteSpecificFiles($dir, $patterns,  $recursive = false) {
         // Ensure the directory exists
         if (!is_dir($dir)) {
             return;
@@ -1539,11 +1539,17 @@ class Speed {
         // Normalize patterns for case-insensitive matching
         $patterns = array_map('strtolower', $patterns);
 
-        // Iterate children first so we can remove empty directories
-        $iterator = new \RecursiveIteratorIterator(
-            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
-            \RecursiveIteratorIterator::CHILD_FIRST
-        );
+
+        if ($recursive) {
+            // Iterate children first so we can remove empty directories
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::CHILD_FIRST
+            );
+        } else {
+            // Non-recursive iteration
+            $iterator = new \FilesystemIterator($dir, \FilesystemIterator::SKIP_DOTS);
+        }        
 
         foreach ($iterator as $fileInfo) {
             $path = $fileInfo->getRealPath();

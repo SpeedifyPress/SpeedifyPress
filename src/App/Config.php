@@ -147,7 +147,7 @@ class Config {
 			'generation_res' => array(
 				'name'   => 'Generation Resolutions',
 				'helper' => 'Screen resolutions at which the Unused CSS will be generated',
-				'value' => array('mobile'=>'true','tablet'=>'true','desktop'=>'true'),
+				'value' => array('mobile'=>'false','tablet'=>'false','desktop'=>'true'),
 			),
 		),		
 		'speed_js'  => array(
@@ -287,9 +287,6 @@ class Config {
 		self::$config = (array)get_option( 'spress_namespace_CONFIG', array() );
 		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
 
-		#print_r(self::$config);
-		#die();
-
 		// Example of how to update one of the default configs
 		#$docs = self::$initial_config['docs'];
 		#$update = array("config_key"=>"docs","iframe"=>$docs['iframe']['value']);
@@ -314,6 +311,19 @@ class Config {
 		if(strstr($current_url,"/wp-json/speedifypress/")){
 			return true;
 		}		
+
+		// Disable for builder querystrings
+		$builder_querystrings = array('vc_', 'fb');
+
+		// Loop through each builder keyword
+		foreach ($builder_querystrings as $builder_querystring) {
+			foreach ($_GET as $key => $value) {
+				// Check if the query string key contains the builder keyword
+				if (strpos($key, $builder_querystring) !== false) {
+					return false;
+				}
+			}
+		}
 
 		//get mode
 		$mode = self::get('plugin','plugin_mode');

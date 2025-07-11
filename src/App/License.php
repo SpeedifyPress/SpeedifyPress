@@ -209,20 +209,20 @@ class License {
         if ($body !== '0' && !empty($body)) {
             $subscription = json_decode($body);
 
-            if ($subscription->error) {
+            if (isset($subscription->error)) {
 
                 set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
                 set_transient('spress_allowed_hosts', "0");
                 return array("error" => $subscription->error);
 
-            } elseif ($subscription->success) {
+            } elseif (isset($subscription->success)) {
 
                 //Allow auto update
                 delete_site_transient( 'update_plugins' );
                 wp_update_plugins();                
 
                 //Set configs
-                $subscription_ends = (int) $subscription->success;
+                $subscription_ends = $subscription->success;
                 $expires_in = $subscription_ends - time();
                 $expires_in = max($expires_in, 0);
 
@@ -233,7 +233,7 @@ class License {
 
                 set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $expires_in);
 
-                set_transient('spress_plan_type', $subscription->plan_type, false);
+                set_transient('spress_plan_type', ($subscription->plan_type ?? ''), false);
 
                 update_option('spress_namespace_INVOICE_NUMBER', $number, false);
 
