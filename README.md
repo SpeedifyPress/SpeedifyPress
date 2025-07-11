@@ -41,7 +41,7 @@ SpeedifyPress is a performance optimization toolkit for WordPress, built for dev
 ## ⚡ Quick Start
 
 1. **Subscribe to the Newsletter**  
-   SpeedifyPress is available exclusively to paid subscribers. Subscribe at the [Adventures in WordPressing Substack](https://adventuresinwordpressing.substack.com/p/speedifypress) to get access.
+   SpeedifyPress is available exclusively to subscribers. Subscribe at the [Adventures in WordPressing Substack](https://adventuresinwordpressing.substack.com/p/speedifypress) to get access.
 
 2. **Download SpeedifyPress**  
    After subscribing, you'll receive a link to download the latest version of the plugin. Or you can download it from this repository.

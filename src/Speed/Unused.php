@@ -89,11 +89,6 @@ class Unused {
             self::process_sheet_for_fonts_keyfames($url);           
         }
 
-        //Pass 2, parse the CSS and remove unused
-        foreach(self::$stylesheet_urls AS $url) {
-            self::process_sheet_for_css($url);
-        }
-
         //Process inline CSS
         self::find_inline_css($html);
         $home_url = home_url();
@@ -121,6 +116,12 @@ class Unused {
             self::$stylesheets_css["id-".$spcid] = $sanitized_css;              
 
         }
+
+        //Pass 2, parse the CSS and remove unused
+        foreach(self::$stylesheet_urls AS $url) {
+            self::process_sheet_for_css($url);
+        }
+
 
         //Form return array
         return array("CSS"=>self::$stylesheets_css, 

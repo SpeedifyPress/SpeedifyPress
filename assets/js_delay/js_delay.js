@@ -191,7 +191,7 @@ class JsDelayer {
         }
 
 
-        return scriptsToLoad ?? 0;
+        return scriptsToLoad || 0;
     }
 
 
@@ -288,7 +288,7 @@ class JsDelayer {
             if (window.jQuery) {
                 const jqueryEvents = jQuery._data(jQuery(document).get(0), "events");
 
-                if (jqueryEvents?.ready) {
+                if (jqueryEvents && jqueryEvents.ready) {
                     jqueryEvents.ready.forEach(({ handler }) => {
                         if (this.debug) {
                             console.log("Triggering jQuery ready handler:", handler);
@@ -297,7 +297,7 @@ class JsDelayer {
                     });
                 }
 
-                if (jqueryEvents?.load) {
+                if (jqueryEvents && jqueryEvents.load) {
                     jqueryEvents.load.forEach(({ handler }) => {
                         if (this.debug) {
                             console.log("Triggering jQuery load handler:", handler);

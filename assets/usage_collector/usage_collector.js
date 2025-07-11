@@ -111,7 +111,7 @@ class CSSUsageCollector {
          * General debugging enabled or not
          * @type <bool>
          */
-        this.debug = true;
+        this.debug = false;
 
     }
 

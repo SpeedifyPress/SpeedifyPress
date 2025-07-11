@@ -639,7 +639,7 @@ class Cache {
         if (Speed::$hostname) {
             $dir = Speed::get_root_cache_path();
             // Speed::deleteSpecificFiles is assumed to recursively remove files matching the extensions.
-            Speed::deleteSpecificFiles($dir, array("html", "gz"));
+            Speed::deleteSpecificFiles($dir, array("html", "gz"),true);
 
             //Integrations
             global $kinsta_cache;
