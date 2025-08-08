@@ -723,7 +723,7 @@ class CSS {
 
         // Check URL patterns
         foreach ($ignore_urls as $pattern) {
-            if (@preg_match('@' . str_replace('/', '\/', trim($pattern)) . '@', $current_uri)) {
+            if (@preg_match('@' . str_replace('/', '\/', trim($pattern)) . '$@', $current_uri)) {
                 $match_found = true;
                 break;
             }
@@ -743,6 +743,12 @@ class CSS {
             }
         }
 
+        //Check if we have the nocache querystring
+        if (stripos($current_uri, 'nocache') !== false) {
+            $match_found = true;
+        }
+
+        
         return $match_found;
 
 

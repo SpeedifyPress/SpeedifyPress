@@ -18,18 +18,20 @@ use MatthiasMullie\Minify;
 class Cache {
 
     // Configuration properties (set in self::init)
-    public static $cache_mode;                 // string: either 'enabled' or 'disabled'
-    public static $bypass_cookies;             // line separated list of (partial) cookie names
-    public static $bypass_urls;                // line separated list of (partial) URLs
-    public static $ignore_querystrings;        // line separated list of query string keys
-    public static $bypass_useragents;          // line separated list of (partial) user agents
-    public static $separate_cookie_cache;      // line separated list of (partial) cookie names
-    public static $cache_logged_in_users;      // string: 'true' or 'false'
-    public static $cache_mobile_separately;    // string: 'true' or 'false'
-    public static $cache_lifetime;             // string: 0,2,6,12,24
-    public static $plugin_mode;                // string: 'enabled', 'disabled', 'partial'
-    public static $disable_urls;               // line separated list of (partial) URLs
-    public static $preload_fonts_desktop_only; //string: 'true' or 'false'
+    public static $cache_mode;                           // string: either 'enabled' or 'disabled'
+    public static $bypass_cookies;                       // line separated list of (partial) cookie names
+    public static $bypass_urls;                          // line separated list of (partial) URLs
+    public static $ignore_querystrings;                  // line separated list of query string keys
+    public static $bypass_useragents;                    // line separated list of (partial) user agents
+    public static $separate_cookie_cache;                // line separated list of (partial) cookie names
+    public static $cache_logged_in_users;                // string: 'true' or 'false'
+    public static $cache_logged_in_users_exceptions;     //line separated list of css selectors
+    public static $cache_logged_in_users_exclusively_on; //line separated list of URLs
+    public static $cache_mobile_separately;              // string: 'true' or 'false'
+    public static $cache_lifetime;                       // string: 0,2,6,12,24
+    public static $plugin_mode;                          // string: 'enabled', 'disabled', 'partial'
+    public static $disable_urls;                         // line separated list of (partial) URLs
+    public static $preload_fonts_desktop_only;           //string: 'true' or 'false'
 
     /**
      * Initializes the cache settings from configuration.
@@ -49,7 +51,13 @@ class Cache {
         self::$plugin_mode = Config::get('plugin','plugin_mode');
         self::$disable_urls = Config::get('plugin','disable_urls');
         self::$preload_fonts_desktop_only = Config::get('speed_code','preload_fonts_desktop_only');
-        
+        self::$cache_logged_in_users_exclusively_on = Config::get('speed_cache','cache_logged_in_users_exclusively_on');
+
+        //Ensure the "CF-SPU-Browser" querystring is always in the $ignore_querystrings var, as we use it to ensure our Cloudflare
+        //HEAD checks are never cached
+        if (strpos(self::$ignore_querystrings, 'CF-SPU-Browser') === false) {
+            self::$ignore_querystrings .= "\nCF-SPU-Browser";
+        }        
 
         // Register activation and deactivation hooks for advanced-cache.php.
         // Use SPRESS_FILE_NAME (a constant defined in the plugin's root file) as the main plugin file.
@@ -107,7 +115,9 @@ class Cache {
         }
 
         // If the user is logged in but caching for logged-in users is not enabled, skip caching.
-        if (function_exists('is_user_logged_in') && is_user_logged_in() && self::$cache_logged_in_users !== 'true') {
+        if (function_exists('is_user_logged_in') && is_user_logged_in() && self::$cache_logged_in_users !== 'true'
+        || Cache::is_url_logged_in_cacheable(Speed::get_url()) == false
+        ) {
             return $html;
         }
 
@@ -271,6 +281,45 @@ class Cache {
     }
 
     /**
+     * Checks if the current URL is cacheable for logged in users.
+     *
+     * If the setting "Cache logged in users only on these URLs" is filled in,
+     * checks if the current URL contains any of the entered strings.
+     * If a match is found, the URL is considered cacheable.
+     * If no match is found, the URL is not cacheable.
+     * If the setting is empty, all URLs are considered cacheable.
+     *
+     * @param string $url The URL of the page.
+     * @return boolean True if the URL is cacheable, false otherwise.
+     */
+    public static function is_url_logged_in_cacheable($url) {
+
+        //Get URL path from $url
+        $path = parse_url($url, PHP_URL_PATH);
+        
+        // Check if the URI contains any force URL strings.
+        if (!empty(self::$cache_logged_in_users_exclusively_on)) {
+            $force_urls = array_filter(array_map('trim', explode("\n", self::$cache_logged_in_users_exclusively_on)));
+
+            foreach ($force_urls as $pattern) {
+                if (@preg_match('@' . str_replace('/', '\/', trim($pattern)) . '$@', $path)) {
+                    return true;   
+                }
+            }
+
+        } else {
+            
+            //Nothing entered, everything passed
+            return true;
+
+        }
+
+        //Something entered, but no match
+        return false;
+
+    }
+
+    /**
      * Determines whether the current url is cacheable.
      *
      * Evaluates the following:
@@ -282,6 +331,9 @@ class Cache {
      * @return bool Returns false if any bypass condition is met; otherwise, true.
      */
     public static function is_url_cacheable($url) {
+
+        //Get URL path from $url
+        $path = parse_url($url, PHP_URL_PATH);
 
         // Check if any cookie matches the bypass rules.
         if (!empty(self::$bypass_cookies) && !empty($_COOKIE)) {
@@ -299,9 +351,16 @@ class Cache {
         if (!empty(self::$bypass_urls)) {
             $bypass_urls = array_filter(array_map('trim', explode("\n", self::$bypass_urls)));
             foreach ($bypass_urls as $bypass_url) {
-                if (stripos($url, $bypass_url) !== false) {
-                    return false;
-                }
+
+                if($bypass_url === "/") {
+                    if($path === "/") {
+                        return false;        
+                    }                    
+                } else {
+                    if (stripos($url, $bypass_url) !== false) {
+                        return false;
+                    }                    
+                }   
             }
         }
 
@@ -313,6 +372,11 @@ class Cache {
                     return false;
                 }
             }
+        }
+
+        //Check if we have the nocache querystring
+        if (stripos($url, 'nocache') !== false) {
+            return false;
         }
 
         return true;

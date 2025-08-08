@@ -203,10 +203,12 @@ class JsDelayer {
 
         const processScript = (index) => {
             if (index >= scripts.length) {
+                //Dispatch event back to logged_in_exceptions worker
+                document.dispatchEvent(new Event('delayedJSLoaded'));
                 if (this.debug) {
                     console.log("All scripts loaded. Triggering events and replaying saved events...");
                 }
-                this.triggerEvents().then(() => {
+                this.triggerEvents().then(() => {                    
 
                     setTimeout(() => {
                         window.removeEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
@@ -237,20 +239,29 @@ class JsDelayer {
             const src = script.getAttribute("data-src");
 
             if (this.debug) {
-                console.log("Loading script:", src);
+                console.log("Loading script:", src, script);
             }
 
-            script.onload = () => {
-                if (this.debug) {
-                    console.log("Script loaded:", src);
-                }
+            if (src == null) {
+                
+                //console.error(`Failed to load script: ${src}`);
                 processScript(index + 1);
-            };
 
-            script.onerror = () => {
-                console.error(`Failed to load script: ${src}`);
-                processScript(index + 1);
-            };
+            } else {
+
+                script.onload = () => {
+                    if (this.debug) {
+                        console.log("Script loaded:", src);
+                    }
+                    processScript(index + 1);
+                };
+
+                script.onerror = () => {
+                    console.error(`Failed to load script: ${src}`);
+                    processScript(index + 1);
+                };
+
+            }
 
             script.src = src;
             script.removeAttribute("data-src");
@@ -359,4 +370,24 @@ class JsDelayer {
         this.savedMouseovers.clear();
     }
 }
-window.JsDelayer = new JsDelayer((window.speed_js_vars.script_load_first || ''),(window.speed_js_vars.script_load_last || ''),(window.speed_js_vars.delay_seconds || 6),(window.speed_js_vars.delay_callback || false),false);
+
+(function(){
+  const startDelayer = () => {
+    window.JsDelayer = new JsDelayer(
+      (window.speed_js_vars.script_load_first  || ''),
+      (window.speed_js_vars.script_load_last   || ''),
+      (window.speed_js_vars.delay_seconds      || 6),
+      (window.speed_js_vars.delay_callback     || false),
+      false
+    );
+  };
+
+  if(document.querySelectorAll(".spress_do_delay_js").length > 0) {
+    // wait until your other script signals it’s done
+    window.speed_js_vars.delay_seconds = 0.1;
+    document.addEventListener('loggedInExceptionsDone', startDelayer, { once: true });
+  } else {
+    // fire immediately
+    startDelayer();
+  }
+})();

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.60.0 - 2025-08-07
+- Improvements to logged-in user cache 
+- Further tweaks to Cloudflare worker
+- Collapseable sidebar
+- Remove reliance on text/html request header
+- Correct writing to advanced cache
+- Don't parse XML documents
+
+### 0.59.0 - 2025-08-04
+- Cloudflare worker improvements
+
 ### 0.58.0 - 2025-07-11
 - Licensing tweaks
 - Improvements to intersection observer

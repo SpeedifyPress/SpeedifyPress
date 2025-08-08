@@ -98,7 +98,7 @@ class JS {
             
             $dom = self::rewrite_delay($dom, self::$delay_exclude);
 
-        }        
+        } 
     
         $html = $dom->outertext;
 
@@ -131,6 +131,7 @@ class JS {
         $exclude_scripts_array[] = self::$script_name; // Always exclude our own scripts
         $exclude_scripts_array[] = CSS::$script_name."-js-extra"; // Always exclude our own scripts data
         $exclude_scripts_array[] = Speed::$csrf_name; // Always exclude our csrf token
+        $exclude_scripts_array[] = "partytown"; // Always exclude partytown from delay
         $scripts = $dom->find('script');
     
         foreach ((array) $scripts as $script) {

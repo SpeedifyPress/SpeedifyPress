@@ -80,12 +80,21 @@ This decides how long your cached files will last for being automatically delete
 
 **Separate Caches**
 
-*Devices & users*
+*Devices*
 
 Allows you to create separate caches for:
 
-- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that.
 - Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
+- Cookies
+- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that or exclude certain page areas from caching.
+
+*Logged in users (BETA)*
+
+This BETA feature allows you to exclude certain areas from logged-in caching. The options work as follows:
+
+- Area. Use a CSS selector to define the area or areas of the page not to be cached
+- Skeleton. Area will be hidden with a skeleton while they are loaded in. Choose the skeleton type to use.
+- Delay JS Execution. Selecting this option will ensure that any JS applied to the replacement areas will run properly, as all JS will only run after the swap. Will only work is Delay JS is enabled for the page.
 
 **Filters**
 
@@ -111,6 +120,30 @@ Specify a line separated list of querystrings that should be ignored for caching
 ## How to use the  Cloudflare Settings?
 
 **Getting Started**
+
+Your worker will need to be able to clear the Cloudflare cache. To do this, it needs to know your Zone ID and to have a Cloudflare API token with Cache Purge permissions.
+
+*Get Your Zone ID and API Key*
+
+- Select the site you want to cache in the account home
+- Look in the right bar and make note of the **Zone ID**
+- Click 'Get your API token' just below that
+- Click 'Create Token' then 'Create Custom Token' > 'Get Started'
+- Add CF_API_TOKEN for the Token name
+- For Permissions, we only need to add one permission: Zone | Cache Purge | Purge
+- Leave the other options and Click 'Continue to Summary'
+- Click Create Token and **make note of the token**
+
+*Add Your Secrets*
+
+- Now click back on the Cloudflare logo and choose your account
+- Click 'Secrets Store'
+- Click **Create Secret**
+- *Name:* ZONE_ID | *Value:* the Zone ID you've already made note of | *Permission scope:* Workers
+- Save
+- Click Create Secret
+- *Name:* CF_API_TOKEN | *Value:* the token you've already made note of | *Permission scope:* Workers
+- Click **Create Secret**
 
 *Add A Worker*
 
