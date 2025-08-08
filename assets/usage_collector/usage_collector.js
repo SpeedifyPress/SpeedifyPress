@@ -686,7 +686,10 @@ class CSSUsageCollector {
         }
     });    
 
-    if(resolutions[deviceType] === 'true' && num_inlined === 0 && num_to_process > 0) {
+    //Don't collect if logged in exceptions
+    let num_logged_in_exceptions = document.querySelectorAll('.logged_in_exception').length;
+
+    if(resolutions[deviceType] === 'true' && num_inlined === 0 && num_to_process > 0 && num_logged_in_exceptions === 0) {
         var includePatterns = JSON.parse(speed_css_vars.include_patterns); // patterns to always include
         includePatterns = includePatterns.map(pattern => new RegExp(pattern.replace(/\\\\/g, '\\')));
         const collector = new CSSUsageCollector(false, includePatterns); // Pass false to disable warning logging

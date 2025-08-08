@@ -57,7 +57,9 @@ class Config {
         'triplesource', 'trk_contact', 'trk_module', 'trk_msg', 'trk_sid', 'tsig', 'turl', 'u', 'up_auto_log', 'upage', 'updated-max',
         'uptime', 'us_privacy', 'usegapi', 'usqp', 'utm', 'utm_campa', 'utm_campaign', 'utm_content', 'utm_expid', 'utm_id', 'utm_medium',
         'utm_reader', 'utm_referrer', 'utm_source', 'utm_sq', 'utm_ter', 'utm_term', 'v', 'vc', 'vf', 'vgo_ee', 'vp', 'vrw', 'vz',
-        'wbraid', 'webdriver', 'wing', 'wpdParentID', 'wpmp_switcher', 'wref', 'wswy', 'wtime', 'x', 'zMoatImpID', 'zarsrc', 'zeffdn'
+        'wbraid', 'webdriver', 'wing', 'wpdParentID', 'wpmp_switcher', 'wref', 'wswy', 'wtime', 'x', 'zMoatImpID', 'zarsrc', 'zeffdn',
+		'gclaw','campaignid','adgroupid','creative','keyword','matchtype','network','loc_interest_ms','loc_physical_ms','ifmobile','ifnotmobile',
+		'gad_source','gad_campaignid','gad_adgroupid','gad_creative','gad_keyword','gad_matchtype','gad_network','gad_device','gad_placement'
 	);
 
 	public static $separate_cache_cookies = array('aelia_cs_selected_currency','yith_wcmcs_currency','wcml_currency');
@@ -101,6 +103,16 @@ class Config {
 				'helper' => 'Should logged in users be cached? N.B Should be used in conjunction with exclude URLs to prevent caching user specific content',
 				'value' => 'false',
 			),	
+			'cache_logged_in_users_exceptions' => array(
+				'name'   => 'Page Areas exempt from logged-in caching',
+				'helper' => 'Specify CSS selectors that should not be cached for logged in users. Separate multiple with new lines.',
+				'value' => '',
+			),	
+			'cache_logged_in_users_exclusively_on' => array(
+				'name'   => 'URLs to cache logged in users exclusively on',
+				'helper' => 'Enter URLs here to only cache logged in users on those URLs. Regex compatible. Separate multiple with new lines.',
+				'value' => '',
+			),							
 			'cache_mobile_separately' => array(
 				'name'   => 'Cache Mobile Devices Separately',
 				'helper' => 'Should mobile devices be cached separately?',
@@ -518,6 +530,14 @@ class Config {
                 continue;
             }
 
+            // special case: logged in user exception find/replace array passes raw
+            if ($section === 'speed_cache' && $key === 'cache_logged_in_users_exceptions' && is_array($raw_value)) {
+                $clean[$key] = array_values(array_filter($raw_value, function ($item) {
+                    return is_array($item);
+                }));
+                continue;
+            }			
+
             // special case: raw JS snippet allowed
             if ($section === 'speed_js' && $key === 'load_complete_js') {
                 $clean[$key] = (string)$raw_value;
@@ -552,6 +572,7 @@ class Config {
 	 */
 	public static function update_config( $new_config = array() ) {
 
+		$update_advanced_cache = false;
 
 		if ( isset( $new_config['config_key'] ) ) {
 
@@ -592,6 +613,19 @@ class Config {
 						Speed\Cache::clear_cache();
 					}
 					
+					//Save to advanced cache
+					if($key_to_update == "separate_cookie_cache" ||
+					$key_to_update == "cache_logged_in_users" ||
+					$key_to_update == "cache_mobile_separately" ||	
+					$key_to_update == "ignore_querystrings" ||	
+					$key_to_update == "cache_lifetime" ||	
+					$key_to_update == "plugin_mode" ||	
+					$key_to_update == "disable_urls" ||	
+					$key_to_update == "preload_fonts_desktop_only") {
+						$update_advanced_cache = true;
+					}
+					
+					//Save frame
 					$frame[ $key_to_update ]['value'] = $new_config[ $key_to_update ];
 
 				}
@@ -601,8 +635,13 @@ class Config {
 			//Update the config
 			self::$config[ $config_key ] = $frame;
 
-		}
+			//Update the advanced cache for certain variables
+			if($update_advanced_cache) {
+				Speed\Cache::init();
+				Speed\Cache::write_advanced_cache();
+			}
 
+		}
 
 		update_option( 'spress_namespace_CONFIG', self::$config, false );
 

@@ -310,7 +310,7 @@ class Menu {
           ]);             
 
           ?>
-            <script>
+            <script rel="js-extra speed-js">
             function clear_cache(cache_type) {
 
                 if(cache_type == "page") {
@@ -362,6 +362,7 @@ class Menu {
                 animation: rotation 1s linear infinite !important;
                 position:absolute !important;
                 margin-top:2px !important;
+                z-index:10000;
                 }
 
                 @keyframes rotation {

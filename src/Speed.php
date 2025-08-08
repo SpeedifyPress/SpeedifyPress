@@ -176,7 +176,7 @@ class Speed {
     public static function process_output($output) {
 
         // Check if this is an HTML document
-        if (!strstr($output, '<html')) {
+        if (preg_match('/^\s*<\?xml\b/i', $output) || !preg_match('/<html[\s>]/i', $output)) {
             return $output;
         }        
 
@@ -337,6 +337,286 @@ class Speed {
         return $dom;
 
     }    
+
+    /**
+     * Modifies the content of elements with class="logged_in_exception" to avoid caching sensitive information.
+     *
+     * If the element has children, it will keep only the HTML of its children.
+     * If not, it will fill the text node with Xs of equal length to the original text.
+     *
+     * @param \simple_html_dom $dom The DOM structure to modify.
+     * @return \simple_html_dom The modified DOM structure with the sensitive information removed.
+     */
+    private static function add_logged_in_users_exceptions($dom) {
+
+        // Select every element with class="logged_in_exception"
+        foreach ($dom->find('.logged_in_exception') as $el) {
+
+            $children = $el->children();
+  
+            if (!empty($children)) {            
+
+                if($el->hasClass('block-3rows') ||
+                   $el->hasClass('block-2rows') ||
+                   $el->hasClass('block-1row')
+                ) {
+
+                    //Add the skeleton
+                    $num_rows = $el->hasClass('block-3rows') ? 3 : ($el->hasClass('block-2rows') ? 2 : 1);
+                    $inner = '<div role="status" class="skeleton-holder animate-pulse">';
+
+                                for($i=0; $i<$num_rows; $i++) {
+                                    $inner .= '<div class="row">
+                                        <div>
+                                            <div class="inner_row"></div>
+                                            <div class="under-row"></div>
+                                        </div>
+                                        <div class="right-row"></div>
+                                    </div>';
+                                }
+                            $inner .= '</div>';
+
+
+                } else {
+
+
+                    // grab its inner HTML…
+                    $inner = $el->innertext;
+                    // mask every run of visible characters between tags, leave tags & whitespace alone
+                    $inner = preg_replace_callback(
+                        '/>([^<]+)</u',
+                        function($m) {
+                            // $m[1] is the text chunk; replace only non‑whitespace with '-'
+                            return '>' . preg_replace('/\S/u','-',$m[1]) . '<';
+                        },
+                        $inner
+                    );      
+                
+
+                }
+
+                $el->outertext = str_replace($el->innertext, $inner, $el->outertext);  
+
+
+            } else {
+
+                //If it's an image
+                if($el->tag == 'img') {
+
+                    $el->setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==');
+                    $el->setAttribute('srcset', '');
+
+
+                } else {
+
+                    // No element‐children: get the original text length
+                    $originalText = $el->plaintext;
+                    $length       = mb_strlen($originalText);
+                    // Replace the text node with Xs of equal length
+                    if($length > 0) {
+                        $el->innertext = str_repeat('-', $length);
+                    }
+
+                }
+
+            }
+
+
+
+        }
+
+        // Return the updated HTML
+        return $dom;     
+
+    }
+
+    /**
+     * Adds the required code to the page to replace sensitive information with a shimmer effect, 
+     * as well as a worker script to update the page in real time when the user logs in or out.
+     * 
+     * @param string $html The HTML output.
+     * @return string The modified HTML output with the sensitive information removed.
+     */
+    private static function add_logged_in_users_exceptions_code_idents($dom) {
+
+        $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
+
+        if(!$exceptions) {
+            return $dom;
+        }
+
+        $used_skeletons = array();
+   
+        //For each exception tag with a new CSS class 'logged_in_exception'
+        foreach($exceptions as $count=>$exception) {
+
+            $element_to_find = $exception['find'];
+            $skeleton = str_replace(" ","",$exception['skeleton']);
+            $delay_js = $exception['delay_js'];
+        
+            //$html = self::add_class_if_exists($html,$exception,'logged_in_exception',$count);
+            foreach ($dom->find($element_to_find) as $el) {
+                //If element has an id, set that as the identifier
+                if($el->hasAttribute('id')) {
+                    $ident = $el->getAttribute('id');
+                } else {
+                    $ident = substr(md5(str_replace($el->innertext,"",$el->outertext)."-".$count),0,6);
+                }
+                $el->setAttribute('data-splog-uid', $ident);
+                $el->addClass('logged_in_exception');
+                $el->addClass($skeleton);
+                if($delay_js === 'true') {
+                    $el->addClass('spress_do_delay_js');
+                }
+
+            }
+
+            $used_skeletons[] = $skeleton;     
+
+        }            
+        
+        //Set style
+        $head_code_style = '<style>';
+
+
+        if(in_array('block-3rows', $used_skeletons) ||
+        in_array('block-2rows', $used_skeletons) ||
+        in_array('block-1row', $used_skeletons)) {
+
+            $head_code_style .= '.skeleton-holder {
+                box-sizing: border-box;
+                margin-bottom: 16px;
+                width: 910.667px;
+                padding: 24px;
+                border: 0.666667px solid rgb(229, 231, 235);
+                border-radius: 4px;
+                box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1),
+                            0px 1px 2px -1px rgba(0, 0, 0, 0.1);
+            }
+
+            .skeleton-holder .row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 16px 0;
+                margin-bottom: 20px;
+                border-bottom: 1px solid #e4e4e4;
+                box-sizing: border-box;
+            }
+
+            .skeleton-holder .row > div:first-child {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                width: 100%; /* critical for containment */
+            }
+
+            .skeleton-holder .row .inner_row,
+            .skeleton-holder .row .under-row,
+            .skeleton-holder .row .right-row {
+                box-sizing: border-box;
+                border: 0;
+                border-radius: 9999px;
+            }
+
+            .skeleton-holder .row .inner_row {
+                margin-bottom: 10px;
+                height: 10px;
+                width: 96px;
+                background-color: rgb(209, 213, 219);
+            }
+
+            .skeleton-holder .row .under-row {
+                height: 8px;
+                width: 128px;
+                background-color: rgb(229, 231, 235);
+            }
+
+            .skeleton-holder .row .right-row {
+                height: 10px;
+                width: 48px;
+                background-color: rgb(209, 213, 219);
+            }
+
+            .animate-pulse {
+                animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite;
+            }
+
+            @keyframes pulse {
+                0%, 100% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.4;
+                }
+            }';
+
+
+        } 
+                            
+        if(in_array('elementshimmer', $used_skeletons)) {
+            
+            $head_code_style .= '
+            .logged_in_exception.elementshimmer  {
+                position: relative !important;
+                overflow: hidden !important;
+                /* for text elements, hide the text */
+                color: transparent !important;
+                /*display:inline-flex !important;*/
+                filter: blur(2px);
+                transition: filter 0.5s ease;                
+            }
+
+            .logged_in_exception.elementshimmer::after {
+                content: "";
+                position: absolute;
+                top: 0; left: -150%;
+                width: 150%; height: 100%;
+                background: linear-gradient(
+                    90deg,
+                    rgba(255,255,255,0) 0%,
+                    rgba(255,255,255,0.6) 50%,
+                    rgba(255,255,255,0) 100%
+                );
+                animation: shimmer 1.5s infinite;
+            }
+
+            @keyframes shimmer {
+                0%   { transform: translateX(0); }
+                100% { transform: translateX(100%); }
+            }';
+        
+        }
+
+        $head_code_style .= '
+        </style>';
+
+        $minifier = new Minify\CSS($head_code_style);
+        $head_code_style = $minifier->minify();        
+
+        //Set worker code
+        $worker_code = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/logged_in_cache_worker.js');
+        
+        //Minify it
+        $minifier = new Minify\JS($worker_code);
+        $worker_code = $minifier->minify();        
+
+        // Create a new script element
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->setAttribute('rel', 'js-extra speed-js spress_logged_in_cache_worker');
+        $scriptElement->innertext = $worker_code;
+
+        //Add as first child of head
+        //Along with style code
+        $headElement = $dom->find('head', 0); 
+        if($headElement) {
+            $headElement->children(0)->outertext = $scriptElement->outertext . $head_code_style . $headElement->children(0)->outertext;                              
+        }  
+
+        return $dom;
+        
+    }
+
 
     private static function add_gtag($dom) {
 
@@ -568,7 +848,7 @@ class Speed {
                     $element = $dom->find('[data-spuid="' . $spuid . '"]', 0);
                     if($element) {
                         $element->addClass('unused-invisible');
-                        $element->style .= ' content-visibility: auto; contain-intrinsic-size: auto ' . (int)$element_height . 'px;';
+                        $element->style .= ' ;content-visibility: auto; contain-intrinsic-size: auto ' . (int)$element_height . 'px;';
 
                         $template = $dom->createElement('template');
                         $template->innertext = $element->innertext;
@@ -819,13 +1099,21 @@ class Speed {
 
             // Perform find-and-replace operations 
             // do this first so new html can be worked on below
-            $html = self::find_replace($html);
+            $html = self::find_replace($html);              
 
             // simple_html_dom.
             $dom = (new HtmlDocument(""))->load($html,true, false);     
 
             //add depth and sibling tags to HTML
             $dom = self::tag_html($dom);
+
+            //add classes for logged-in cache load
+            if(Config::get('speed_cache','cache_logged_in_users') === "true"
+            && Config::get('speed_cache','cache_logged_in_users_exceptions') != ""
+            && Cache::is_url_logged_in_cacheable(Speed::get_url()) == true
+            ) {
+                $dom = self::add_logged_in_users_exceptions_code_idents($dom); 
+            }       
 
             //add jquery standing
             $dom = self::add_jquery_standin($dom);
@@ -836,7 +1124,7 @@ class Speed {
             //Force system fonts for mobile
             if(Config::get('speed_code', 'system_fonts') === 'true') {
                 $dom = self::add_mobile_system_fonts($dom);
-            }            
+            }                   
 
             //add self hosted gtag
             if(Config::get('external_scripts','gtag_locally') === "true") {
@@ -858,6 +1146,15 @@ class Speed {
             //Refresh dom
             $dom = self::refresh_dom($dom);
 
+            //add classes for logged-in cache load
+            if(Config::get('speed_cache','cache_logged_in_users') === "true"
+            && Config::get('speed_cache','cache_logged_in_users_exceptions') != ""
+            && Cache::is_url_cacheable(Speed::get_url())
+            && Cache::is_url_logged_in_cacheable(Speed::get_url()) == true
+            ) {
+                $dom = self::add_logged_in_users_exceptions($dom);
+            }                 
+
             //add partytown (after gtag) //requires dom refresh
             $dom = self::add_partytown($dom);                
             
@@ -870,7 +1167,8 @@ class Speed {
             $elapsed_time = $end_time - $start_time;
             $html .=  "<!-- Elapsed HTML " . number_format($elapsed_time,2) . "-->";
 
-        }
+        } 
+
 
         return $html;
 
@@ -1040,6 +1338,11 @@ class Speed {
 
             //Not needed for SVG
             if(self::is_svg($src)) {
+                continue;
+            }
+
+            //Not needed for logged in exception images
+            if($image->hasClass('logged_in_exception')) {
                 continue;
             }
 
@@ -1344,7 +1647,7 @@ class Speed {
 
         // Determine protocol and host.
         $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
-        $host = $_SERVER['HTTP_HOST'];        
+        $host     = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';        
         $full_url = $protocol . $host . $request_uri;
 
 
@@ -1426,7 +1729,7 @@ class Speed {
     }   
 
 
-    
+     
     /**
      * Build and return the full URL after stripping ignored query strings.
      *

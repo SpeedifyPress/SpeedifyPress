@@ -130,10 +130,7 @@ class AdvancedCache {
         if ( !isset($_SERVER['REQUEST_METHOD']) || !in_array($_SERVER['REQUEST_METHOD'], ['GET','HEAD']) ) {
             return true;
         }
-        // Exit if the Accept header does not include "text/html".
-        if ( isset($_SERVER['HTTP_ACCEPT']) && stripos($_SERVER['HTTP_ACCEPT'], 'text/html') === false ) {
-            return true;
-        }
+
         // Check for a cache bust parameter 
         if ( isset($_GET['speedify_cache_bust']) ) {
             return true;

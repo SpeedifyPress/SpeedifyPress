@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.59.0
+Version: 0.60.0
 Text Domain: speedify-press
 Author URI: https://github.com/acid-drop
 */

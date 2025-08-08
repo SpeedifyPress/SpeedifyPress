@@ -80,12 +80,21 @@ This decides how long your cached files will last for being automatically delete
 
 **Separate Caches**
 
-*Devices & users*
+*Devices*
 
 Allows you to create separate caches for:
 
-- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that.
 - Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
+- Cookies
+- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that or exclude certain page areas from caching.
+
+*Logged in users (BETA)*
+
+This BETA feature allows you to exclude certain areas from logged-in caching. The options work as follows:
+
+- Area. Use a CSS selector to define the area or areas of the page not to be cached
+- Skeleton. Area will be hidden with a skeleton while they are loaded in. Choose the skeleton type to use.
+- Delay JS Execution. Selecting this option will ensure that any JS applied to the replacement areas will run properly, as all JS will only run after the swap. Will only work is Delay JS is enabled for the page.
 
 **Filters**
 
