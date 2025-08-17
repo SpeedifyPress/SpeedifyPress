@@ -231,23 +231,35 @@ class AdvancedCache {
             // Set extra headers if not already sent.
             if (!headers_sent()) {
 
-                //Check if an update is required in an external cache, 
-                // if so don't send the HIT header so that updates
+                $cacheable = true;
+                // If an external update is required, do NOT advertise HIT and do NOT allow CDN caching
                 $cache_file_base = dirname($cache_file);
-                $check_file = $cache_file_base . "/" . "update_required";
+                $check_file = $cache_file_base . "/update_required";
                 if (file_exists($check_file)) {
                     unlink($check_file);
-                } else {
-                    header('x-spdy-cache: HIT');
+                    $cacheable = false;
                 }
-                header('x-spdy-source: PHP');
-                $host = isset($_SERVER['HTTP_HOST'])
-                ? preg_replace( '/[^A-Za-z0-9\.\-]/', '', $_SERVER['HTTP_HOST'] )
-                : '';                
-                header("Cache-Tag: $host");
-                header('CDN-Cache-Control: max-age=2592000');
-                header('Cache-Control: no-cache, must-revalidate');
+
+                if ($cacheable) {
+                    header('x-spdy-cache: HIT');
+                    header('x-spdy-source: PHP');
+
+                    // Shared-cache (CDN) may store for 30 days; browsers revalidate every time.
+                    header('Cache-Control: public, max-age=0, s-maxage=2592000, stale-while-revalidate=300, stale-if-error=86400');                
+                    header('CDN-Cache-Control: max-age=2592000');
+
+                } else {
+                    // Serve the local file, but prevent CF from storing it (soft "lazy purge" case)
+                    header('x-spdy-source: PHP');
+                    header('Cache-Control: private, no-store, max-age=0');
+                    header('Pragma: no-cache');
+                    header('Expires: 0');
+                }
+
+                $host = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^A-Za-z0-9\.\-]/', '', $_SERVER['HTTP_HOST']) : '';
+                header("Cache-Tag: $host"); 
             }
+
 
             if (isset($_SERVER['HTTP_IF_MODIFIED_SINCE'])) {
                 $if_modified_since = strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']);
@@ -335,8 +347,16 @@ class AdvancedCache {
         //Get the cache file
         $cache_file = Cache::get_cache_filepath($full_url, "html", self::$separate_cookie_cache, self::$cache_logged_in_users, self::$cache_mobile_separately);
 
-        //Serve the cache file
+        //Serve the cache file, will exit if exists
         self::serve_cache_file($cache_file);
+
+        // Not serving a cached file so mark this response non-cacheable at CDN
+        if (!headers_sent()) {
+            header('Cache-Control: private, no-store, max-age=0');
+            header('Pragma: no-cache');
+            header('Expires: 0');
+        }
+
     }
 }
 

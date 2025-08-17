@@ -486,7 +486,6 @@ class Speed {
             $head_code_style .= '.skeleton-holder {
                 box-sizing: border-box;
                 margin-bottom: 16px;
-                width: 910.667px;
                 padding: 24px;
                 border: 0.666667px solid rgb(229, 231, 235);
                 border-radius: 4px;
