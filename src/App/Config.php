@@ -161,6 +161,16 @@ class Config {
 				'helper' => 'Screen resolutions at which the Unused CSS will be generated',
 				'value' => array('mobile'=>'false','tablet'=>'false','desktop'=>'true'),
 			),
+			'csrf_expiry_seconds' => array(
+				'name'   => 'CSRF Expiry',
+				'helper' => 'Number of seconds for the CSRF token to be valid',
+				'value' => '30',
+			),
+			'force_includes_limit' => array(
+				'name'   => 'Force Includes Limit',
+				'helper' => 'Limit the number of auto-generated classes to be force included',
+				'value' => '50',
+			)							
 		),		
 		'speed_js'  => array(
 			'defer_js' => array(

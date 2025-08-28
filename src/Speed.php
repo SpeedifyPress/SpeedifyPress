@@ -129,7 +129,7 @@ class Speed {
      */
     public static function get_pre_cache_path() {
 
-        return ABSPATH . "wp-content/cache/".self::$cache_directory;
+        return ABSPATH . "wp-content/uploads/".self::$cache_directory;
 
     }
 
@@ -140,7 +140,7 @@ class Speed {
      */
     public static function get_pre_cache_url() {
 
-        return site_url() . "/wp-content/cache/".self::$cache_directory;
+        return site_url() . "/wp-content/uploads/".self::$cache_directory;
 
     }       
 
@@ -678,17 +678,40 @@ class Speed {
 
 	public static function download_gtag( $remote_file = null, $force_version_update = false ) {
 
-        //Set the version file
-        $version_file = self::get_pre_cache_path() . "/local_tag/version.json";
-
-        //For debugging
-        $error_file = self::get_pre_cache_path() . "/local_tag/error.log";
-
         //Set the directory
         $path = self::get_pre_cache_path() . "/local_tag/";
 
+        // 1) Determine $tag_id
+        $tag_id = null;
+        if ($remote_file && preg_match('/[?&]id=([^&]+)/', $remote_file, $m)) {
+            $tag_id = preg_replace('/[^A-Za-z0-9_\-\.]/', '_', $m[1]); // FS-safe
+        }
+
+        // If remote is null but we're forcing an update, pick an existing tag_id
+        if (!$tag_id && $force_version_update) {
+            $candidates = glob($path . "version-*.json") ?: [];
+            if (!empty($candidates)) {
+                // choose the most recently modified version file
+                usort($candidates, function ($a, $b) { return filemtime($b) - filemtime($a); });
+                if (preg_match('/version-(.+)\.json$/', basename($candidates[0]), $mm)) {
+                    $tag_id = $mm[1];
+                }
+            }
+        }
+
+        if (!$tag_id) {
+            $tag_id = 'default';
+        }        
+     
+
+        //Set the version file
+        $version_file = self::get_pre_cache_path() . "/local_tag/version-" . $tag_id . ".json";
+
+        //For debugging
+        $error_file = self::get_pre_cache_path() . "/local_tag/error-" . $tag_id . ".log";
+
         //Set the filename
-        $local_filename = "local_tag.js";
+        $local_filename = "local_tag-" . $tag_id . ".js";
 
         //Set the file
         $js_file = self::get_pre_cache_path() . "/local_tag/" . $local_filename;
@@ -1904,9 +1927,13 @@ class Speed {
      * @return string A base64-encoded CSRF token.
      */
     public static function generate_csrf_token($url) {
+
+        //Get token expiry time
+        $csrf_expiry_seconds = Config::get('speed_css','csrf_expiry_seconds') ?? 30;
+
         global $secret_key;
         $secret_key = NONCE_SALT;
-        $expiry = time() + 30; // Token expires in 30 seconds
+        $expiry = time() + $csrf_expiry_seconds; // Token expiry
         $random = bin2hex(random_bytes(6)); // Generate a random string
         // Combine expiry and random value into a single string.
         $data = $expiry . ':' . $random . ":" . $url;

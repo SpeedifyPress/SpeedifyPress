@@ -308,11 +308,11 @@ class AdvancedCache {
             header('Content-Type: text/html; charset=utf-8');
             header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $last_modified) . ' GMT');
 
-            // If originally gzipped, re-compress before output.
+            // If originally gzipped
             if ($isGz) {
                 ini_set('zlib.output_compression', 0);
                 header('Content-Encoding: gzip');
-                echo gzencode($content);
+                echo $raw_content;
             } else {
                 echo $content;
             }
