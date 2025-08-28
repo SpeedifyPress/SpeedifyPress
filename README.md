@@ -244,6 +244,16 @@ Exclude CSS processing based on cookie values.
 
 Generates optimized CSS at specific screen resolutions while using the same CSS for all resolutions.  
       Useful when page content significantly varies across different screen sizes.
+
+**Security Config**
+
+*CSRF Expiry*
+
+This changes the expiry time for the **CSRF nonce**. You may need to change this if your host uses their own caching solution and you're not using Cloudflare. In this case, set the expiry value to the same as the host's cache expiry time.
+
+*Force Include Limit*
+
+The maximum number of CSS classes to force include that can be generated per page. This limit prevents file-stuffing attacks.
 ## How to use the  CSS Stats?
 
 **CSS Stats** provide valuable insights into how CSS is being generated across your site and which plugins contribute to it.

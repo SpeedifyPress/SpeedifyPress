@@ -259,12 +259,19 @@ class CSS {
         if (! isset($global_force_includes[$source_url])) {
             $global_force_includes[$source_url] = [];
         }        
-        
-        //Merge, if they have the same key elements should be added
-        $force_includes = $global_force_includes[$source_url] = array_values(array_unique(array_filter(array_merge((array) $global_force_includes[$source_url], $force_includes))));       
 
-        //Save back
-        file_put_contents($file, json_encode($global_force_includes),LOCK_EX);
+        // Merge, deduplicate, and filter
+        $merged = array_values(array_unique(array_filter(
+            array_merge((array) $global_force_includes[$source_url], $force_includes)
+        )));
+
+        // Limit to 50 items (keep most recent additions at the end)
+        $force_includes_limit = Config::get('speed_css', 'force_includes_limit');
+        $merged = array_slice($merged, ($force_includes_limit * -1));
+
+        // Save back
+        $global_force_includes[$source_url] = $merged;
+        file_put_contents($file, json_encode($global_force_includes), LOCK_EX);
 
         return $force_includes;
 
