@@ -78,15 +78,17 @@ When you first install the plugin, the mode setting will be set to
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
 
-**Separate Caches**
+**Cache Outputs**
 
-*Devices*
+*Device Paths & Compression*
 
 Allows you to create separate caches for:
 
 - Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
 - Cookies
 - Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that or exclude certain page areas from caching.
+
+Also allows you to force gzipped compressed output if this (or brotli) hasn't already been setup on the server.
 
 *Logged in users (BETA)*
 

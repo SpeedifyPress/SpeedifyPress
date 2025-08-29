@@ -33,6 +33,15 @@ if ( ! defined( 'SPRESS_CACHE_ROOT' ) ) {
 if ( ! defined( 'SPRESS_SEPARATE_COOKIE_CACHE' ) ) {
     define( 'SPRESS_SEPARATE_COOKIE_CACHE', '%%SPRESS_SEPARATE_COOKIE_CACHE%%' );
 }
+if ( ! defined( 'SPRESS_CSRF_EXPIRY_SECONDS' ) ) {
+    define( 'SPRESS_CSRF_EXPIRY_SECONDS', '%%SPRESS_CSRF_EXPIRY_SECONDS%%' );
+}
+if ( ! defined( 'SPRESS_FORCE_GZIPPED_OUTPUT' ) ) {
+    define( 'SPRESS_FORCE_GZIPPED_OUTPUT', '%%SPRESS_FORCE_GZIPPED_OUTPUT%%' );
+}
+if ( ! defined( 'SPRESS_CACHE_PATH_UPLOADS' ) ) {
+    define( 'SPRESS_CACHE_PATH_UPLOADS', '%%SPRESS_CACHE_PATH_UPLOADS%%' );
+}
 if ( ! defined( 'SPRESS_CACHE_LOGGED_IN_USERS' ) ) {
     define( 'SPRESS_CACHE_LOGGED_IN_USERS', '%%SPRESS_CACHE_LOGGED_IN_USERS%%' );
 }
@@ -309,7 +318,7 @@ class AdvancedCache {
             header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $last_modified) . ' GMT');
 
             // If originally gzipped
-            if ($isGz) {
+            if ($isGz && SPRESS_FORCE_GZIPPED_OUTPUT === 'true') {
                 ini_set('zlib.output_compression', 0);
                 header('Content-Encoding: gzip');
                 echo $raw_content;
@@ -345,7 +354,13 @@ class AdvancedCache {
         Speed::$hostname = parse_url($full_url, PHP_URL_HOST);
 
         //Get the cache file
-        $cache_file = Cache::get_cache_filepath($full_url, "html", self::$separate_cookie_cache, self::$cache_logged_in_users, self::$cache_mobile_separately);
+        $file_type = "";
+        if( SPRESS_FORCE_GZIPPED_OUTPUT === 'true' ) {
+            $file_type = "gz";
+        } else {
+            $file_type = "html";
+        }
+        $cache_file = Cache::get_cache_filepath($full_url, $file_type, self::$separate_cookie_cache, self::$cache_logged_in_users, self::$cache_mobile_separately);
 
         //Serve the cache file, will exit if exists
         self::serve_cache_file($cache_file);

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.62.4 - 2025-08-28
+- Cache clearance with integrations fix
+
+### 0.62.3 - 2025-08-28
+- CSRF expiry bug fix
+
+### 0.62.2 - 2025-08-28
+- Gzip output bug fix
+
+### 0.62.1 - 2025-08-28
+- Cache directory bug fix
+
+### 0.62.0 - 2025-08-28
+- Allow change to cache directory
+- Allow optional gzip output
+- Optimise cache clearance
+
 ### 0.61.0 - 2025-08-28
 - Addition of CSS security options
 - Add ID to google gtag filename
