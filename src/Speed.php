@@ -151,7 +151,15 @@ class Speed {
      */
     public static function get_root_cache_path() {
 
-        return ABSPATH . "wp-content/cache/".self::$cache_directory."/" . self::$hostname;
+        $switch_cache_path = (defined('SPRESS_CACHE_PATH_UPLOADS') ? SPRESS_CACHE_PATH_UPLOADS : Config::get('speed_cache','cache_path_uploads'));
+        $dir = "";
+        if($switch_cache_path === 'true') {
+            $dir = "uploads";
+        } else {
+            $dir = "cache";
+        }
+
+        return ABSPATH . "wp-content/". $dir . "/".self::$cache_directory."/" . self::$hostname;
 
     }
 
@@ -162,7 +170,15 @@ class Speed {
      */
     public static function get_root_cache_url() {
 
-        return site_url() . "/wp-content/cache/".self::$cache_directory."/" . self::$hostname;
+        $switch_cache_path = (defined('SPRESS_CACHE_PATH_UPLOADS') ? SPRESS_CACHE_PATH_UPLOADS : Config::get('speed_cache','cache_path_uploads'));
+        $dir = "";
+        if($switch_cache_path === 'true') {
+            $dir = "uploads";
+        } else {
+            $dir = "cache";
+        }        
+
+        return site_url() . "/wp-content/" . $dir  . "/".self::$cache_directory."/" . self::$hostname;
 
     }    
 
@@ -1928,8 +1944,12 @@ class Speed {
      */
     public static function generate_csrf_token($url) {
 
-        //Get token expiry time
-        $csrf_expiry_seconds = Config::get('speed_css','csrf_expiry_seconds') ?? 30;
+        //Get token expiry time       
+        if ( ! defined( 'SPRESS_CSRF_EXPIRY_SECONDS' ) ) {
+            $csrf_expiry_seconds = Config::get('speed_css','csrf_expiry_seconds') ?? 30;
+        } else {
+            $csrf_expiry_seconds = SPRESS_CSRF_EXPIRY_SECONDS;
+        }
 
         global $secret_key;
         $secret_key = NONCE_SALT;

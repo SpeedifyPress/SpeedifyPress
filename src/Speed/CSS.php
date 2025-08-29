@@ -196,8 +196,11 @@ class CSS {
         if(!file_exists($cache_file)) {
             return $unused;
         }
-        
+    
         $output = file_get_contents($cache_file);
+
+        //Clear Integrations 
+        Cache::clear_cache(true, $post_id);      
 
         //Rewrite with new CSS if not already done
         if(!strstr($output,"|@@@CSSDone@@@")) {
@@ -216,21 +219,7 @@ class CSS {
 
         //Mark this path as needing a Cloudflare update
         $cache_dir  = Speed::get_cache_dir_from_url($source_url);
-        file_put_contents($cache_dir."update_required","");
-
-        //Integrations
-        if(class_exists('Nginx_Helper') && $post_id) {
-            $post_object = get_post( $post_id );
-            do_action( 'transition_post_status', 'publish', 'publish', $post_object );
-        }        
-        
-        global $kinsta_cache;
-        if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
-            // Flush full-page + edge + CDN caches
-            //$kinsta_cache->kinsta_cache_purge->initiate_purge( $post_id, 'post' );//didn't seem to be working properly
-            $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
-        }
-                
+        file_put_contents($cache_dir."update_required","");                  
 
         return $unused;
 
@@ -1464,20 +1453,14 @@ class CSS {
 
         //Don't delete if no hostname found
         if(Speed::$hostname) {
+
             $dir = Speed::get_root_cache_path();
             Speed::deleteSpecificFiles($dir,array("css","lookup.json","CSS_page_cache.html.gz"),true);        
-        }
 
-        //Integrations
-        if(defined('FLYING_PRESS_CACHE_DIR')) {
-            Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"),true);
-        }
-        
-        global $kinsta_cache;
-        if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
-            // Flush full-page + edge + CDN caches
-            $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
-        }        
+            //We also need to clear the page cache (and any integrated caches along with it)        
+            Cache::clear_cache(); 
+
+        }    
 
     }
 

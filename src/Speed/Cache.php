@@ -28,6 +28,9 @@ class Cache {
     public static $cache_logged_in_users_exceptions;     //line separated list of css selectors
     public static $cache_logged_in_users_exclusively_on; //line separated list of URLs
     public static $cache_mobile_separately;              // string: 'true' or 'false'
+    public static $cache_path_uploads;                   // string: 'true' or 'false'
+    public static $force_gzipped_output;                 // string: 'true' or 'false'    
+    public static $csrf_expiry_seconds;                  // int
     public static $cache_lifetime;                       // string: 0,2,6,12,24
     public static $plugin_mode;                          // string: 'enabled', 'disabled', 'partial'
     public static $disable_urls;                         // line separated list of (partial) URLs
@@ -52,6 +55,7 @@ class Cache {
         self::$disable_urls = Config::get('plugin','disable_urls');
         self::$preload_fonts_desktop_only = Config::get('speed_code','preload_fonts_desktop_only');
         self::$cache_logged_in_users_exclusively_on = Config::get('speed_cache','cache_logged_in_users_exclusively_on');
+        self::$csrf_expiry_seconds = Config::get('speed_css','csrf_expiry_seconds');
 
         //Ensure the "CF-SPU-Browser" querystring is always in the $ignore_querystrings var, as we use it to ensure our Cloudflare
         //HEAD checks are never cached
@@ -115,8 +119,8 @@ class Cache {
         }
 
         // If the user is logged in but caching for logged-in users is not enabled, skip caching.
-        if (function_exists('is_user_logged_in') && is_user_logged_in() && self::$cache_logged_in_users !== 'true'
-        || Cache::is_url_logged_in_cacheable(Speed::get_url()) == false
+        if (function_exists('is_user_logged_in') && is_user_logged_in() && 
+        (self::$cache_logged_in_users !== 'true' || Cache::is_url_logged_in_cacheable(Speed::get_url()) == false)
         ) {
             return $html;
         }
@@ -693,26 +697,68 @@ class Cache {
      * Clears the cache by deleting all cached files (HTML and gzipped versions)
      * within the root cache directory.
      *
-     * If the FLYING_PRESS_CACHE_DIR constant is defined, this method
-     * will also delete all files and subfolders in that directory.
-     *
      * @return void
      */
-    public static function clear_cache() {
+    public static function clear_cache( $integations_only = false, $post_id = null ) {
 
         if (Speed::$hostname) {
-            $dir = Speed::get_root_cache_path();
-            // Speed::deleteSpecificFiles is assumed to recursively remove files matching the extensions.
-            Speed::deleteSpecificFiles($dir, array("html", "gz"),true);
 
-            //Integrations
-            global $kinsta_cache;
-            if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
-                // Flush full-page + edge + CDN caches
-                $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
+            //Clear our own cache
+            if($integations_only == false) {
+            
+                $dir = Speed::get_root_cache_path();
+                // Speed::deleteSpecificFiles is wil recursively remove files matching the extensions.
+                Speed::deleteSpecificFiles($dir, array("html", "gz"),true);
+
+            }
+
+            //Clear integrated caches
+            if( empty( $GLOBALS['_my_cache_purging'] ) ) {
+
+                $GLOBALS['_my_cache_purging'] = true; //prevent loop
+                if($post_id) {
+                    Speed::$done_purge[$post_id] = true; //prevent internal CSS purging if triggered
+                }
+
+                //Flyingpress
+                if(defined('FLYING_PRESS_CACHE_DIR')) {
+                    Speed::deleteSpecificFiles(FLYING_PRESS_CACHE_DIR,array("html","gz"),true);
+                }
+
+                //Kinsta cache
+                global $kinsta_cache;
+                if ( ! empty( $kinsta_cache->kinsta_cache_purge ) ) {
+                    // Flush full-page + edge + CDN caches
+                    $kinsta_cache->kinsta_cache_purge->purge_complete_site_cache();
+                }
+
+                //WordKeeper
+                if ( class_exists('\WordKeeper\System\Purge') ) {
+
+                    // Force purge this post + its related URLs (categories, archives, feeds, etc.)
+                    if($post_id) {
+                        \WordKeeper\System\Purge::purge_post($post_id, true);
+                        \WordKeeper\System\Purge::purge_by_url();
+                    } else {
+                        \WordKeeper\System\Purge::purge_all();
+                    }                
+
+                }
+
+                //Try to hit others such as Nginx helper
+                if ( $post_id ) {
+                    
+                    $post_object = get_post( (int) $post_id );
+                    do_action( 'transition_post_status', 'publish', 'publish', $post_object );
+                    
+                }   
+                
+                unset( $GLOBALS['_my_cache_purging'] );
+
             }
 
         }
+        
     }
 
     /**
@@ -802,6 +848,9 @@ class Cache {
         $replacements = array(
             '%%SPRESS_CACHE_ROOT%%'                  => Speed::get_root_cache_path(),
             '%%SPRESS_SEPARATE_COOKIE_CACHE%%'       => self::$separate_cookie_cache,
+            '%%SPRESS_CACHE_PATH_UPLOADS%%'          => self::$cache_path_uploads,
+            '%%SPRESS_FORCE_GZIPPED_OUTPUT%%'        => self::$force_gzipped_output,
+            '%%SPRESS_CSRF_EXPIRY_SECONDS%%'         => self::$csrf_expiry_seconds,            
             '%%SPRESS_CACHE_LOGGED_IN_USERS%%'       => self::$cache_logged_in_users,
             '%%SPRESS_CACHE_MOBILE_SEPARATELY%%'     => self::$cache_mobile_separately,
             '%%SPRESS_IGNORE_QUERYSTRINGS%%'         => self::$ignore_querystrings,

@@ -122,7 +122,17 @@ class Config {
 				'name'   => 'Lifetime for page cache',
 				'helper' => 'How long should the page cache last?',
 				'value' => '0',
-			),									
+			),			
+			'cache_path_uploads' => array(
+				'name'   => 'Cache Path in Uploads',
+				'helper' => 'Switch the cache path to the upload directory instead of the cache directory',
+				'value' => 'false',
+			),
+			'force_gzipped_output' => array(
+				'name'   => 'Gzipped Output',
+				'helper' => 'If the server or CDN isn\'t handling compression, set output to be gzipped',
+				'value' => 'false',
+			),															
 		),			
 		'speed_css'  => array(
 			'css_mode' => array(
@@ -170,7 +180,7 @@ class Config {
 				'name'   => 'Force Includes Limit',
 				'helper' => 'Limit the number of auto-generated classes to be force included',
 				'value' => '50',
-			)							
+			)						
 		),		
 		'speed_js'  => array(
 			'defer_js' => array(
@@ -625,6 +635,9 @@ class Config {
 					
 					//Save to advanced cache
 					if($key_to_update == "separate_cookie_cache" ||
+					$key_to_update == "force_gzipped_output" ||
+					$key_to_update == "csrf_expiry_seconds" ||
+					$key_to_update == "cache_path_uploads" ||
 					$key_to_update == "cache_logged_in_users" ||
 					$key_to_update == "cache_mobile_separately" ||	
 					$key_to_update == "ignore_querystrings" ||	
