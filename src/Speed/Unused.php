@@ -3,6 +3,7 @@
 namespace SPRESS\Speed;
 
 use Sabberworm\CSS\CSSList\AtRuleBlockList;
+use Sabberworm\CSS\CSSList\CSSList;
 use Sabberworm\CSS\CSSList\CSSBlockList;
 use Sabberworm\CSS\CSSList\Document;
 use Sabberworm\CSS\OutputFormat;
@@ -10,6 +11,8 @@ use Sabberworm\CSS\Parser as CSSParser;
 use Sabberworm\CSS\Settings;
 use Sabberworm\CSS\RuleSet\DeclarationBlock;
 use Sabberworm\CSS\Value\URL;
+
+use SPRESS\App\Config;
 
 use MatthiasMullie\Minify;
 use Wa72\Url\Url as WaUrl;
@@ -48,6 +51,18 @@ class Unused {
     public static $raw_css = [];
     public static $parsed_css = [];
 
+    // Toggle: when false, @font-face stays in the normal CSS (no separate fonts.css)
+    public static $separate_fonts = true;
+
+    /** 
+     * bucket for extracted @font-face blocks ===
+     * Each item is ['css'=> string, 'wrappers'=> array<['name'=>string,'args'=>string]>, 'order'=> int]
+     */
+    protected static $font_face_blocks = [];
+
+    /** monotonic sequence to preserve original order across traversal === */
+    protected static $font_face_seq = 0;
+
     /**
      * Initializes the process of optimizing and extracting useful CSS from HTML content.
      *
@@ -64,6 +79,13 @@ class Unused {
     public static function init($html, $allow_selectors = []) {
 
         $start_time = microtime(true);
+
+        // if preloading only on desktop, we need to separate the font declarations
+        self::$separate_fonts =  (Config::get('speed_code', 'preload_fonts_desktop_only') === 'true');
+
+        // reset per-run font-face buckets/order ===
+        self::$font_face_blocks = [];
+        self::$font_face_seq = 0;
 
         // Extract body classes manually before DOM load
         preg_match('/<body[^>]*class=["\']([^"\']+)["\']/', $html, $body_match);
@@ -122,6 +144,8 @@ class Unused {
             self::process_sheet_for_css($url);
         }
 
+        // Build a single combined fonts CSS if enabled ===
+        $fonts_css = self::$separate_fonts ? self::render_fonts_css() : '';
 
         //Form return array
         return array("CSS"=>self::$stylesheets_css, 
@@ -129,7 +153,9 @@ class Unused {
                      "percent_reduction" => self::$usage_tracker['original_length'] > 0
                                             ? number_format((self::$usage_tracker['original_length'] - self::$usage_tracker['used_length']) / self::$usage_tracker['original_length'] * 100, 2)
                                             : 0,
-                     "markup"=>self::$used_markup
+                     "markup"=>self::$used_markup,
+                     // expose fonts css ===
+                     "fonts_css"=>$fonts_css
                     );
     }
 
@@ -186,7 +212,9 @@ class Unused {
                     $url = rtrim(home_url(), '/') . '/' . ltrim($url, '/');
                 }
 
+                //remove the version params
                 $url = self::url_remove_querystring($url);
+
                 self::$stylesheet_urls[] = $url;
             }
 
@@ -215,6 +243,7 @@ class Unused {
     public static function process_sheet_for_css($url) {
 
         $parsed = self::get_parsed_sheet($url);
+
         if(!$parsed) {
             return false;
         }
@@ -229,7 +258,6 @@ class Unused {
 
         //Add to global variable
         self::$stylesheets_css[$url] = $sanitized_css;  
-
 
     }
 
@@ -563,9 +591,8 @@ class Unused {
                             
                             self::process_sheet_for_fonts_keyfames($fixed_url);
                             continue;
-                        }
+                        } 
                     }
-
                 }
             
 
@@ -633,10 +660,11 @@ class Unused {
      *
      * @param CSSBlockList $data The parsed CSS blocklist
      * @param string $url The URL of the stylesheet
+     * @param array $wrapper_stack (internal) stack of enclosing at-rules e.g. [['name'=>'@supports','args':'(font-variation-settings: normal)'], ...]
      *
      * @return array An array of CSS and selectors that should be included
      */
-    protected static function transform_parsed_css(CSSBlockList $data, $url) {
+    protected static function transform_parsed_css(CSSBlockList $data, $url, array $wrapper_stack = []) {
 
         // Ensure base
         $base_url = self::url_to_base($url);
@@ -651,7 +679,11 @@ class Unused {
     
                 // @media, @supports, etc. rules
                 $items[] = [
-                    'rulesets' => self::transform_parsed_css($content, $base_url),
+                    'rulesets' => self::transform_parsed_css(
+                        $content,
+                        $base_url,
+                        array_merge($wrapper_stack, [["name"=>"@{$at_rule_name}", "args"=>$args]])
+                    ),
                     'at_rule'  => "@{$at_rule_name} {$args}"
                 ];
     
@@ -685,9 +717,29 @@ class Unused {
                     // Attempt to extract font-family manually
                     if (preg_match('/font-family\s*:\s*["\']?([^;"\'\n]+)/i', $css, $match)) {
                         $font = trim($match[1]);
-                        if (!isset(self::$used_markup['fonts'][$font])) {
-                            //Remove from CSS
+                        $fam_clean = trim(trim($font), "\"'");
+
+                        if (self::$separate_fonts) {
+
+                            // Only keep font-face if its family is actually used on page or in the CSS
+                            // we can't check here if it'll actually be downloaded
+                            if (isset(self::$used_markup['fonts'][$fam_clean])) {
+                                // Store to dedicated bucket with wrapper context and stable order; skip adding to normal css list
+                                self::$font_face_blocks[] = [
+                                    'css'      => $css,
+                                    'wrappers' => $wrapper_stack,
+                                    'order'    => self::$font_face_seq++,
+                                ];
+                            }
+                            // Always skip adding to the main css stream (fonts are separated)
                             continue;
+
+                        } else {
+
+                             // Not separating: keep @font-face in the main CSS output
+                            $items[] = array('css' => $css);
+                            continue;
+
                         }
                     }
                 }
@@ -717,7 +769,7 @@ class Unused {
                             
                             self::process_sheet_for_css($fixed_url);
                            
-                        }
+                        } 
                     }
 
                     //Remove from CSS
@@ -970,12 +1022,15 @@ class Unused {
      *     be fetched.
      */
     protected static function fetch($url) {
+
         $file = self::url_to_local($url);
         if ($file && file_exists($file)) {
-            return file_get_contents($file);
-        } else {
-            return false;
+            $css = file_get_contents($file);
+            if ($css !== false) self::$raw_css[$url] = $css;
+            return $css;
         }
+
+        return false;
     }
 
      /**
@@ -986,13 +1041,11 @@ class Unused {
      * @return string The URL with the query string removed
      */
     public static function url_remove_querystring($url) {
-
-        //Remove querystring
-        $base_url = preg_replace('#\?.*$#', '', $url);
-
-        return $base_url;
+        
+        return preg_replace('#\?.*$#', '', $url);
 
     }
+
 
 
     /**
@@ -1029,5 +1082,31 @@ class Unused {
     }
 
 
+    /**
+     * Minify and return the combined @font-face CSS we collected.
+     * Preserves original order and wrapper at-rules (e.g. @supports/@media).
+     */
+    protected static function render_fonts_css() {
+        if (empty(self::$font_face_blocks)) return '';
+
+        // Stable original order
+        usort(self::$font_face_blocks, function($a,$b){ return $a['order'] <=> $b['order']; });
+
+        $parts = [];
+        foreach (self::$font_face_blocks as $item) {
+            $css = $item['css'];
+            // Re-wrap with original at-rules, from outermost to innermost
+            if (!empty($item['wrappers'])) {
+                foreach ($item['wrappers'] as $wrap) {
+                    $prefix = trim($wrap['name'].' '.$wrap['args']);
+                    $css = $prefix . ' {' . $css . '}';
+                }
+            }
+            $parts[] = $css;
+        }
+        $fonts_css = implode('', $parts);
+        $minifier = new Minify\CSS($fonts_css);
+        return $minifier->minify();
+    }
 
 }

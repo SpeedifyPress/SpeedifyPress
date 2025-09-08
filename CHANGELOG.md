@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.63.0 - 2025-09-08
+- Add local hosting of Google fonts
+- Add preloading of poster image for videos
+- Fix license expiry incorrectly stored
+- Save all font definitions in single file to allow for desktop only preload
+
 ### 0.62.4 - 2025-08-28
 - Cache clearance with integrations fix
 

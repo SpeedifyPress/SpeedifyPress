@@ -322,6 +322,8 @@ class CSSUsageCollector {
                 for (const entry of entries.getEntries()) {
                     if (entry.element && entry.element.tagName === 'IMG') {
                         lcpImage = entry.element.src; // Capture the LCP image
+                    } else if (entry.element.tagName === 'VIDEO' && entry.element.poster) {
+                        lcpImage = entry.element.poster;
                     }
                 }
     

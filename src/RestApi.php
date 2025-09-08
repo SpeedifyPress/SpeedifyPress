@@ -70,6 +70,17 @@ class RestApi {
             )
         );
 
+        // Route for clearing gfonts cache
+        register_rest_route(
+            'speedifypress',
+            '/clear_gfonts_cache/?',
+            array(
+                'methods' => array('GET'),
+                'callback' => array(__CLASS__, 'clear_gfonts_cache'),
+                'permission_callback' => '__return_true', // Admin-only access as after auth check
+            )
+        );         
+
         // Route for clearing unused CSS cache
         register_rest_route(
             'speedifypress',
@@ -205,7 +216,20 @@ class RestApi {
         $data['stats_data'] = Speed\CSS::get_stats_data();        
         return $data;
     }
-	
+
+     /**
+     * Clears the Google fonts cache directory.
+     *
+     * @return array Empty array (no data returned).
+     */
+    public static function clear_gfonts_cache() {      
+
+        $basePath = Speed::get_pre_cache_path() . '/gfonts';
+        Speed::deleteSpecificFiles($basePath,array("css","woff","woff2"),true);     
+        return true;
+
+    }
+
     /**
      * Clears the CSS cache directory.
      *

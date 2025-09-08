@@ -123,13 +123,36 @@ class Speed {
     }
 
     /**
+     * Retrieves the root cache directory.
+     *
+     * This function checks a setting in the speed_cache config group to determine
+     * whether the cache directory should be placed in the uploads folder or in the
+     * standard cache folder. If the setting is true, the uploads folder is used.
+     *
+     * @return string The root cache directory.
+     */
+    public static function get_cache_root() {
+
+        $switch_cache_path = (defined('SPRESS_CACHE_PATH_UPLOADS') ? SPRESS_CACHE_PATH_UPLOADS : Config::get('speed_cache','cache_path_uploads'));
+        $dir = "";
+        if($switch_cache_path === 'true') {
+            $dir = "uploads";
+        } else {
+            $dir = "cache";
+        }
+
+        return $dir;
+
+    }
+
+    /**
      * Retrieves the cache path that won't get cleared
      *
      * @return string The cache path
      */
     public static function get_pre_cache_path() {
 
-        return ABSPATH . "wp-content/uploads/".self::$cache_directory;
+        return ABSPATH . "wp-content/" . self::get_cache_root() . "/".self::$cache_directory;
 
     }
 
@@ -140,7 +163,7 @@ class Speed {
      */
     public static function get_pre_cache_url() {
 
-        return site_url() . "/wp-content/uploads/".self::$cache_directory;
+        return site_url() . "/wp-content/" . self::get_cache_root() . "/".self::$cache_directory;
 
     }       
 
@@ -170,15 +193,7 @@ class Speed {
      */
     public static function get_root_cache_url() {
 
-        $switch_cache_path = (defined('SPRESS_CACHE_PATH_UPLOADS') ? SPRESS_CACHE_PATH_UPLOADS : Config::get('speed_cache','cache_path_uploads'));
-        $dir = "";
-        if($switch_cache_path === 'true') {
-            $dir = "uploads";
-        } else {
-            $dir = "cache";
-        }        
-
-        return site_url() . "/wp-content/" . $dir  . "/".self::$cache_directory."/" . self::$hostname;
+        return site_url() . "/wp-content/" . self::get_cache_root()  . "/".self::$cache_directory."/" . self::$hostname;
 
     }    
 
@@ -231,6 +246,7 @@ class Speed {
         $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags firs
 
         $output = CSS::rewrite_css($output); // Rewrite CSS for performance improvements
+
         $output = JS::rewrite_js($output); // Rewrite JS for performance improvements
 
         //Run again to replace in new output
@@ -1145,6 +1161,11 @@ class Speed {
             //add depth and sibling tags to HTML
             $dom = self::tag_html($dom);
 
+            //Do google fonts
+            if(Config::get('external_scripts','gfonts_locally') === "true") {
+                $dom = self::proxy_google_fonts($dom);
+            }
+
             //add classes for logged-in cache load
             if(Config::get('speed_cache','cache_logged_in_users') === "true"
             && Config::get('speed_cache','cache_logged_in_users_exceptions') != ""
@@ -1211,6 +1232,164 @@ class Speed {
         return $html;
 
     }
+
+    
+    /**
+     * Rewrites <link> tags that point to Google Fonts, by fetching the CSS, 
+     * rewriting the font URLs to local files, storing both CSS and fonts, 
+     * and then swapping the href to the locally cached CSS.
+     * 
+     * @param HtmlDocument $dom The HTML document.
+     * @return HtmlDocument The modified HTML document.
+     */
+    private static function proxy_google_fonts($dom) {
+
+        // Find all <link rel="stylesheet" href="https://fonts.googleapis.com/...">
+        foreach ($dom->find('link') as $link) {
+            $rel  = strtolower($link->getAttribute('rel') ?? '');
+            $href = $link->getAttribute('href') ?? '';
+
+            if ($rel !== 'stylesheet' || !$href) continue;
+            if (!preg_match('@^https://fonts\.googleapis\.com/@i', $href)) continue;
+
+            // Build (or reuse) a local CSS file for this exact Google CSS URL
+            $localCssUrl = self::build_local_gfonts_css($href);
+            if ($localCssUrl) {
+                // Swap the href to your locally cached CSS
+                $link->setAttribute('href', $localCssUrl);
+                
+                // Remove any preconnects to Google's font hosts
+                foreach ($dom->find('link') as $plink) {
+                    $preRel = strtolower($plink->getAttribute('rel') ?? '');
+                    $preHref = $plink->getAttribute('href') ?? '';
+                    if ($preRel === 'preconnect' && preg_match('@fonts\.(gstatic|googleapis)\.com@i', $preHref)) {
+                        $plink->outertext = '';
+                    }
+                }
+            }
+        }
+
+        return $dom;
+    }
+
+
+    /**
+     * Given a Google Fonts CSS URL, build a local version of that CSS by
+     * fetching the CSS, rewriting the font URLs to local files, storing both
+     * CSS and fonts, and then returning the locally cached CSS URL.
+     *
+     * @param string $remoteCssUrl The Google Fonts CSS URL (e.g. https://fonts.googleapis.com/css?family=...)
+     * @return string The locally cached CSS URL, or null if failed to fetch
+     */
+    private static function build_local_gfonts_css(string $remoteCssUrl) {
+        // Cache directories
+        $basePath = self::get_pre_cache_path() . '/gfonts';
+        $baseUrl  = self::get_pre_cache_url()  . '/gfonts';
+
+        // Ensure directory
+        if (!is_dir($basePath)) @mkdir($basePath, 0755, true);
+
+        // Include UA in the key because Google Fonts serves different CSS per UA
+        $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+        $key = md5($remoteCssUrl . '::' . $ua);
+
+        $cssFilename = "gf-$key.css";
+        $cssPath     = "$basePath/$cssFilename";
+        $cssUrl      = "$baseUrl/$cssFilename";
+
+        // Short-circuit if exists
+        if (file_exists($cssPath)) {
+            return $cssUrl;
+        }
+
+        // Fetch remote CSS (preserve UA & Accept to get same content the browser would)
+        $args = [
+            'headers' => [
+                'User-Agent' => $ua,
+                'Accept'     => 'text/css,*/*;q=0.1'
+            ],
+            'timeout' => 15,
+        ];
+        $resp = wp_remote_get($remoteCssUrl, $args);
+        if (is_wp_error($resp)) return null;
+
+        $css = wp_remote_retrieve_body($resp);
+        if (!$css || stripos($css, '@font-face') === false) return null;
+
+        // Rewrite: download each fonts.gstatic.com URL to local .woff/.woff2 and swap URL in CSS
+        $rewrittenCss = self::rewrite_gfonts_css_urls($css, $basePath, $baseUrl);
+
+        // Force font-display:swap on all @font-face rules.
+        $rewrittenCss = preg_replace(
+            '/font-display\s*:\s*[^;}\s]+(\s*!important)?\s*([;}])/i',
+            'font-display:swap$1$2',
+            $rewrittenCss
+        );        
+
+        // Optionally force display=swap if not already in the CSS
+        if (strpos($rewrittenCss, 'font-display:') === false) {
+            // lightweight injection just after each @font-face {
+            $rewrittenCss = preg_replace('/(@font-face\s*{)/i', "$1font-display:swap;", $rewrittenCss);
+        }
+
+        // Minify and write CSS
+        $minifier = new \MatthiasMullie\Minify\CSS($rewrittenCss);
+        $minified = $minifier->minify();
+        file_put_contents($cssPath, $minified, LOCK_EX);
+
+        return $cssUrl;
+    }
+
+    /**
+     * Finds url(https://fonts.gstatic.com/...) entries, downloads locally, and returns CSS with local URLs.
+     */
+    private static function rewrite_gfonts_css_urls(string $css, string $basePath, string $baseUrl): string {
+
+        // Make sure font directory exists
+        $fontDir  = "$basePath/files";
+        $fontUrl  = "$baseUrl/files";
+        if (!is_dir($fontDir)) @mkdir($fontDir, 0755, true);
+
+        // Match url(...) capturing .woff2 or .woff
+        $pattern = '/url\(\s*(["\']?)(https?:\/\/fonts\.gstatic\.com\/[^)\'"]+\.(?:woff2?|ttf))(?:\?[^)\'"]*)?\1\s*\)/i';
+
+        $rewritten = preg_replace_callback($pattern, function ($m) use ($fontDir, $fontUrl) {
+            $remote = $m[2];
+
+            // Build deterministic local filename (preserve extension)
+            $ext = strtolower(pathinfo(parse_url($remote, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'woff2');
+            $name = 'gf-' . md5($remote) . '.' . $ext;
+            $localPath = "$fontDir/$name";
+            $localUrl  = "$fontUrl/$name";
+
+            // Download if missing
+            if (!file_exists($localPath)) {
+                $args = [
+                    'headers' => [
+                        // No referer required; include UA to avoid weird variants
+                        'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Accept'     => 'font/woff2,*/*;q=0.1'
+                    ],
+                    'timeout' => 20,
+                ];
+                $resp = wp_remote_get($remote, $args);
+                if (!is_wp_error($resp)) {
+                    $body = wp_remote_retrieve_body($resp);
+                    if ($body) {
+                        file_put_contents($localPath, $body, LOCK_EX);
+                        // Try to set correct mime via .htaccess or headers (see notes below)
+                    }
+                }
+            }
+
+            // Replace original URL with local URL (quote as in original)
+            $quote = $m[1] ?: '"';
+            return 'url(' . $quote . $localUrl . $quote . ')';
+        }, $css);
+
+        return $rewritten;
+    }
+
 
     /**
      * Add mobile system fonts to the document. This adds a style to the head of the document
@@ -1873,7 +2052,8 @@ class Speed {
         }
 
         //Ensure that the directory in within the cache directory
-        if (strpos($dir, Speed::get_root_cache_path()) === false) {
+        if (strpos($dir, Speed::get_root_cache_path()) === false
+            && strpos($dir, Speed::get_pre_cache_path()) === false) {
             return;
         }
 
