@@ -164,6 +164,16 @@ class CSS {
             $current_lookup = isset($data['lookup']) && is_array($data['lookup']) ? $data['lookup'] : [];
         }
 
+        //font-face extraction - write a single combined fonts sheet 
+        $fonts_css = $unused['fonts_css'] ?? '';
+        $fonts_file_basename = '';
+        if (is_string($fonts_css) && $fonts_css !== '') {
+            $fonts_file_basename = 'fonts-' . md5($fonts_css) . '.css';
+            $fonts_cache_path = Speed::get_root_cache_path() . '/' . $fonts_file_basename;
+            if (!file_exists($fonts_cache_path)) {
+                file_put_contents($fonts_cache_path, $fonts_css, LOCK_EX);
+            }
+        }
 
         //Merge
         $merged_lookup = array_merge($current_lookup,$lookup);
@@ -176,8 +186,8 @@ class CSS {
             'post_types' => $post_types,
             'invisible' => $invisible,
             'used_font_rules' => $used_font_rules,
-            'lcp_image' => $lcp_image
-
+            'lcp_image' => $lcp_image,
+            'fonts_file' => $fonts_file_basename
         );
 
 
@@ -300,13 +310,13 @@ class CSS {
         //Check if we have a lookup file
         $data_object = json_decode((string)file_get_contents($lookup_file));
         $lookup = $data_object->lookup;
+        //read the combined fonts filename
+        $fonts_file = isset($data_object->fonts_file) ? trim($data_object->fonts_file) : '';
         
         if(is_object($lookup)) {
             
             //Get the sheets from the output
             $sheets = self::get_stylesheets($output);      
-
-            //$output .= "<!--" . print_r($sheets,true) . "-->";
             
             //Replace with lookup file
             $count = 0;
@@ -381,7 +391,6 @@ class CSS {
                 $baseurl = Url::parse($sheet_url);
                 $sheet_url_lookup = $baseurl->makeAbsolute($baseurl)->write();  
                 $sheet_url_lookup = preg_replace("@^//@", isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https://' : 'http://', trim($sheet_url_lookup));
-                $sheet_url_lookup = html_entity_decode($sheet_url_lookup);
 
                 if(isset($lookup->$sheet_url_lookup)) {   
 
@@ -411,7 +420,7 @@ class CSS {
                                     $attrs .= " data-original-disabled='true'";
                                 }
 
-                                $output = str_replace($tag,"<style $attrs>".$inline_file_contents. "</style>",$output);
+                                $output = self::replace_tag($tag,"<style $attrs>".$inline_file_contents. "</style>",$output);
 
                             } else {
 
@@ -421,7 +430,7 @@ class CSS {
                                 if($count == 1) {
                                     $first_tag = $tag;
                                 } else {
-                                    $output = str_replace($tag,"",$output);
+                                    $output = self::replace_tag($tag,"",$output);
                                 }
 
                             }
@@ -442,7 +451,7 @@ class CSS {
                             } else {
                                 $new_tag = str_replace($sheet_url,Speed::get_root_cache_url() . "/" . $lookup->$sheet_url_lookup,$tag);
                                 //Tag as processed
-                                $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
+                                //$new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
 
                                 // Restore missing attributes if necessary
                                 if (!empty($media_attr) && strpos($new_tag, 'media=') === false) {
@@ -457,7 +466,7 @@ class CSS {
                             }
 
                         }
-                        $output = str_replace($tag,$new_tag,$output);
+                        $output = self::replace_tag($tag,$new_tag,$output);
 
                     }
 
@@ -465,7 +474,7 @@ class CSS {
                 
                     //Not found in lookup, mark as processed
                     $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$tag); 
-                    $output = str_replace($tag, $new_tag, $output);
+                    $output = self::replace_tag($tag,$new_tag,$output);
 
                 }
 
@@ -512,7 +521,7 @@ class CSS {
                 // 1) URL is relative (no "://"), OR
                 // 2) it contains the current host
                 if ( false === strstr( $lcp_image, '://' ) || false !== strstr( $lcp_image, $current_host ) ) {
-                    $preload_html = "<link rel='preload' href='" . esc_url( $lcp_image ) . "' as='image' />";
+                    $preload_html = "<link rel='preload' href='" . esc_url( $lcp_image ) . "' as='image' fetchpriority='high' />";
             
                     if ( false === strstr( $output, $preload_html ) ) {
                         $preload .= "\n" . $preload_html;
@@ -527,6 +536,44 @@ class CSS {
                 $output, 
                 1
             );
+
+            // === font-face extraction - inject fonts stylesheet early  ===
+            if ($fonts_file !== '' && self::$mode !== 'stats') {
+                $fonts_href = rtrim(Speed::get_root_cache_url(), '/') . '/' . $fonts_file;
+                $fonts_path = rtrim(Speed::get_root_cache_path(), '/') . '/' . $fonts_file;
+
+                if(self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped") {
+
+                    $inline_file_contents = file_get_contents($fonts_path);
+                    $fonts_link = "<!-- FontPreload --><style rel='spress-inlined' data-spress-fonts='1'>". $inline_file_contents. "</style><!-- /FontPreload -->";
+
+
+                } else {
+
+                    $fonts_link = "<!-- FontPreload --><link rel='stylesheet' href='{$fonts_href}' crossorigin='anonymous' data-spress-fonts='1'><!-- /FontPreload -->";
+
+                }
+                
+
+                if (strpos($output, "data-spress-fonts='1'") === false) {
+                    // Prefer before first stylesheet for earlier availability
+                    if (preg_match('/<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*>/i', $output)) {
+                        $output = preg_replace(
+                            '/(<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*>)/i',
+                            $fonts_link . "\n" . '$1',
+                            $output,
+                            1
+                        );
+                    } else {  
+
+                        // just after </title>
+                        $output = preg_replace('/<\/title>/', '</title>' . "\n" . $fonts_link, $output, 1);
+                    
+                    }
+
+                }
+            }
+
 
             if(self::$inclusion_mode == "inline-grouped") {
 
@@ -547,7 +594,23 @@ class CSS {
         return $output;
     }
 
-     
+    /**
+     * Replace a tag in the HTML output of the page
+     *
+     * @param string $tag The tag to replace
+     * @param string $new_tag The tag to replace with
+     * @param string $output The HTML output of the page
+     * @return string The modified HTML output
+     */
+    public static function replace_tag($tag,$new_tag,$output) {
+        
+        //Replace standard
+        $output = str_replace($tag,$new_tag,$output);    
+
+        return $output;
+
+
+    } 
 
     /**
      * Determine if a font file is likely an icon font.

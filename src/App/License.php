@@ -187,20 +187,19 @@ class License {
      * @return bool|array True if valid, false otherwise or error array.
      */
     public static function check_license($number = null) {
-        
-        // Retrieve  the stored license invoice number.
+
         if (!$number) {
             $number = get_option('spress_namespace_INVOICE_NUMBER');
-        } 
+        }
 
-        // Build the license check URL using invoice number.
-        $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($_SERVER['HTTP_HOST'] ?? null);
+        $host = $_SERVER['HTTP_HOST'] ?? '';
+        $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($host);
 
-        // Remote GET request to the licensing server
-        $response = wp_remote_get($check_url);
+        $response = wp_remote_get($check_url, ['timeout' => 10]);
 
         if (is_wp_error($response)) {
-            set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
+            set_transient('spress_subscription_ends', "0", DAY_IN_SECONDS);
+            set_transient('spress_allowed_hosts', "0", DAY_IN_SECONDS);
             return false;
         }
 
@@ -211,29 +210,45 @@ class License {
 
             if (isset($subscription->error)) {
 
-                set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
-                set_transient('spress_allowed_hosts', "0");
-                return array("error" => $subscription->error);
+                set_transient('spress_subscription_ends', "0", DAY_IN_SECONDS);
+                set_transient('spress_allowed_hosts', "0", DAY_IN_SECONDS);
+                return ["error" => $subscription->error];
 
             } elseif (isset($subscription->success)) {
 
-                //Allow auto update
-                delete_site_transient( 'update_plugins' );
-                wp_update_plugins();                
+                // Allow auto update
+                delete_site_transient('update_plugins');
+                wp_update_plugins();
 
-                //Set configs
-                $subscription_ends = $subscription->success;
-                $expires_in = $subscription_ends - time();
-                $expires_in = max($expires_in, 0);
+                // Normalize $subscription->success to a Unix timestamp
+                $rawEnds = $subscription->success;
+                if (is_numeric($rawEnds)) {
+                    $subscription_ends = (int) $rawEnds; // already epoch seconds
+                } else {
+                    try {
+                        // Assume UTC if no timezone provided
+                        $dt = new \DateTimeImmutable($rawEnds, new \DateTimeZone('UTC'));
+                        $subscription_ends = $dt->getTimestamp();
+                    } catch (Exception $e) {
+                        $subscription_ends = strtotime($rawEnds) ?: 0;
+                    }
+                }
 
-                set_transient('spress_subscription_ends', $subscription_ends, $expires_in);
+                // Use a consistent "now" (UTC) for TTL math
+                $now = current_time('timestamp', true); // GMT/UTC
+                $expires_in = $subscription_ends > 0 ? ($subscription_ends - $now) : 0;
+                $ttl = $expires_in > 0 ? $expires_in : DAY_IN_SECONDS;
 
-                self::$allowed_hosts = (int) $subscription->allowed_hosts;
-                self::$num_current_hosts = (int) $subscription->current_hosts;
+                // Store ends-at as epoch and expire the transient when it actually ends
+                set_transient('spress_subscription_ends', $subscription_ends, $ttl);
 
-                set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $expires_in);
+                self::$allowed_hosts     = isset($subscription->allowed_hosts) ? (int) $subscription->allowed_hosts : 0;
+                self::$num_current_hosts = isset($subscription->current_hosts) ? (int) $subscription->current_hosts : 0;
 
-                set_transient('spress_plan_type', ($subscription->plan_type ?? ''), false);
+                set_transient('spress_allowed_hosts', self::$num_current_hosts . "/" . self::$allowed_hosts, $ttl);
+
+                // Tie plan_type to same TTL so it doesn't linger past expiry
+                set_transient('spress_plan_type', ($subscription->plan_type ?? ''), $ttl);
 
                 update_option('spress_namespace_INVOICE_NUMBER', $number, false);
 
@@ -241,11 +256,12 @@ class License {
             }
         }
 
-        set_transient('spress_subscription_ends', "0", 60 * 60 * 24);
+        set_transient('spress_subscription_ends', "0", DAY_IN_SECONDS);
         update_option('spress_namespace_INVOICE_NUMBER', "", false);
-        set_transient('spress_allowed_hosts', "0");
+        set_transient('spress_allowed_hosts', "0", DAY_IN_SECONDS);
         return false;
     }
+
 
 
     /**
@@ -270,6 +286,7 @@ class License {
 
         // If we have a numeric timestamp that is still in the future, the license is active.
         if ($license_ends && is_numeric($license_ends) && $license_ends > time()) {
+        
             $license_status = 'active';
 
         } elseif ($license_ends === "0") {

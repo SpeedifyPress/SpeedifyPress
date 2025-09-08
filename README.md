@@ -310,6 +310,10 @@ Choose how replacements are applied:
 
 **External Scripts**
 
+*Locally host Google fonts*
+
+Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
+
 *Locally host gtag.js*
 
 If you are using the standard Google Analytics tag then this generally results in a performance hit. One way to improve things is to host the file locally. 

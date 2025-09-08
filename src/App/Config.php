@@ -180,7 +180,7 @@ class Config {
 				'name'   => 'Force Includes Limit',
 				'helper' => 'Limit the number of auto-generated classes to be force included',
 				'value' => '50',
-			)						
+			)							
 		),		
 		'speed_js'  => array(
 			'defer_js' => array(
@@ -278,6 +278,11 @@ class Config {
 			),			
 		),			
 		'external_scripts' => array(
+			'gfonts_locally' => array(
+				'name'   => 'Should google fonts be hosted locally?',
+				'helper' => '',
+				'value' => 'false',
+			),					
 			'gtag_locally' => array(
 				'name'   => 'Should gtag be hosted locally',
 				'helper' => '',
@@ -287,7 +292,7 @@ class Config {
 				'name'   => 'Should gtag script be preloaded/DNS prefetched',
 				'helper' => '',
 				'value' => 'false',
-			)	
+			)			
 		),		
 		'plugin'  => array(
 			'plugin_mode' => array(
@@ -441,8 +446,8 @@ class Config {
 
 		//Remove non-global
 		$array = $config;
-		foreach ($array as $key => $value) {
-			foreach($value AS $subkey=>$subvalue) {
+		foreach ((array)$array as $key => $value) {
+			foreach((array)$value AS $subkey=>$subvalue) {
 				if (is_array($subvalue) && isset($subvalue['global']) && $subvalue['global'] === false) {
 					unset($array[$key][$subkey]);
 				}
