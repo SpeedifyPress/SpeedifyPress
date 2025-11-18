@@ -7,9 +7,9 @@ use SPRESS\Speed;
 use SPRESS\Speed\Cache;
 use SPRESS\Speed\Unused;
 
-use Wa72\Url\Url;
-use MatthiasMullie\Minify;
-use simplehtmldom\HtmlDocument;
+use SPRESS\Dependencies\Wa72\Url\Url;
+use SPRESS\Dependencies\MatthiasMullie\Minify;
+use SPRESS\Dependencies\simplehtmldom\HtmlDocument;
 
 /**
  * This `CSS` class is responsible for optimizing and managing CSS files for faster 
@@ -62,6 +62,24 @@ class CSS {
 
 	}
 
+
+    /**
+     * Processes an array of force includes and updates the global force includes list
+     * for the given source URL.
+     * 
+     * @param array $force_includes An array of selectorTexts, keyed by rules, keyframes, fonts
+     * @param string $source_url The URL of the source CSS file.
+     * @return array The updated list of force includes.
+     */
+    public static function process_force_includes( $force_includes, $source_url) {
+
+        //Get/set the elements that should be always included
+        self::get_update_force_includes($force_includes, $source_url);                      
+
+        return $force_includes;
+
+    }      
+
     /**
      * Processes an array of CSS files and saves them to a cache directory.
      * 
@@ -76,9 +94,10 @@ class CSS {
      * @param array $invisible An array of invisible post types
      * @param array $used_font_rules An array of used font files
      * @param array $lcp_image An array of LCP images
+     * @param array $icon_fonts An array of icon fonts
      * @return void
      */
-    public static function process_css( $force_includes, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_rules = null, $lcp_image = null ) {
+    public static function process_css( $force_includes, $source_url, $post_id = null, $post_types = null, $invisible = null, $used_font_rules = null, $lcp_image = null, $icon_fonts = null) {
 
         //Get/set the elements that should be always included
         $force_includes = self::get_update_force_includes($force_includes, $source_url);            
@@ -109,7 +128,7 @@ class CSS {
         $include_patterns = array_merge($include_patterns, $force_includes);
 
         //Get unused
-        $unused = Unused::init($html, $include_patterns, null);
+        $unused = Unused::init($html, $include_patterns, $icon_fonts);
         
         /*
         $unused = array();
@@ -164,16 +183,15 @@ class CSS {
             $current_lookup = isset($data['lookup']) && is_array($data['lookup']) ? $data['lookup'] : [];
         }
 
-        //font-face extraction - write a single combined fonts sheet 
-        $fonts_css = $unused['fonts_css'] ?? '';
-        $fonts_file_basename = '';
-        if (is_string($fonts_css) && $fonts_css !== '') {
-            $fonts_file_basename = 'fonts-' . md5($fonts_css) . '.css';
-            $fonts_cache_path = Speed::get_root_cache_path() . '/' . $fonts_file_basename;
-            if (!file_exists($fonts_cache_path)) {
-                file_put_contents($fonts_cache_path, $fonts_css, LOCK_EX);
-            }
-        }
+        // Split outputs 
+        $fonts_css_icons           = isset($unused['fonts_css_icons']) && is_string($unused['fonts_css_icons']) ? $unused['fonts_css_icons'] : '';
+        $fonts_css_text            = isset($unused['fonts_css_text'])  && is_string($unused['fonts_css_text'])  ? $unused['fonts_css_text']  : '';
+
+        //Force swap for txt fonts
+        $fonts_css_text = self::css_force_font_display_swap($fonts_css_text);
+
+        $fonts_icon_file_basename  = $fonts_css_icons !== '' ? self::write_fonts_css($fonts_css_icons) : '';
+        $fonts_text_file_basename  = $fonts_css_text  !== '' ? self::write_fonts_css($fonts_css_text)  : '';        
 
         //Merge
         $merged_lookup = array_merge($current_lookup,$lookup);
@@ -187,7 +205,8 @@ class CSS {
             'invisible' => $invisible,
             'used_font_rules' => $used_font_rules,
             'lcp_image' => $lcp_image,
-            'fonts_file' => $fonts_file_basename
+            'fonts_icon_file' => $fonts_icon_file_basename,
+            'fonts_text_file' => $fonts_text_file_basename
         );
 
 
@@ -213,17 +232,21 @@ class CSS {
         Cache::clear_cache(true, $post_id);      
 
         //Rewrite with new CSS if not already done
-        if(!strstr($output,"|@@@CSSDone@@@")) {
+        if(!strstr($output,"@@@CSSDone@@@")) {
             
-            $output = self::rewrite_css($output,$source_url);
+            $output = self::rewrite_css($output,true);
 
             //Add invisible elements
-            $dom = (new HtmlDocument(""))->load($output,true, false);   
-            $dom = Speed::add_invisible_elements($dom);  
-            $output = $dom->outertext;
+            //if delay JS is active 
+            //(otherwise it'll hide elements JS relies on)
+            if(Config::get('speed_js','delay_js') === "true") {
+                $dom = (new HtmlDocument(""))->load($output,true, false);   
+                $dom = Speed::add_invisible_elements($dom);  
+                $output = $dom->outertext;
+            }
 
             //Resave cache file
-            Cache::save_cache($cache_file,$output," |@@@CSSDone@@@");
+            Cache::save_cache($cache_file,$output," @@@CSSDone@@@");
 
         }
 
@@ -236,6 +259,49 @@ class CSS {
     }    
 
     /**
+     * Writes the given CSS to a file in the root cache directory with a
+     * filename based on the MD5 hash of the CSS. If the file already
+     * exists, it is not overwritten.
+     *
+     * @param string $css The CSS to write to the file.
+     * @return string The filename of the written file, or an empty string if
+     * the file was empty.
+     */
+    private static function write_fonts_css(string $css): string {
+            if ($css === '') return '';
+            $basename = 'fonts-' . md5($css) . '.css';
+            $path = Speed::get_root_cache_path() . '/' . $basename;
+            if (!file_exists($path)) {
+                file_put_contents($path, $css, LOCK_EX);
+            }
+            return $basename;
+    }
+
+    /**
+     * Force font-display:swap in all @font-face rules.
+     * - Replaces any existing font-display value with swap
+     * - Inserts font-display:swap if missing
+     */
+    public static function css_force_font_display_swap(string $css): string    {
+        return preg_replace_callback(
+            '/@font-face\s*{[^}]*}/i',
+            static function ($m) {
+                $block = $m[0];
+
+                // If font-display exists, replace its value with swap
+                if (preg_match('/font-display\s*:/i', $block)) {
+                    $block = preg_replace('/font-display\s*:\s*[^;}]*/i', 'font-display:swap', $block, 1);
+                    return $block;
+                }
+
+                // Otherwise insert font-display:swap right after the opening brace
+                return preg_replace('/(@font-face\s*{)/i', '$1font-display:swap;', $block, 1);
+            },
+            $css
+        );
+    }
+
+    /**
      * Merges $force_includes with a global list of force includes, and saves
      * the merged list back to the global list. This is used to update the
      * force includes list when a cache is updated.
@@ -245,36 +311,51 @@ class CSS {
      *
      * @return array The updated list of force includes.
      */
-    public static function get_update_force_includes($force_includes, $source_url) {
+    public static function get_update_force_includes($force_includes, $source_url, $update = true) {
 
         $file = Speed::get_pre_cache_path() . "/force_includes.json";
 
-        if(file_exists($file)) {
-            $global_force_includes = (array)json_decode(file_get_contents($file),true);
+        if (file_exists($file)) {
+            $global_force_includes = (array) json_decode(file_get_contents($file), true);
         } else {
-            $global_force_includes = array();
+            $global_force_includes = [];
         }
 
-        if (! isset($global_force_includes[$source_url])) {
-            $global_force_includes[$source_url] = [];
-        }        
+        // Build both keys and a canonical (no trailing slash)
+        $withoutSlash = rtrim($source_url, '/');
+        $withSlash    = $withoutSlash . '/';
+        $keysToCheck  = array_unique([$withSlash, $withoutSlash]);
+
+        // Gather existing items from both variants
+        $existing = [];
+        foreach ($keysToCheck as $k) {
+            if (isset($global_force_includes[$k]) && is_array($global_force_includes[$k])) {
+                $existing = array_merge($existing, (array) $global_force_includes[$k]);
+                break;
+            }
+        }
 
         // Merge, deduplicate, and filter
         $merged = array_values(array_unique(array_filter(
-            array_merge((array) $global_force_includes[$source_url], $force_includes)
+            array_merge($existing, (array) $force_includes)
         )));
 
-        // Limit to 50 items (keep most recent additions at the end)
-        $force_includes_limit = Config::get('speed_css', 'force_includes_limit');
-        $merged = array_slice($merged, ($force_includes_limit * -1));
+        // Limit to configured size (keep most recent additions at the end)
+        $force_includes_limit = (int) Config::get('speed_css', 'force_includes_limit');
+        if ($force_includes_limit > 0) {
+            $merged = array_slice($merged, $force_includes_limit * -1);
+        }
 
-        // Save back
+        // Save back under passed 
         $global_force_includes[$source_url] = $merged;
-        file_put_contents($file, json_encode($global_force_includes), LOCK_EX);
 
-        return $force_includes;
+        if($update ) {
+            file_put_contents($file, json_encode($global_force_includes), LOCK_EX);
+        }
 
+        return $merged;
     }
+
 
     /**
      * Replaces CSS links in the provided HTML output with optimized versions 
@@ -284,7 +365,7 @@ class CSS {
      * @param string $direct Is the output being provided directly
      * @return string The optimized HTML output.
      */
-    public static function rewrite_css($output) {
+    public static function rewrite_css($output , $force_lcp_preload = false) {
 
         $start_time = microtime(true);
 
@@ -310,8 +391,9 @@ class CSS {
         //Check if we have a lookup file
         $data_object = json_decode((string)file_get_contents($lookup_file));
         $lookup = $data_object->lookup;
-        //read the combined fonts filename
-        $fonts_file = isset($data_object->fonts_file) ? trim($data_object->fonts_file) : '';
+        // read font bundle filenames
+        $fonts_icon_file  = isset($data_object->fonts_icon_file) ? trim($data_object->fonts_icon_file) : '';
+        $fonts_text_file  = isset($data_object->fonts_text_file) ? trim($data_object->fonts_text_file) : '';
         
         if(is_object($lookup)) {
             
@@ -367,7 +449,7 @@ class CSS {
                                 $newInlineCSS = "";
                             }
                             if($newInlineCSS) {
-                                if (!empty($media_attr)) {
+                                if (!empty($media_attr) && !empty($newInlineCSS)) {
                                     $newInlineCSS = "@media {$media_attr} {" . $newInlineCSS . "}";
                                 }
                                 $attrs = "rel='spress-inlined-".$sheet_url."' data-spcid='".$sheet_url ."'";
@@ -406,7 +488,7 @@ class CSS {
                             $minifier = new Minify\CSS($inline_file_contents);
                             $inline_file_contents = $minifier->minify();        
 
-                            if (!empty($media_attr)) {
+                            if (!empty($media_attr) && !empty($inline_file_contents)) {
                                 $inline_file_contents = "@media {$media_attr} {" . $inline_file_contents . "}";
                             }
 
@@ -450,8 +532,9 @@ class CSS {
                                 $new_tag = "";
                             } else {
                                 $new_tag = str_replace($sheet_url,Speed::get_root_cache_url() . "/" . $lookup->$sheet_url_lookup,$tag);
+                                
                                 //Tag as processed
-                                //$new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
+                                $new_tag = str_replace("<link ","<link data-spress-processed='true' ",$new_tag);
 
                                 // Restore missing attributes if necessary
                                 if (!empty($media_attr) && strpos($new_tag, 'media=') === false) {
@@ -484,7 +567,6 @@ class CSS {
             $preload = "";
             $font_preload = "";
             if(Config::get('speed_code', 'preload_fonts') === 'true'
-            && !strstr($output,"FontPreload")
             ) {
 
                 $dont_preload_icon_fonts = Config::get('speed_code','dont_preload_icon_fonts');
@@ -501,19 +583,23 @@ class CSS {
                     }                    
 
                     if($font) {
-                        $font_preload .= "\n" . "<link rel='preload' href='" . $font . "' as='font' fetchpriority='high' crossorigin='anonymous'>";
-                    }
-                }
-                if($font_preload != '') {
-                    $preload = "<!-- FontPreload -->".$font_preload . "<!-- /FontPreload -->";
-                    if(Config::get('speed_code', 'preload_fonts_desktop_only') === 'true') {
-                        $preload .= "<!-- SPRESS_preload_fonts_desktop_only -->";
+                        $preload .= "\n" . "<link rel='preload' href='" . $font . "' as='font' fetchpriority='high' crossorigin='anonymous'";
+
+                        if(Config::get('speed_code', 'preload_fonts_desktop_only') === 'true') {
+                            $preload .= " media='(min-width: 800px)' />";
+                        } else {
+                            $preload .= " />";
+                        }
+
                     }
                 }
             }
 
             $lcp_image = $data_object->lcp_image ?? false;
-            if ( $lcp_image ) {
+            if ( 
+             ($lcp_image && $force_lcp_preload == true) ||
+             ($lcp_image && Config::get('speed_code', 'preload_image') == '') //if we're using a preload image we'll preload it there instead
+            ) { 
                 // Get current host (or empty string if not set)
                 $current_host = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
             
@@ -537,40 +623,104 @@ class CSS {
                 1
             );
 
-            // === font-face extraction - inject fonts stylesheet early  ===
-            if ($fonts_file !== '' && self::$mode !== 'stats') {
-                $fonts_href = rtrim(Speed::get_root_cache_url(), '/') . '/' . $fonts_file;
-                $fonts_path = rtrim(Speed::get_root_cache_path(), '/') . '/' . $fonts_file;
+            // === font-face extraction — inject split fonts stylesheets early (icons  text only) ===
+            if (self::$mode !== 'stats') {
 
-                if(self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped") {
+                $preload_fonts = Config::get('speed_code', 'preload_fonts') === 'true';
+                $dont_preload_icon_fonts = Config::get('speed_code','dont_preload_icon_fonts') === 'true';
+                $preload_fonts_desktop_only = Config::get('speed_code', 'preload_fonts_desktop_only') === 'true';
+                $lazyload_icon_fonts = Config::get('speed_code', 'lazyload_icon_fonts') === 'true';
+                $system_fonts = Config::get('speed_code', 'system_fonts') === 'true';
 
-                    $inline_file_contents = file_get_contents($fonts_path);
-                    $fonts_link = "<!-- FontPreload --><style rel='spress-inlined' data-spress-fonts='1'>". $inline_file_contents. "</style><!-- /FontPreload -->";
+                //What situations do we have?
+                // - Desktop browser
 
-
-                } else {
-
-                    $fonts_link = "<!-- FontPreload --><link rel='stylesheet' href='{$fonts_href}' crossorigin='anonymous' data-spress-fonts='1'><!-- /FontPreload -->";
-
+                // Build the set of bundles we will inject (order: icons then text)
+                $bundles = [];
+                if ($fonts_icon_file !== '') {
+                    $bundles[] = ['file' => $fonts_icon_file, 'marker' => 'icons'];
                 }
-                
+                if ($fonts_text_file !== '') {
+                    $bundles[] = ['file' => $fonts_text_file, 'marker' => 'text'];
+                }
 
-                if (strpos($output, "data-spress-fonts='1'") === false) {
-                    // Prefer before first stylesheet for earlier availability
-                    if (preg_match('/<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*>/i', $output)) {
-                        $output = preg_replace(
-                            '/(<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*>)/i',
-                            $fonts_link . "\n" . '$1',
-                            $output,
-                            1
-                        );
-                    } else {  
 
-                        // just after </title>
-                        $output = preg_replace('/<\/title>/', '</title>' . "\n" . $fonts_link, $output, 1);
-                    
+                if (!empty($bundles)) {
+                    $injections = [];
+                    foreach ($bundles as $b) {
+                        $href   = rtrim(Speed::get_root_cache_url(),  '/') . '/' . $b['file'];
+                        $path   = rtrim(Speed::get_root_cache_path(), '/') . '/' . $b['file'];
+                        $marker = htmlspecialchars($b['marker'], ENT_QUOTES);
+
+                        if (self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped") {
+                            $css = @file_get_contents($path) ?: '';
+                            if ($css === '') continue;
+                            if ($b['marker'] === 'icons') {
+
+                                //If we don't want to preload icon fonts,
+                                //we should lazy load them
+                                if($lazyload_icon_fonts) {
+
+                                    $dummy_css = "";
+                                    $families = self::extractFontFamilies($css);
+
+                                    // build data URL once (no network, no CORS, off critical path)
+                                    $blank_path = SPRESS_PLUGIN_DIR . 'assets/fonts/blank_spdy.woff2';
+                                    $blank_dataurl = 'data:font/woff2;base64,' . base64_encode(file_get_contents($blank_path));
+
+                                    $families_js = "['" . implode("','", $families) . "']";
+                                    $dummy_script = "<script rel='js-extra'>(function(){var families={$families_js};var src='{$blank_dataurl}';var desc={unicodeRange:'U+E000-F8FF',style:'normal',weight:'400'};function add(n){try{new FontFace(n,'url('+src+') format(\"woff2\")',desc).load().then(function(f){document.fonts.add(f)}).catch(function(){})}catch(e){}}function afterIdle(cb){if('requestIdleCallback'in window){requestIdleCallback(cb,{timeout:1000})}else{setTimeout(cb,0)}}requestAnimationFrame(function(){afterIdle(function(){families.forEach(add)})})})();</script>";
+
+                                    $injections['head'][] = $dummy_script;
+                            
+                                    // Defer real inline icons
+                                    $injections['body'][] = "<span class='unused-invisible'><template data-spress-fonts='{$marker}' data-deferred='1'>" . "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style></template></span>";                                    
+                                    
+                                } else {
+
+                                    $injections['body'][] = "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style>";                                    
+
+                                }
+
+                            } else {
+                                // Text fonts: immediate inline
+                                if($system_fonts) {
+                                    $css = "@media (min-width: 800px) {\n" . $css . "\n}";
+                                }
+                                $injections['head'][] = "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style>";
+                            }
+                        } else {
+                            if ($b['marker'] === 'icons') {
+                                // Defer icons: preload-as-style, then flip rel on load; include <noscript> fallback.
+                                $injections['head'][] =
+                                    "<link rel='preload' as='style' href='{$href}' crossorigin='anonymous' data-spress-processed='true' data-spress-fonts='" . $marker . "' onload=\"this.onload=null;this.rel='stylesheet'\">";
+                            } else {
+                                // Text/body fonts: normal stylesheet (non-deferred)
+                                $injections['head'][] = "<link rel='stylesheet' href='{$href}' crossorigin='anonymous'  data-spress-processed='true' data-spress-fonts='{$marker}'{$media_attr}>";
+                            }
+                        }
                     }
 
+
+                    if (!empty($injections)) {
+                        // Avoid double insertion for either bundle
+                        $already_icons = strpos($output, "data-spress-fonts='icons'") !== false;
+                        $already_text  = strpos($output, "data-spress-fonts='text'")  !== false;
+                        $need_insert   = (!$already_icons && $fonts_icon_file !== '') || (!$already_text && $fonts_text_file !== '');
+                        if ($need_insert) {
+                            if(isset($injections['head'])) {
+                                $head_fonts_block = implode("\n", $injections['head']);
+                                // add just after </title>
+                                $output = preg_replace('/<\/title>/', '</title>' . "\n" . $head_fonts_block, $output, 1);                                
+                            }
+
+                            if(isset($injections['body'])) {
+                                $body_fonts_block = implode("\n", $injections['body']);
+                                // add just after </title>
+                                $output = preg_replace('/<\/body>/',  "\n" . $body_fonts_block . '</body>', $output, 1);                                
+                            }
+                        }
+                    }
                 }
             }
 
@@ -589,10 +739,41 @@ class CSS {
 
         $end_time = microtime(true);
         $elapsed_time = $end_time - $start_time;
-        $output .=  "<!-- Elapsed CSS " . number_format($elapsed_time,2) . "-->";
+        $output .=  "<!-- CSS " . number_format($elapsed_time,2) . "-->";
 
         return $output;
     }
+
+
+    /**
+     * Extract unique font-family names from @font-face declarations in a CSS string.
+     */
+    public static function extractFontFamilies(string $css): array {
+        // Strip CSS comments
+        $css = preg_replace('~/\*.*?\*/~s', '', $css);
+
+        $families = [];
+
+        // Find @font-face blocks
+        if (preg_match_all('/@font-face\s*{[^}]*}/is', $css, $blocks)) {
+            foreach ($blocks[0] as $block) {
+                // Find font-family property inside the block
+                if (preg_match('/font-family\s*:\s*(?:(["\'])(.*?)\1|([^;]+))\s*;/is', $block, $m)) {
+                    $name = $m[2] !== '' ? $m[2] : trim($m[3]);
+                    // Remove !important and surrounding quotes/spaces
+                    $name = preg_replace('/\s*!important\s*$/i', '', $name);
+                    $name = trim($name, " \t\n\r\0\x0B\"'");
+                    if ($name !== '') {
+                        $families[] = $name;
+                    }
+                }
+            }
+        }
+
+        // Deduplicate while preserving order
+        return array_values(array_unique($families));
+    }
+
 
     /**
      * Replace a tag in the HTML output of the page
@@ -621,16 +802,10 @@ class CSS {
      */
     public static function is_icon_font($fontFile)    {
 
-        if (!file_exists($fontFile)) {
-            return false;
-        }
-
-        $contents = file_get_contents($fontFile);
-        $lowerContent = strtolower($contents);
-
         // 1. Name-based heuristic for common icon font names
         $knownIconFontNames = [
             'fontawesome',
+            'fa-',
             'materialicons',
             'ionicons',
             'feather',
@@ -643,10 +818,11 @@ class CSS {
             'mdi',
             'flaticon',
             'icons',
+            'modules',
         ];
 
         foreach ($knownIconFontNames as $name) {
-            if (strpos(strtolower($fontFile), $name) !== false) {
+            if (strpos(strtolower(str_replace("_","",str_replace("-","",str_replace(" ", "",$fontFile)))), $name) !== false) {
                 return true; // Found a known icon font keyword
             }
         }
@@ -669,11 +845,16 @@ class CSS {
             return $output;
         }
         
-        //Skips because of URL/header issues?
+        //Skips because of html issues
         $url = Speed::get_url();  
-        if (Cache::meets_url_requirements($url, $output) === false) {
+        if (Cache::meets_html_requirements($output) === false) {
             return $output;
         }
+
+        // Check bypass rules (cookies, URLs, user agents).
+        if (!Cache::is_url_cacheable($url)) {
+            return $output;
+        }        
 
         //Get file
         $path_to_file = self::get_css_pagecache_file();
@@ -806,7 +987,6 @@ class CSS {
         if (stripos($current_uri, 'nocache') !== false) {
             $match_found = true;
         }
-
         
         return $match_found;
 
@@ -852,13 +1032,15 @@ class CSS {
         $ignore_urls = self::getConfigArray('ignore_urls');
         $ignore_cookies = self::getConfigArray('ignore_cookies');    
         $generation_res = Config::get('speed_css', 'generation_res');
+        $force_includes = self::get_update_force_includes(array(), Speed::get_url(), false);
 
         return array(
-            'cache_directory' => Speed::$cache_directory,
             'include_patterns' => $include_pattern,
             'ignore_urls' => $ignore_urls,
             'ignore_cookies' => $ignore_cookies,
             'generation_res' => $generation_res,
+            'force_includes' => $force_includes,
+            'resturl' => esc_url_raw(rest_url())
         );
 
 

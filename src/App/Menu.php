@@ -57,6 +57,37 @@ class Menu {
         //Add view details link
         add_filter('plugin_row_meta', array(__CLASS__, 'add_view_details_link'), 10, 3);
 
+        //Request updated REST nonce
+        add_action( 'wp_ajax_sip_get_rest_nonce',  array(__CLASS__, 'rest_nonce_request'));           
+
+    }
+
+
+    /**
+     * Return the REST nonce for the current user.
+     *
+     * The nonce is a secret key used to validate API requests.
+     * The nonce is only valid for the current user and should be
+     * regenerated every time the API is accessed.
+     *
+     * The function sends a JSON response with the nonce as the
+     * response data.
+     *
+     * @throws WP_Error If the user is not logged in, a 401 error
+     * is thrown.
+     * @throws WP_Error If the user is not authorized, a 403 error
+     * is thrown.
+     */
+    public static function rest_nonce_request() {
+
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( [ 'message' => 'Not logged in' ], 401 );
+        }
+        if ( ! Auth::is_allowed() ) {
+                wp_send_json_error(['message'=>'Unauthorized'], 403);
+        }    
+        wp_send_json_success( [ 'nonce' => wp_create_nonce( 'wp_rest' ) ] );        
+        
     }
 
     public static function show_update_notification() {
@@ -189,11 +220,20 @@ class Menu {
             return $result;
         }
 
-        //$release_file = dirname(__FILE__) . "/../../release.json";
         $release_url = "https://speedifypress.com/license/release/";
-    
-        //Get last release data
-        $release_data = json_decode(file_get_contents($release_url), true);
+
+        // Fetch release data using WordPress HTTP API instead of file_get_contents.
+        // Validate the host to prevent SSRF attacks.
+        $host = parse_url( $release_url, PHP_URL_HOST );
+        if ( $host !== 'speedifypress.com' ) {
+            return $result;
+        }
+        $response = wp_remote_get( $release_url, array( 'timeout' => 10 ) );
+        if ( is_wp_error( $response ) ) {
+            return $result;
+        }
+        $release_body = wp_remote_retrieve_body( $response );
+        $release_data = json_decode( $release_body, true );
 
         // Ensure the data is valid and matches the expected WordPress format
         if (is_array($release_data)) {
@@ -295,7 +335,7 @@ class Menu {
             'title' => 'Clear CSS Cache',
             'href' => '#',
             'meta' => [
-              'onclick' => 'clear_cache("css");return false;',
+              'onclick' => '_spress_clear_cache("css");return false;',
             ],
           ]);   
           
@@ -305,13 +345,37 @@ class Menu {
             'title' => 'Clear Page Cache',
             'href' => '#',
             'meta' => [
-              'onclick' => 'clear_cache("page");return false;',
+              'onclick' => '_spress_clear_cache("page");return false;',
             ],
           ]);             
 
           ?>
             <script rel="js-extra speed-js">
-            function clear_cache(cache_type) {
+
+            // minimal nonce refresher used only if needed
+            async function __spress_refreshNonce(){
+              // cache in a global so we don’t re-fetch constantly
+             if (window.__spress_refreshingNonce) return window.__spress_refreshingNonce;
+              const ajaxUrl = (typeof ajaxurl !== 'undefined' && ajaxurl) || '/wp-admin/admin-ajax.php';
+              window.__spress_refreshingNonce = fetch(ajaxUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+                body: new URLSearchParams({ action: 'sip_get_rest_nonce' }).toString(),
+              })
+              .then(async (r) => {
+                const j = await r.json().catch(() => null);
+                if (!r.ok || !j?.success) throw new Error('Nonce refresh failed');
+                // update the shared nonce used by admin app
+                if (!window.spress_namespace) window.spress_namespace = {};
+                window.spress_namespace.restNonce = j.data.nonce;
+                return window.spress_namespace.restNonce;
+              })
+              .finally(() => { window.__spress_refreshingNonce = null; });
+              return window.__spress_refreshingNonce;
+            }
+
+            function _spress_clear_cache(cache_type) {
 
                 if(cache_type == "page") {
                     var id = '<?php echo esc_js(self::$menu_slug . '-clearpage'); ?>';                
@@ -330,24 +394,52 @@ class Menu {
                 elem.innerText = originalText; // Reset text and append spinner
                 elem.appendChild(spinner);
 
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', resturl, true);
-                
-                xhr.onload = function () {
+                // tiny helper to send once with given nonce
+                function sendWithNonce(nonce, retried){
+                  var xhr = new XMLHttpRequest();
+                  xhr.open('GET', resturl, true); // keep existing verb for minimal change
+                  xhr.setRequestHeader('X-WP-Nonce', nonce);
+                  xhr.onload = async function () {
                     elem.innerText = originalText;
                     if (xhr.status === 200) {
-                        console.log('Cache cleared successfully.');
-                    } else {
-                        console.error('Failed to clear cache:', xhr.status, xhr.statusText);
+                      console.log('Cache cleared successfully.');
+                      return;
                     }
-                };
-
-                xhr.onerror = function () {
+                    // If nonce likely expired (WP may return 401 or 403 with code)
+                    var shouldRetry = false;
+                    if (xhr.status === 401 || xhr.status === 403) {
+                      try {
+                        var payload = JSON.parse(xhr.responseText);
+                        shouldRetry = payload && payload.code === 'rest_cookie_invalid_nonce';
+                      } catch(e){}
+                    }
+                    if (shouldRetry && !retried) {
+                      try {
+                        const newNonce = await __spress_refreshNonce();
+                        // show spinner again while retrying
+                        elem.innerText = originalText; elem.appendChild(spinner);
+                        return sendWithNonce(newNonce, true);
+                      } catch (e) {
+                        alert('Your session expired. Please reload and sign in.');
+                      }
+                    } else {
+                      console.error('Failed to clear cache:', xhr.status, xhr.statusText);
+                    }
+                  };
+                  xhr.onerror = function () {
                     elem.innerText = originalText;
                     console.error('Error clearing cache.');
-                };
+                  };
+                  xhr.send();
+                }
 
-                xhr.send();
+                // use shared rotating nonce if present, else initial PHP-minted one
+                sendWithNonce(
+                  (window.spress_namespace && window.spress_namespace.restNonce) || '<?php echo wp_create_nonce( 'wp_rest' ); ?>',
+                  false
+                );
+
+
             }
             </script>
           <style>
@@ -468,8 +560,15 @@ class Menu {
         //Set ajax url
         $ajax_url =  admin_url( 'admin-ajax.php' );
 
+        //Set rest url
+        $rest_url =  esc_url_raw( rest_url() );
+
+        //Create a nonce for REST requests. The nonce will be verified in Auth::admin_permission_callback.
+        $rest_nonce = wp_create_nonce( 'wp_rest' );        
+
         // Output the necessary data for the frontend into a JavaScript object.
-        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url'}</script>";
+        // The restNonce property contains the nonce for authenticated REST API requests.
+        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url',resturl:'$rest_url',restNonce:'$rest_nonce'}</script>";        
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';

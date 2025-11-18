@@ -74,6 +74,13 @@ When you first install the plugin, the mode setting will be set to
       Fully Disabled. 
       This means that no caching will take place until you enable it and update the mode
 
+*Choose the page preload mode*
+
+Here you can choose how the plugin should perform page preloading. This is when the page for the user's next visit is preloaded before they visit it.
+
+- "On hover" will prefetch the page when the user hovers over the link on desktop. On mobile it'll start the prefetch when they touch the link (before releasing it). Uses prefetch and will fetch all links (cached or not)
+- "Intelligent" will prerender links as soon as they enter the viewport (or prefetch if that's not supported). It uses sensible throttles and will only preload links that are in the cache. Non-cached links default to the onhover method.
+
 *Choose the cache lifetime*
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
@@ -193,6 +200,23 @@ The Cloudflare cache works with a lazy preload. This means that when the cache i
 **Multiple Sites**
 
 This worker will work fine with multiple wordpress sites on the same domain (or subdomains). However, they must all have the same NONCE_SALT defined in wp-config.php. (This should match the this.csrf_salt value defined in the worker, which it should do automatically). To update the NONCE_SALT on your sites, you can manually copy and paste it into the wp-config.php file.
+
+**Zstd Compression**
+
+Zstd compression will get the best results in terms of TTFB. To enable go to Rules > Compressions Rules > Create  and Choose "Enable Zstandard (Zstd) Compression" for the default content types.
+## How to use the  Code Insertion?
+
+**Code Insertion** provides a quick and easy way to insert code into the start of the document <HEAD> or the end of the document <BODY>
+
+*Head Code*
+
+Code added here will go at the start of the document <HEAD>. Use this for any stylesheets, scripts, meta tags, etc.
+
+*Body Code*
+
+Code added here will go at the end of the document <BODY>. Use this for any scripts you'd like to run here.
+
+Any scripts added to either section will get delayed by JavaScript delay, unless you add them as an exception.
 ## How to use the  CSS Settings?
 
 **Mode Selection**
@@ -277,42 +301,7 @@ Displays CSS caching stats **for each 🔍 page path**. This helps pinpoint wher
 Groups CSS stats by **📝 Post Type**, allowing you to analyze **which plugins affect different content types**.
 
 - If certain post types **only** fill the **Unused** column, they likely don’t need those styles—optimizing them can improve performance.
-## How to use the  Find Replace?
-
-**Find/Replace** is an advanced feature that allows you to directly **search and replace** text in the HTML of all pages on your site.
-
-*Add Row*
-
-Start by clicking **"Add Row"** and entering the text to find and replace.  
-            **Important:** Regular expressions are **not supported**, and replacements are **case-sensitive**.
-
-*Choose Scope*
-
-Choose how replacements are applied:
-
-- **Scope: all** – Apply the replacement **everywhere** on the page.
-- **Scope: first** – Replace **only the first occurrence** of the text.
-
-**Find/Replace** is an advanced feature that allows you to directly **search and replace** text in the HTML of all pages on your site.
-
-*Add Row*
-
-Start by clicking **"Add Row"** and entering the text to find and replace.  
-            **Important:** Regular expressions are **not supported**, and replacements are **case-sensitive**.
-
-*Choose Scope*
-
-Choose how replacements are applied:
-
-- **Scope: all** – Apply the replacement **everywhere** on the page.
-- **Scope: first** – Replace **only the first occurrence** of the text.
-## How to use the  General Settings?
-
-**External Scripts**
-
-*Locally host Google fonts*
-
-Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
+## How to use the  External Scripts?
 
 *Locally host gtag.js*
 
@@ -329,20 +318,32 @@ Adds a preload in for the locally hosted gtag.js. You won't generally see a perf
 🎉 Partytown is an experimental feature that allows you load certain scripts via a web worker and therefore not in the main JavaScript thread. 
                 It was developed by [https://partytown.builder.io/](https://partytown.builder.io/). To add the locally hosted gtag here, just enter "local_tag" to the box. 
                 This will generally give a performance boost of a few points, but may affect the amount of sessions reported. It's therefore most suited to new sites.
+## How to use the  Find Replace?
 
-**Images**
+**Find/Replace** is an advanced feature that allows you to directly **search and replace** text in the HTML of all pages on your site.
 
-*Preload Image*
+*Add Row*
 
-This is a recommended feature for every site. Adding an image here will activate image lazy loading and set a default image to be displayed before the real image is loaded. 
-                It's recommended that you choose a very lightweight SVG image here.
+Start by clicking **"Add Row"** and entering either the text to find and replace or the CSS selector for an element to find/replace. Advanced selectors are not supported.
+            **Important:** Regular expressions are **not supported**, and replacements are **case-sensitive**.
 
-*Skip Lazyloading*
+*Choose Scope*
 
-Allows you to ⏩ skip the lazyloading of certain images. This would normally be for images that are shown above the fold. For example, you should skip lazyloading of your logo. 
-                Any images that are added here will be preloaded by default.
+Choose how replacements are applied:
 
-**Fonts**
+- **Scope: all text** - Apply the replacement **everywhere** on the page.
+- **Scope: first first** - Replace **only the first occurrence** of the text.
+- **Scope: first element** - The find text is a CSS selector and will replace just the **first** matching element.
+- **Scope: all elements** - The find text is a CSS selector and will replace **all** matching elements.
+## How to use the  Font Settings?
+
+**Google options**
+
+*Locally host Google fonts*
+
+Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
+
+**Preload options**
 
 *Preload fonts*
 
@@ -352,13 +353,34 @@ This is a recommended feature for every site. It will prevent the flash of unsty
 
 Recommended for every site. It's generally not necessary to preload these, as they don't flash and the preload can be render blocking.
 
-*Only preload fonts on desktop*
+*Don't preload fonts on mobile*
 
 Recommended for every site. Font files on mobile are generally too heavy and preloading them will prevent high pagespeed scores.
+
+**Advanced options**
+
+*Lazy load icon fonts*
+
+Recommended if you have icon fonts below the fold and they're causing render blocking. Will load in the icon fonts upon user interaction with the page.
 
 *Use system fonts on mobile*
 
 Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker.
+## How to use the  Image Settings?
+
+*Preload Image*
+
+This is a recommended feature for every site. Adding an image here will activate image lazy loading and set a default image to be displayed before the real image is loaded. 
+                It's recommended that you choose a very lightweight SVG image here.
+
+*Skip Lazyloading*
+
+Allows you to skip the lazyloading of certain images. This would normally be for images that are shown above the fold. For example, you should skip lazyloading of your logo. 
+                Any images that are added here will be preloaded by default.
+
+*Force Lazyloading*
+
+Allows you to force the lazyloading of certain images. This would normally be for images that have been identified as an LCP image at desktop but are shown above the fold at mobile.
 ## How to use the  Javascript Settings?
 
 **Defer JavaScript**
