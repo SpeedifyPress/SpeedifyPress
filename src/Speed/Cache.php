@@ -4,8 +4,8 @@ namespace SPRESS\Speed;
 
 use SPRESS\App\Config;
 use SPRESS\Speed;
-use Wa72\Url\Url;
-use MatthiasMullie\Minify;
+use SPRESS\Dependencies\Wa72\Url\Url;
+use SPRESS\Dependencies\MatthiasMullie\Minify;
 
 /**
  * Class Cache
@@ -19,6 +19,7 @@ class Cache {
 
     // Configuration properties (set in self::init)
     public static $cache_mode;                           // string: either 'enabled' or 'disabled'
+    public static $page_preload_mode;                    // string: 'hover', 'intelligent' or 'disabled'
     public static $bypass_cookies;                       // line separated list of (partial) cookie names
     public static $bypass_urls;                          // line separated list of (partial) URLs
     public static $ignore_querystrings;                  // line separated list of query string keys
@@ -35,6 +36,8 @@ class Cache {
     public static $plugin_mode;                          // string: 'enabled', 'disabled', 'partial'
     public static $disable_urls;                         // line separated list of (partial) URLs
     public static $preload_fonts_desktop_only;           //string: 'true' or 'false'
+    public static $multisite_identifier;                 //string: blogid or empty
+    public static $replace_woo_nonces;                   //string: 'true' or 'false'
 
     /**
      * Initializes the cache settings from configuration.
@@ -56,12 +59,36 @@ class Cache {
         self::$preload_fonts_desktop_only = Config::get('speed_code','preload_fonts_desktop_only');
         self::$cache_logged_in_users_exclusively_on = Config::get('speed_cache','cache_logged_in_users_exclusively_on');
         self::$csrf_expiry_seconds = Config::get('speed_css','csrf_expiry_seconds');
+        self::$multisite_identifier = wp_json_encode( Speed::get_multisite_definition() );        
 
         //Ensure the "CF-SPU-Browser" querystring is always in the $ignore_querystrings var, as we use it to ensure our Cloudflare
         //HEAD checks are never cached
         if (strpos(self::$ignore_querystrings, 'CF-SPU-Browser') === false) {
             self::$ignore_querystrings .= "\nCF-SPU-Browser";
         }        
+
+        // Append logged-in user role if caching for logged-in users is enabled.
+        add_action("init",function() {
+            if (self::$cache_logged_in_users === 'true' && function_exists('is_user_logged_in') && is_user_logged_in() && Speed::is_frontend() === true) {
+                // Get the user role using wp_get_current_user.
+                $user = wp_get_current_user();
+                if ($user && !empty($user->roles)) {
+                    $role = implode('-', $user->roles);
+                    $safe_role = preg_replace('/[^A-Za-z0-9_\-]/', '', $role);
+                    // Set a cookie for advanced-cache naming.
+                    setcookie('speedify_press_logged_in_roles', $safe_role, time() + 3600, COOKIEPATH, COOKIE_DOMAIN);
+                    $_COOKIE['speedify_press_logged_in_roles'] = $safe_role; //immediately add to global COOKIE
+                }
+            }            
+        });
+
+        //On logout remove the logged_in_roles cookie
+        add_action('wp_logout', function () {
+            if (isset($_COOKIE['speedify_press_logged_in_roles'])) {
+                unset($_COOKIE['speedify_press_logged_in_roles']);
+                setcookie('speedify_press_logged_in_roles', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN);
+            }
+        });
 
         // Register activation and deactivation hooks for advanced-cache.php.
         // Use SPRESS_FILE_NAME (a constant defined in the plugin's root file) as the main plugin file.
@@ -77,7 +104,181 @@ class Cache {
         add_action( 'clean_post_cache',        array(__CLASS__, 'purge_by_post' ));
         add_action( 'wp_update_comment_count', array(__CLASS__, 'purge_by_post' ));
 
+        //Register purge hook, more careful with this one
+        add_action( 'post_updated',            array( __CLASS__, 'purge_if_core_fields_changed' ), 10, 3 );
+
+        //Turn off Woo nonces
+        if(self::$replace_woo_nonces === 'true') {
+            
+            //Disable Woo nonces
+            add_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
+
+            //Add our own to REST dispatch
+            add_filter('rest_pre_dispatch', array(__CLASS__, 'custom_rest_pre_dispatch'), 10, 3);
+
+            //Prevent createPreloadingMiddleware from storing carts
+            add_action( 'wp_print_footer_scripts', function () {
+
+                if ( ! Speed::is_frontend() ) {
+                    return;
+                }
+
+                $scripts = wp_scripts();
+                if ( ! $scripts ) return;
+
+                $handle = 'wc-settings';
+                $reg    = $scripts->registered[ $handle ] ?? null;
+                if ( ! $reg ) return;
+
+                $before = $reg->extra['before'] ?? [];
+                if ( empty( $before ) ) return;
+
+                // Merge to a single blob, strip the preloading middleware, put it back.
+                $inline = preg_replace(
+                    '#;?\s*wp\.apiFetch\.use\s*\(.*?createPreloadingMiddleware.*?\)\s*;\s*#s',
+                    '',
+                    implode( " ", $before )
+                );
+
+                // Only write back if we actually changed something.
+                if ( $inline !== implode( " ", $before ) ) {
+                    $reg->extra['before']         = [ $inline ];
+                    $scripts->registered[$handle] = $reg;
+                }                
+                
+            }, 2 );              
+
+        }
+
     }
+
+    /**
+     * Custom REST pre dispatch hook.
+     *
+     * Prevents all non-GET requests to the Store API from being processed,
+     * unless they have a valid CSRF token in the X-SPDY-CSRF header.
+     *
+     * This hook is used to prevent CSRF attacks on the Store API.
+     *
+     * @param WP_REST_Response $result The response to be processed.
+     * @param WP_REST_Server $server The REST server object.
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response|WP_Error The response to be processed, or an error if the request is invalid.
+     */
+    public static function custom_rest_pre_dispatch($result, \WP_REST_Server $server, \WP_REST_Request $request) {
+
+        $route = $request->get_route();                 // e.g. /wc/store/v1/cart/add-item
+        $method = $request->get_method();               // POST/PUT/PATCH/DELETE/GET
+        if (strpos($route, '/wc/store/') !== 0) {
+            return $result; // not the Store API
+        }
+        if (in_array($method, ['GET','HEAD','OPTIONS'], true)) {
+            return $result; // read-only
+        }
+
+        // Basic Origin/Referer check (keeps CSRF robust even if token leaks)
+        $host = (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
+        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+        if ($origin && stripos($origin, $host) !== 0) {
+            return new \WP_Error('spdy_csrf_origin', 'Invalid origin', ['status' => 403]);
+        }
+        if (!$origin && $referer && stripos($referer, $host) !== 0) {
+            return new \WP_Error('spdy_csrf_referer', 'Invalid referer', ['status' => 403]);
+        }
+
+        // Get token from our header
+        $token = $_SERVER['HTTP_X_SPDY_CSRF'] ?? '';
+        if ($token === '') {
+            return new \WP_Error('spdy_csrf_missing', 'CSRF token missing', ['status' => 403]);
+        }
+
+        // Verify token against current request/session
+        $decoded = Speed::decode_csrf_token( $token, 'long' );        
+        if ( !empty($decoded['fail_message'])) {
+            return new \WP_Error(
+                'invalid_request',
+                'Invalid CSRF token or missing URL. ' . $decoded['fail_message'],
+                [ 'status' => 403 ]
+            );
+        }            
+        
+
+        return $result;
+
+    }
+
+    /**
+     * Returns a unique identifier for the current user session.
+     * This is used for caching pages when the user is logged in.
+     * The identifier is based on the user's login token, Woo session ID, or
+     * a fallback value if none of the above are available.
+     * @return string the unique identifier for the current user session.
+     */
+    public static function spdy_rest_session_identifier(): string {
+
+        // 1) Logged-in cookie: wordpress_logged_in_* = login|exp|token|hmac → use token
+        foreach ($_COOKIE as $k => $v) {
+            if (strpos($k, 'wordpress_logged_in_') === 0) {
+                $parts = explode('|', rawurldecode($v), 4);
+                if (!empty($parts[2])) {
+                    return hash('sha256', 'wp:' . $parts[2]);
+                    //return 'wp:' . $parts[2];
+                }
+            }
+        }
+
+        // 2) Woo guest session cookie: wp_woocommerce_session_<COOKIEHASH> = "<sid>||<exp>"
+        foreach ($_COOKIE as $k => $v) {
+            if (strpos($k, 'wp_woocommerce_session_') === 0) {
+                $sid = explode('||', rawurldecode($v))[0] ?? '';
+                if ($sid !== '') {
+                    return hash('sha256', 'wc:' . $sid);   
+                    //return 'wc2:' . $sid;   
+                }
+            }
+        }
+
+        // 3) Our guest cookie
+        if (empty($_COOKIE['spdy_guest'])) {
+            //Cookies must have been deleted, regen
+            self::generate_guest_cookie();            
+        }
+        
+        return hash('sha256', 'sg:'.$_COOKIE['spdy_guest']);
+
+
+    }
+
+
+    /**
+     * Generates a guest cookie if none exists.
+     *
+     * This function sets a cookie named 'spdy_guest' with a random 32-byte value.
+     * The cookie is set to expire after 24 hours and is marked as secure
+     * (HTTPS only) and httponly (JS doesn't need to read it).
+     *
+     * If the cookie already exists, it will not be regenerated.
+     *
+     * @return void
+     */
+    public static function generate_guest_cookie() {
+        
+        $val = bin2hex(random_bytes(32));
+        // make it visible to this request too
+        $_COOKIE['spdy_guest'] = $val;
+
+        $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+        setcookie('spdy_guest', $val, [
+            'expires'  => time() + 24*60*60,
+            'path'     => '/',
+            'secure'   => $https,
+            'httponly' => true,        // JS doesn’t need to read it
+            'samesite' => 'Lax',
+        ]);
+
+    }
+
 
     /**
      * Checks the HTML output and saves it into the cache if it qualifies.
@@ -105,24 +306,25 @@ class Cache {
 
         // Only cache if caching mode is enabled
         if (self::$cache_mode !== 'enabled') {
-            return $html;
+            return $html . "\n<!-- Cache skipped DISABLED-->";
         }
 
         // Various tests and checks 
-        if (self::meets_url_requirements($url, $html) === false) {
-            return $html;
+        if (self::meets_html_requirements($html) === false) {
+            return $html . "\n<!-- Cache skipped NOT HTML-->";
         }
 
         // Check bypass rules (cookies, URLs, user agents).
         if (!self::is_url_cacheable($url)) {
-            return $html;
+            global $bypass_reason;
+            return $html . "\n<!-- Cache skipped BYPASS $bypass_reason -->";;
         }
 
         // If the user is logged in but caching for logged-in users is not enabled, skip caching.
         if (function_exists('is_user_logged_in') && is_user_logged_in() && 
         (self::$cache_logged_in_users !== 'true' || Cache::is_url_logged_in_cacheable(Speed::get_url()) == false)
         ) {
-            return $html;
+            return $html . "\n<!-- Cache skipped LOGGED IN -->";
         }
 
         // Determine the base file path for caching 
@@ -134,7 +336,7 @@ class Cache {
         // If the original and modified URL differ, save in a lookup
         // so we can purge both when required
         if ($url != $modified_url) {
-            $lookup_file = Speed::get_root_cache_path() . "/lookup_uris.json";
+            $lookup_file = Speed::get_root_cache_path() . '/'. Cache::get_cached_uris_filename();
             
             // Initialize current lookup as an array.
             $current_lookup = [];
@@ -167,60 +369,111 @@ class Cache {
 
         //Save to cache
         $html = self::save_cache($cache_file,$html);
+        
+        //$url has now been cached, update links index
+        self::write_cached_uri($url);
 
         return $html;
+
     }
 
-    public static function meets_url_requirements($url, $html) {
+    /**
+     * Writes a cached URL to the cache index
+     *
+     * @param string $url The URL that has been cached.
+     * @return void
+     */
+    public static function write_cached_uri($url) {
 
-        // Only cache GET requests
-        if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
-            return false;
-        }
+        //Write URIs not URLs
+        $uri = Speed::get_sanitized_uri($url);
 
-        // Check that the HTTP response code is 200.
-        if (function_exists('http_response_code')) {
-            $response_code = http_response_code();
-            if ($response_code !== 200) {
-                return false;
+        $lookup_file = Speed::get_root_cache_path() . '/'. Cache::get_cached_uris_filename();
+        
+        // Initialize current lookup as an array.
+        $current_lookup = [];
+        
+        //Decode
+        if (file_exists($lookup_file)) {
+            $contents = @file_get_contents($lookup_file);
+            if ($contents !== false) {
+                $decoded = json_decode($contents, true);
+                if (is_array($decoded)) {
+                    $current_lookup = $decoded;
+                }
             }
         }
+        
+        // Save the original URL under the modified URL key.
+        $current_lookup[$uri] = 1;
 
-        // Skip AJAX requests.
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            return false;
-        }
+        //Sort by length of the keys and cap at max 30
+        uksort($current_lookup, function($a, $b) {
+            return strlen($a) - strlen($b);
+        });
+        $current_lookup = array_slice($current_lookup, 0, 30);
+        
+        // Write back the lookup data.
+        $json = wp_json_encode( $current_lookup );
+        if ( json_last_error() === JSON_ERROR_NONE ) {
+            file_put_contents($lookup_file, $json, LOCK_EX);
+        }   
 
-        // Skip admin pages (if is_admin() is available).
-        if (function_exists('is_admin') && is_admin()) {
-            return false;
-        }
 
-        // Skip if the URL has disallowed extensions (e.g. .txt, .xml, or .php).
-        $disallowed_extensions = ['.txt', '.xml', '.php'];
-        foreach ($disallowed_extensions as $ext) {
-            if (substr($url, -strlen($ext)) === $ext) {
-                return false;
+    }
+
+    /**
+     * Remove a cached URI from the lookup table.
+     *
+     * @param string $url The URL to remove from the lookup table.
+     *
+     * @return void
+     */
+    public static function remove_cached_uri($url) {
+        
+        //Write URIs not URLs
+        $uri = Speed::get_sanitized_uri($url);
+
+        //Set lookup directory
+        $lookup_dir = Speed::get_root_cache_url();
+
+        //Get all files that end with "cached_uris.json"
+        $files = glob($lookup_dir . '/*cached_uris.json');
+        
+        //Run through the files
+        foreach ($files as $file) {
+            
+            $lookup_file = $file;
+            
+            //Decode
+            if (file_exists($lookup_file)) {
+                $contents = @file_get_contents($lookup_file);
+                if ($contents !== false) {
+                    $decoded = json_decode($contents, true);
+                    if (is_array($decoded)) {
+                        $current_lookup = $decoded;
+                    }
+                }
             }
+            
+            // Save the original URL under the modified URL key.
+            unset($current_lookup[$uri]);
+            
+            // Write back the lookup data.
+            $json = wp_json_encode( $current_lookup );
+            if ( json_last_error() === JSON_ERROR_NONE ) {
+                file_put_contents($lookup_file, $json, LOCK_EX);
+            }   
+
         }
+
+
+    }
+
+    public static function meets_html_requirements($html) {
 
         // Validate that the HTML contains a doctype and closing </html> tag.
         if (!preg_match('/<!DOCTYPE\s+html/i', $html) || !preg_match('/<\/html\s*>/i', $html)) {
-            return false;
-        }
-
-        // Do not cache amp endpoints (either via URL path or query parameter).
-        if (stripos($url, '/amp') !== false || isset($_GET['amp'])) {
-            return false;
-        }
-
-        // --- New Check: Do not cache REST API endpoints ---
-        if (stripos($url, '/wp-json') !== false) {
-            return false;
-        }
-
-        // Skip password-protected posts.
-        if (function_exists('post_password_required') && post_password_required()) {
             return false;
         }
 
@@ -228,6 +481,141 @@ class Cache {
 
 
     }
+
+    /**
+     * Determines whether the current url is cacheable.
+     *
+     * Evaluates the following:
+     * - If any cookie in the request matches (even partially) one of the strings
+     *   specified in self::$bypass_cookies.
+     * - If the current url contains any of the bypass URL strings.
+     * - If the HTTP user agent matches any bypass user agent strings.
+     *
+     * @return bool Returns false if any bypass condition is met; otherwise, true.
+     */
+    public static function is_url_cacheable($url) {
+
+        global $bypass_reason;
+
+        //Get URL path from $url
+        $path = parse_url($url, PHP_URL_PATH);
+
+        // Check if any cookie matches the bypass rules.
+        if (!empty(self::$bypass_cookies) && !empty($_COOKIE)) {
+            $bypass_cookies = array_filter(array_map('trim', explode("\n", self::$bypass_cookies)));
+            foreach ($bypass_cookies as $cookie_bypass) {
+                foreach ((array)$_COOKIE as $cookie_name => $cookie_value) {
+                    if (stripos($cookie_name, $cookie_bypass) !== false) {
+                        $bypass_reason = 'Cookie: ' . $cookie_name;
+                        return false;
+                    }
+                }
+            }
+        }
+
+        // Check if the URI contains any bypass URL strings.
+        if (!empty(self::$bypass_urls)) {
+            $bypass_urls = array_filter(array_map('trim', explode("\n", self::$bypass_urls)));
+            foreach ($bypass_urls as $bypass_url) {
+
+                if($bypass_url === "/") {
+                    if($path === "/") {
+                        $bypass_reason = 'Bypass URL: ' . $bypass_url;
+                        return false;        
+                    }                    
+                } else {
+                    if (stripos($url, $bypass_url) !== false) {
+                        $bypass_reason = 'Bypass URL: ' . $bypass_url;
+                        return false;
+                    }                    
+                }   
+            }
+        }
+
+        // Check if the HTTP user agent matches any bypass rules.
+        if (!empty(self::$bypass_useragents) && isset($_SERVER['HTTP_USER_AGENT'])) {
+            $bypass_useragents = array_filter(array_map('trim', explode("\n", self::$bypass_useragents)));
+            foreach ($bypass_useragents as $bypass_ua) {
+                if (stripos($_SERVER['HTTP_USER_AGENT'], $bypass_ua) !== false) {
+                    $bypass_reason = 'Bypass User Agent: ' . $_SERVER['HTTP_USER_AGENT'];
+                    return false;
+                }
+            }
+        }
+
+        // Skip if the URL has disallowed extensions (e.g. .txt, .xml, or .php).
+        $disallowed_extensions = ['.txt', '.xml', '.php'];
+        foreach ($disallowed_extensions as $ext) {
+            if (substr($url, -strlen($ext)) === $ext) {
+                $bypass_reason = "Disallowed extension";
+                return false;
+            }
+        }        
+
+        //Check if we have the nocache querystring
+        if (stripos($url, 'nocache') !== false) {
+            $bypass_reason = 'Nocache querystring';
+            return false;
+        }
+
+        //Don't cache AJAX request
+        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            $bypass_reason = 'AJAX request';
+            return false;
+        }        
+
+        // Skip AJAX requests.
+        if (defined('DOING_AJAX') && DOING_AJAX) {
+            $bypass_reason = 'AJAX request';
+            return false;
+        }        
+
+        // Process only GET and HEAD requests.
+        if ( !isset($_SERVER['REQUEST_METHOD']) || !in_array($_SERVER['REQUEST_METHOD'], ['GET','HEAD']) ) {
+            $bypass_reason = 'Not a GET or HEAD request';
+            return false;
+        }
+
+        // Check for a 200 response code, if available.
+        if ( function_exists('http_response_code') && http_response_code() !== 200 ) {
+            $bypass_reason = 'HTTP response code: ' . http_response_code();
+            return false;
+        }        
+
+        // Disallow caching for REST API requests (wp-json).
+        $request_uri = Speed::get_url();
+        if (stripos($request_uri, '/wp-json') !== false) {
+            $bypass_reason = 'REST API request';
+            return false;
+        }            
+
+        // Do not serve cache during cron.
+        if (defined('DOING_CRON') && DOING_CRON) {
+            $bypass_reason = 'Cron';
+            return false;
+        }
+
+        // Exit for AMP pages.
+        if (stripos($request_uri, '/amp') !== false || isset($_GET['amp'])) {
+            $bypass_reason = 'AMP page';
+            return false;
+        }
+
+        // Skip admin pages (if is_admin() is available).
+        if (function_exists('is_admin') && is_admin()) {
+            $bypass_reason = 'ADMIN page';
+            return false;
+        }
+
+        // Skip password-protected posts.
+        if (function_exists('post_password_required') && post_password_required()) {
+            $bypass_reason = 'Password protected';
+            return false;
+        }
+
+
+        return true;
+    }    
 
     public static function save_cache($cache_file,$html,$msg='',$gz_only=false) {
 
@@ -238,8 +626,10 @@ class Cache {
         if($msg) {
             $html .= "<!-- " . $msg . " -->";        
         } else {
-            $html .= "<!-- Cached by SpeedifyPress at " . $formatted_time . " in " . number_format($elapsed_time,2) . " -->";        
+            $html .= "<!-- on " . $formatted_time . " " . number_format($elapsed_time,2) . " total -->";        
         }
+
+        $html = preg_replace("@--><!--@","",$html);
     
         // Ensure the cache directory exists.
         $dir = dirname($cache_file);
@@ -323,69 +713,6 @@ class Cache {
 
     }
 
-    /**
-     * Determines whether the current url is cacheable.
-     *
-     * Evaluates the following:
-     * - If any cookie in the request matches (even partially) one of the strings
-     *   specified in self::$bypass_cookies.
-     * - If the current url contains any of the bypass URL strings.
-     * - If the HTTP user agent matches any bypass user agent strings.
-     *
-     * @return bool Returns false if any bypass condition is met; otherwise, true.
-     */
-    public static function is_url_cacheable($url) {
-
-        //Get URL path from $url
-        $path = parse_url($url, PHP_URL_PATH);
-
-        // Check if any cookie matches the bypass rules.
-        if (!empty(self::$bypass_cookies) && !empty($_COOKIE)) {
-            $bypass_cookies = array_filter(array_map('trim', explode("\n", self::$bypass_cookies)));
-            foreach ($bypass_cookies as $cookie_bypass) {
-                foreach ((array)$_COOKIE as $cookie_name => $cookie_value) {
-                    if (stripos($cookie_name, $cookie_bypass) !== false) {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // Check if the URI contains any bypass URL strings.
-        if (!empty(self::$bypass_urls)) {
-            $bypass_urls = array_filter(array_map('trim', explode("\n", self::$bypass_urls)));
-            foreach ($bypass_urls as $bypass_url) {
-
-                if($bypass_url === "/") {
-                    if($path === "/") {
-                        return false;        
-                    }                    
-                } else {
-                    if (stripos($url, $bypass_url) !== false) {
-                        return false;
-                    }                    
-                }   
-            }
-        }
-
-        // Check if the HTTP user agent matches any bypass rules.
-        if (!empty(self::$bypass_useragents) && isset($_SERVER['HTTP_USER_AGENT'])) {
-            $bypass_useragents = array_filter(array_map('trim', explode("\n", self::$bypass_useragents)));
-            foreach ($bypass_useragents as $bypass_ua) {
-                if (stripos($_SERVER['HTTP_USER_AGENT'], $bypass_ua) !== false) {
-                    return false;
-                }
-            }
-        }
-
-        //Check if we have the nocache querystring
-        if (stripos($url, 'nocache') !== false) {
-            return false;
-        }
-
-        return true;
-    }
-
 
 
     /**
@@ -449,20 +776,7 @@ class Cache {
             if (!empty($matched)) {
                 $filename .= '-' . implode('-', $matched);
             }
-        }
-
-        // Append logged-in user role if caching for logged-in users is enabled.
-        if ($cache_logged_in_users === 'true' && function_exists('is_user_logged_in') && is_user_logged_in()) {
-            // Get the user role using wp_get_current_user.
-            $user = wp_get_current_user();
-            if ($user && !empty($user->roles)) {
-                $role = implode('-', $user->roles);
-                $safe_role = preg_replace('/[^A-Za-z0-9_\-]/', '', $role);
-                // Set a cookie for advanced-cache naming.
-                setcookie('speedify_press_logged_in_roles', $safe_role, time() + 3600, COOKIEPATH, COOKIE_DOMAIN);
-                $_COOKIE['speedify_press_logged_in_roles'] = $safe_role; //immediately add to global COOKIE
-            }
-        }        
+        }    
 
         // Append logged-in user role if enabled and available.
         if ($cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
@@ -493,6 +807,26 @@ class Cache {
     }    
 
 
+    /**
+     * Returns the filename for the cached URIs list.
+     *
+     * If cache_logged_in_users is enabled and the user is logged in, the filename
+     * will be suffixed with the user's role (e.g. "administrator-cached_uris.json").
+     *
+     * @return string The computed filename.
+     */
+    public static function get_cached_uris_filename() {
+
+        $filename = 'cached_uris.json';
+
+        // Append logged-in user role if enabled and available.
+        if (self::$cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
+            $filename = preg_replace('/[^A-Za-z0-9_\-]/', '', $_COOKIE['speedify_press_logged_in_roles']) . "-" . $filename;
+        }
+
+        return $filename;
+
+    }
 
     /**
      * Scans the cache directory and returns statistics about the cached files.
@@ -633,13 +967,42 @@ class Cache {
         if($do_update) {
 
             //Search through all the files in the cache and replace
-            $html = "var $variable_name = " . wp_json_encode($new_config) . ";";
-            Cache::search_replace_in_cache("@var $variable_name =[^;]+;@",$html);
+            $html = "var $variable_name = " . wp_json_encode($new_config, JSON_UNESCAPED_SLASHES) . ";";
+
+            //Pattern to search for 
+            $pattern = '@\bvar\s+' . preg_quote($variable_name, '@') . '\s*=\s*\{(?:[^{}]++|(?0))*\}\s*;@s';
+
+            Cache::search_replace_in_cache($pattern,$html);
 
         }
 
     }       
 
+    
+    /**
+     * Purge the cache for a post if any of its core fields have changed.
+     *
+     * @param int $post_ID The ID of the post to check.
+     * @param WP_Post $post_after The post object after saving.
+     * @param WP_Post $post_before The post object before saving.
+     *
+     * Checks if any of the core fields of the post have changed and if so, purges the cache for that post.
+     */
+    public static function purge_if_core_fields_changed( $post_ID, $post_after, $post_before ) {
+        if ( wp_is_post_autosave( $post_ID ) || wp_is_post_revision( $post_ID ) ) return;
+        if ( 'publish' !== get_post_status( $post_ID ) ) return;
+
+        $changed =
+            $post_after->post_title   !== $post_before->post_title   ||
+            $post_after->post_name    !== $post_before->post_name    ||
+            $post_after->post_excerpt !== $post_before->post_excerpt ||
+            $post_after->post_parent  !== $post_before->post_parent  ||
+            (int) $post_after->menu_order !== (int) $post_before->menu_order;
+
+        if ( $changed ) {
+            self::purge_by_post( $post_ID );
+        }
+    }    
 
     /**
      * Purges cache files related to a specific post.
@@ -657,12 +1020,17 @@ class Cache {
             return;
         }
 
-        // Purge cache for the individual post.
+        // Get permalink
         $permalink = get_permalink($post_id);
+
+        //Purge for indivdual post
         Speed::purge_cache($permalink);
 
         //Purge CSS cache too
-        Speed::purge_cache($permalink,array("css","lookup.json"));
+        Speed::purge_cache($permalink,array("lookup.json")); //don't clear the CSS files though as they are shared
+
+        //Remove cached URI
+        self::remove_cached_uri($permalink);
 
         // If this is a post, also purge pages that list posts.
         if (get_post_type($post_id) === 'post') {
@@ -708,7 +1076,7 @@ class Cache {
             
                 $dir = Speed::get_root_cache_path();
                 // Speed::deleteSpecificFiles is wil recursively remove files matching the extensions.
-                Speed::deleteSpecificFiles($dir, array("html", "gz"),true);
+                Speed::deleteSpecificFiles($dir, array("html", "gz","cached_uris.json"),true);
 
             }
 
@@ -846,7 +1214,7 @@ class Cache {
 
         // Prepare configuration replacements.
         $replacements = array(
-            '%%SPRESS_CACHE_ROOT%%'                  => Speed::get_root_cache_path(),
+            '%%SPRESS_MULTISITE_IDENTIFIER%%'        => self::$multisite_identifier,
             '%%SPRESS_SEPARATE_COOKIE_CACHE%%'       => self::$separate_cookie_cache,
             '%%SPRESS_CACHE_PATH_UPLOADS%%'          => self::$cache_path_uploads,
             '%%SPRESS_FORCE_GZIPPED_OUTPUT%%'        => self::$force_gzipped_output,

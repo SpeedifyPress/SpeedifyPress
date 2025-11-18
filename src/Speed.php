@@ -9,8 +9,9 @@ use SPRESS\Speed\JS;
 use SPRESS\AdvancedCache;
 
 use SPRESS\App\Config;
-use simplehtmldom\HtmlDocument;
-use MatthiasMullie\Minify;
+use SPRESS\Dependencies\simplehtmldom\HtmlDocument;
+use SPRESS\Dependencies\MatthiasMullie\Minify;
+use SPRESS\Dependencies\Wa72\Url\Url;
 
 /**
  * The `Speed` class handles performance optimizations and output rewriting 
@@ -54,49 +55,6 @@ class Speed {
         //Set the hostname
         self::$hostname = parse_url(site_url(), PHP_URL_HOST);
 
-		//Set caching headers		
-		add_action("send_headers",function() {
-
-			$headers = Config::get('speed_code','page_headers');
-			if($headers && !is_admin()) {
-	
-				// Split the header text into lines
-				$lines = explode("\n", $headers);				
-	
-				// Loop through each line and convert it to a PHP header
-				foreach ($lines as $line) {
-					$line = trim($line); // Remove whitespace
-					if (!empty($line)) {
-	
-						//Get header key and value
-						$parts = explode(":", $line, 2);
-						$key = trim($parts[0]);
-						$value = trim($parts[1]);
-	
-						//Get date value
-						preg_match('/\{\{(.*?)\}\}/', $value, $matches);
-						if (!empty($matches) && isset($matches[1])) {
-							$day_match = strtotime($matches[1]);						
-							//If cache control value is seconds from now
-							if(preg_match('@Cache-Control|Retry-After|Access-Control-Max-Age|Keep-Alive@i',$key)) {
-								$seconds = $day_match - strtotime("now");
-								$value = str_replace($matches[0],$seconds,$value);
-							//If not cache-control, convert to date
-							} else {
-								$value = gmdate("D, d M Y H:i:s", $day_match) . " GMT";
-							}
-						}
-						
-						//Send the header
-						header($key . ": " . $value);
-	
-					}
-				}		
-		
-			}
-				
-		});        
-
         // Initialize Cache speed optimizations
         Cache::init();        
 
@@ -120,6 +78,123 @@ class Speed {
         add_action('run_gtag_cron', array(__CLASS__,'run_gtag_cron'));
 
 
+    }
+
+
+
+    /**
+     * Retrieves the best matching blog ID for the current URL.
+     *
+     * This method takes the full current URL and normalizes it by stripping the
+     * protocol and query/fragment parts, and ensuring a trailing slash.
+     *
+     * It then checks the configured multisite identifiers against the normalized
+     * URL and returns the best matching blog ID. The best match is determined by
+     * the longest matching URL prefix.
+     *
+     * If no multisite identifiers are configured, the default blog ID (1) is
+     * returned.
+     *
+     * @return int The best matching blog ID.
+     */
+    public static function get_multisite_identifier() {
+
+        $url = Speed::get_url(); // full current URL
+        $url = preg_replace('#^https?://#i', '', $url); 
+
+        // Normalize: strip query/fragment, ensure trailing slash
+        $url = strtok($url, '?#');
+        $url = rtrim($url, '/') . '/';        
+
+        if ( ! defined( 'SPRESS_MULTISITE_IDENTIFIER' ) ) {
+            return 1;
+        }
+        // Decode the JSON-encoded identifier map.  If decoding fails or the
+        // result is not an array, default to an empty array.
+        $decoded = json_decode( SPRESS_MULTISITE_IDENTIFIER, true );
+        $ident   = is_array( $decoded ) ? $decoded : array();        
+
+        //Check for the best match (longest wins)
+        if (is_array($ident)) {
+            $bestId = 1;
+            $bestLen = 0;
+            foreach ($ident as $url_start => $blog_number) {
+                $key = rtrim($url_start, '/') . '/';
+                if (strpos($url, $key) === 0 && strlen($key) > $bestLen) {
+                    $bestLen = strlen($key);
+                    $bestId  = (int) $blog_number;
+                }
+            }
+            return $bestId;
+        }
+
+        return 1; // default blog ID
+    }
+
+
+    /**
+     * Returns an associative array containing URL prefixes to blog IDs.
+     *
+     * The returned array contains URL prefixes as keys and blog IDs as values.
+     * The URL prefixes are constructed by concatenating the domain and path of the blogs
+     * in the multisite installation. The blog IDs are the IDs of the respective blogs
+     * in the multisite installation.
+     *
+     * The method first checks if the constant SPRESS_MULTISITE_IDENTIFIER is defined. If it
+     * is, it unserializes the constant and assigns the result to the $ident variable. If
+     * it is not, it initializes the $ident variable to an empty array.
+     *
+     * It then checks if the current WordPress installation is a multisite installation. If
+     * it is, it retrieves the current blog details using the get_blog_details() function and
+     * assigns the result to the $blog variable. It then constructs the URL prefix by
+     * concatenating the domain and path of the blog and assigns the current blog ID to the
+     * corresponding element of the $ident array with the constructed URL prefix as the key.
+     *
+     * Finally, it returns the $ident array.
+     *
+     * @return array An associative array containing URL prefixes to blog IDs.
+     */
+    public static function get_multisite_definition() {
+
+        if ( ! defined( 'SPRESS_MULTISITE_IDENTIFIER' ) || ! function_exists( 'get_blog_details' ) ) {
+            return array();
+        }
+
+        // Decode the JSON string from the constant into an associative array.  If the
+        // constant is empty or decoding fails, start with an empty array.
+        if ( SPRESS_MULTISITE_IDENTIFIER ) {
+            $decoded = json_decode( SPRESS_MULTISITE_IDENTIFIER, true );
+            $ident   = is_array( $decoded ) ? $decoded : array();
+        } else {
+            $ident = array();
+        }
+
+        $blog = get_blog_details( get_current_blog_id() );
+
+        // get the current blog id
+        if(is_multisite()) {
+            $blog = get_blog_details( get_current_blog_id() );
+            $ident[$blog->domain.$blog->path] =  get_current_blog_id();    
+        }        
+
+        return $ident;
+
+    }
+
+    /**
+     * Retrieves the root cache directory.
+     *
+     * This function takes the configured cache directory and appends the result of
+     * get_multisite_identifier() to it. This allows the cache to be separated by
+     * site if running a multisite installation.
+     *
+     * @return string The root cache directory.
+     */
+    public static function get_cache_directory() {
+        
+        $cache_directory = self::$cache_directory . "-" . self::get_multisite_identifier();
+        return $cache_directory;
+        
     }
 
     /**
@@ -152,7 +227,7 @@ class Speed {
      */
     public static function get_pre_cache_path() {
 
-        return ABSPATH . "wp-content/" . self::get_cache_root() . "/".self::$cache_directory;
+        return ABSPATH . "wp-content/" . self::get_cache_root() . "/". self::get_cache_directory();
 
     }
 
@@ -163,7 +238,7 @@ class Speed {
      */
     public static function get_pre_cache_url() {
 
-        return site_url() . "/wp-content/" . self::get_cache_root() . "/".self::$cache_directory;
+        return site_url() . "/wp-content/" . self::get_cache_root() . "/". self::get_cache_directory();
 
     }       
 
@@ -182,7 +257,7 @@ class Speed {
             $dir = "cache";
         }
 
-        return ABSPATH . "wp-content/". $dir . "/".self::$cache_directory."/" . self::$hostname;
+        return ABSPATH . "wp-content/". $dir . "/". self::get_cache_directory() ."/" . self::$hostname;
 
     }
 
@@ -193,7 +268,7 @@ class Speed {
      */
     public static function get_root_cache_url() {
 
-        return site_url() . "/wp-content/" . self::get_cache_root()  . "/".self::$cache_directory."/" . self::$hostname;
+        return site_url() . "/wp-content/" . self::get_cache_root()  . "/". self::get_cache_directory() ."/" . self::$hostname;
 
     }    
 
@@ -243,7 +318,7 @@ class Speed {
         //Start time
         self::$start_time = microtime(true);
 
-        $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags firs
+        $output = self::rewrite_html($output);     // Rewrite HTML content for optimizations, add tags first
 
         $output = CSS::rewrite_css($output); // Rewrite CSS for performance improvements
 
@@ -258,6 +333,8 @@ class Speed {
 
         //Save ouput to cache
         $output = Cache::do_cache($output); 
+        $output = preg_replace("@-->(\n)?<!--@","",$output);
+
         $output = CSS::do_html_cache($output);
 
         } catch (\Exception $e) {
@@ -333,6 +410,64 @@ class Speed {
 
     }
 
+
+
+
+    /**
+     * Injects code into the head and body of the document that is intended to
+     * restore certain functionality related to WooCommerce. Specifically, this
+     * function injects code that handles the token injection for the
+     * WooCommerce REST API and nulls out the shopping cart on cached pages.
+     *
+     * @param \simple_html_dom $dom The DOM structure to modify.
+     * @return \simple_html_dom The modified DOM structure with the injected code.
+     */
+    private static function add_woo_injects($dom) {
+     
+        //Set token injection
+        $woo_rest_token_injection = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/woo_rest_token_injection.js');
+
+        //Minify it
+        $minifier = new Minify\JS($woo_rest_token_injection);
+        $woo_rest_token_injection = $minifier->minify();
+
+        // Create a new script element
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->setAttribute('rel', 'js-extra woo_rest_token_injection');
+        $scriptElement->innertext = $woo_rest_token_injection;
+
+        // Append the script element directly to the head
+        $headElement = $dom->find('head', 0);
+        if($headElement) {
+            $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
+        }
+
+        //Always exclude
+        JS::$delay_exclude .= "\n" . "woo_rest_token_injection";
+
+        //Set cart nulling
+        $woo_cart_nulling = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/woo_null_cached_page_cart.js');
+
+        //Minify it
+        $minifier = new Minify\JS($woo_cart_nulling);
+        $woo_cart_nulling = $minifier->minify();        
+
+        // Create a new script element
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->setAttribute('rel', 'js-extra woo_cart_nulling');
+        $scriptElement->innertext = $woo_cart_nulling;
+
+        //Add before body end
+        $body = $dom->find('body', 0);
+        $body->appendChild($scriptElement);
+
+        //Always exclude
+        JS::$delay_exclude .= "\n" . "woo_cart_nulling";           
+
+        return $dom;
+
+    }      
+
     /**
      * Embeds a minified jQuery stand-in script into the provided DOM structure.
      * This function reads the stand-in script, minifies it, and appends it to
@@ -385,8 +520,32 @@ class Speed {
         foreach ($dom->find('.logged_in_exception') as $el) {
 
             $children = $el->children();
-  
-            if (!empty($children)) {            
+
+            //Custom script element
+            if($el->tag == 'script') {
+
+                if($el->hasClass('custom') && $el->hasAttribute('data-splog-cid')) {
+
+                    //This has custom content, get it
+                    $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
+                    foreach($exceptions as $count=>$exception) {
+                        if(md5($exception['custom_html']) == $el->getAttribute('data-splog-cid')) {
+                            $inner = $exception['custom_html'];
+                            break;
+                        }
+                    }                
+
+                } else { 
+
+                    $inner = '';
+
+                }
+
+                $el->outertext = str_replace($el->innertext, $inner, $el->outertext);  
+
+            
+            //Element with children
+            } else if (!empty($children)) {            
 
                 if($el->hasClass('block-3rows') ||
                    $el->hasClass('block-2rows') ||
@@ -408,6 +567,17 @@ class Speed {
                                 }
                             $inner .= '</div>';
 
+                } else if($el->hasClass('custom') && $el->hasAttribute('data-splog-cid')) {
+
+                    //This has custom content, get it
+                    $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
+                    foreach($exceptions as $count=>$exception) {
+                        if(md5($exception['custom_html']) == $el->getAttribute('data-splog-cid')) {
+                            $inner = $exception['custom_html'];
+                            break;
+                        }
+                    }
+
 
                 } else {
 
@@ -418,7 +588,7 @@ class Speed {
                     $inner = preg_replace_callback(
                         '/>([^<]+)</u',
                         function($m) {
-                            // $m[1] is the text chunk; replace only non‑whitespace with '-'
+                            // $m[1] is the text chunk; replace only non-whitespace with '-'
                             return '>' . preg_replace('/\S/u','-',$m[1]) . '<';
                         },
                         $inner
@@ -478,16 +648,19 @@ class Speed {
         }
 
         $used_skeletons = array();
+        $added_ident = false;
    
         //For each exception tag with a new CSS class 'logged_in_exception'
         foreach($exceptions as $count=>$exception) {
 
             $element_to_find = $exception['find'];
             $skeleton = str_replace(" ","",$exception['skeleton']);
+            $custom_ident = md5($exception['custom_html']);
             $delay_js = $exception['delay_js'];
         
             //$html = self::add_class_if_exists($html,$exception,'logged_in_exception',$count);
             foreach ($dom->find($element_to_find) as $el) {
+                
                 //If element has an id, set that as the identifier
                 if($el->hasAttribute('id')) {
                     $ident = $el->getAttribute('id');
@@ -497,15 +670,23 @@ class Speed {
                 $el->setAttribute('data-splog-uid', $ident);
                 $el->addClass('logged_in_exception');
                 $el->addClass($skeleton);
+                $el->setAttribute('data-splog-cid', $custom_ident);
                 if($delay_js === 'true') {
                     $el->addClass('spress_do_delay_js');
                 }
+
+                $added_ident = true;
 
             }
 
             $used_skeletons[] = $skeleton;     
 
-        }            
+        }     
+         
+        //If nothing added, return
+        if($added_ident == false) {
+            return $dom;
+        }
         
         //Set style
         $head_code_style = '<style>';
@@ -924,16 +1105,82 @@ class Speed {
 
     }
 
+    /**
+     * Adds a CSRF token to the document that can be used to secure a form from
+     * cross-site request forgery attacks.
+     *
+     * The token is a base64-encoded string that contains a 30-second
+     * expiration timestamp and a 6-byte random value. The token is
+     * signed using the HMAC-SHA256 algorithm and the NONCE_SALT secret
+     * key.
+     *
+     * A mini worker is used to fetch the token. The worker is created
+     * using the URL.createObjectURL method and is passed the path to the
+     * token endpoint. The worker then fetches the token and posts it back
+     * to the main thread.
+     *
+     * The mini worker is also responsible for refreshing the token when
+     * the tab is visible or the user focuses on the tab.
+     *
+     * @param \simple_html_dom $dom The document to modify.
+     *
+     * @return \simple_html_dom The modified document with the CSRF token
+     *                          included.
+     */
     private static function add_csrf_token($dom) {  
 
         // Create a new script element
         $scriptElement = $dom->createElement('script');
         $scriptElement->setAttribute('id', self::$csrf_name);
-        $csrf_token = self::generate_csrf_token(self::get_url());
-        $scriptElement->innertext = 'window.' . self::$csrf_name . ' = "' . htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') . '";'; 
 
+        //Generate token
+        $csrf_token = self::generate_csrf_token(self::get_url());
+
+        //Mini worker to fetch token
+        $mini_worker = '
+        var _spdyInflight=false,_spdyLast=0;
+
+        var _w=new Worker(URL.createObjectURL(new Blob(["onmessage=e=>{var d=e.data||{},u=d.u,p=d.p;if(!u)return;fetch(u,{method:\'HEAD\',credentials:\'same-origin\',headers:{\'X-Page-URL\':p||\'\',Accept:\'application/json\'}}).then(r=>postMessage(r.headers.get(\'X-CSRF-Token\')||\'\')).catch(()=>postMessage(\'\'))}"],{type:"text/javascript"})));
+        window.spdy_csrfToken=null;
+
+        // set once (not per call)
+        _w.onmessage=e=>{
+        var t=e.data;
+        _spdyInflight=false;
+            if(t){
+                window.spdy_csrfToken=t;
+                document.cookie = \'spdy_csrf=\' + encodeURIComponent(t) + \'; Path=/; Secure; SameSite=Lax\';
+                document.dispatchEvent(new CustomEvent("spdy:csrf-updated",{detail:{token:t}}))
+            }
+        };        
+
+        function spdyFetchCsrf(path) {
+        if (typeof path !== \'string\' || !path) path = \'/_csrf\';
+
+        var now = Date.now();
+        if (_spdyInflight || now - _spdyLast < 800) return;
+
+        _spdyInflight = true;
+        _spdyLast = now;
+
+        var u = new URL(path, location.href).href;
+        _w.postMessage({ u, p: location.href });
+        }
+
+        spdyFetchCsrf();
+        addEventListener("visibilitychange",()=>{!document.hidden&&spdyFetchCsrf()});
+        addEventListener("focus",spdyFetchCsrf);
+        addEventListener("pageshow",e=>{e.persisted&&spdyFetchCsrf()});
+        '; 
+
+        //Minify it
+        $minifier = new Minify\JS($mini_worker);
+        $mini_worker = $minifier->minify();                    
+
+        $scriptElement->innertext = $mini_worker;
+                            
         //Add after head
-        $headElement = $dom->find('html', 0);
+        $headElement = $dom->find('head', 0);
         if($headElement) {
             $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
         }        
@@ -952,7 +1199,7 @@ class Speed {
         $scriptElement->src = SPRESS_PLUGIN_URL . 'assets/onload/onload.min.js?v=' . SPRESS_VER;
 
         //Add after head
-        $headElement = $dom->find('html', 0);
+        $headElement = $dom->find('head', 0);
         if($headElement) {
             $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
         }        
@@ -962,8 +1209,6 @@ class Speed {
     }
 
     private static function add_partytown($dom) {
-
-        $bodyElement = $dom->find('body', 0);
 
         $party_conf = Config::get('speed_css', 'include_partytown');
 
@@ -1033,12 +1278,15 @@ class Speed {
         
         // Create a new script element
         $scriptElement = $dom->createElement('script');
-        $scriptElement->setAttribute('rel', 'js-extra');
+        $scriptElement->setAttribute('rel', 'js-extra spress_intersection_observer');
         $scriptElement->innertext = $intersection_observer;
 
         //Add before body end
         $body = $dom->find('body', 0);
         $body->appendChild($scriptElement);
+
+        //Always exclude
+        JS::$delay_exclude .= "\n" . "spress_intersection_observer";        
 
         return $dom;
 
@@ -1062,7 +1310,7 @@ class Speed {
             // Construct a spuid
             $spuid = 'd' . $currentDepth . '-' . $ident . '-' . count(self::$spuid_holder[$ident]);
             $element->setAttribute('data-spuid', $spuid);
-            $element->setAttribute('data-spudepth', $currentDepth);
+            //$element->setAttribute('data-spudepth', $currentDepth);
 
             //For style tags, give a content ID
             if($element->tag == "style") {
@@ -1094,9 +1342,10 @@ class Speed {
       
 
     public static function is_frontend() {
-        // Check if it's an admin area or an AJAX request
-        if (is_admin() || wp_doing_ajax()
+        // Check if it's an admin area or an AJAX request or cron
+        if (is_admin() || wp_doing_ajax() || wp_doing_cron()
         || (stripos( $_SERVER['SCRIPT_NAME'], 'wp-login.php' ) !== false)
+        || (stripos( $_SERVER['SCRIPT_NAME'], 'wp-cron.php' ) !== false)
         ) {
             return false;
         }
@@ -1135,7 +1384,8 @@ class Speed {
 			return $html;
 		}
 
-		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) || isset( $_GET['et_fb']) ) {
+        //Builders
+		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) || isset( $_GET['et_fb']) || isset( $_GET['ct_builder'])) {
 			return $html;
 		}
 
@@ -1158,7 +1408,7 @@ class Speed {
             // simple_html_dom.
             $dom = (new HtmlDocument(""))->load($html,true, false);     
 
-            //add depth and sibling tags to HTML
+            //add id tags to HTML
             $dom = self::tag_html($dom);
 
             //Do google fonts
@@ -1174,16 +1424,34 @@ class Speed {
                 $dom = self::add_logged_in_users_exceptions_code_idents($dom); 
             }       
 
+            //Enable replacement of Woo nonces
+            if(Config::get('speed_cache', 'replace_woo_nonces') === 'true') {
+                $dom = self::add_woo_injects($dom);
+            }                
+
             //add jquery standing
             $dom = self::add_jquery_standin($dom);
 
-            //add jquery standing
-            $dom = self::add_template_js($dom);            
+            //add template restore JS
+            //if delay JS is active 
+            //(otherwise it'll hide elements JS relies on)
+            if(Config::get('speed_js','delay_js') === "true") {
+                $dom = self::add_template_js($dom);                
+            }            
 
             //Force system fonts for mobile
             if(Config::get('speed_code', 'system_fonts') === 'true') {
                 $dom = self::add_mobile_system_fonts($dom);
             }                   
+
+            //Do code insertions
+            $dom = self::code_insertions($dom);        
+
+            //Do page preloaders
+            $dom = self::add_page_preloaders($dom);
+            
+            //Refresh dom so gtag can process and code insertions
+            $dom = self::refresh_dom($dom);            
 
             //add self hosted gtag
             if(Config::get('external_scripts','gtag_locally') === "true") {
@@ -1191,13 +1459,15 @@ class Speed {
             }     
 
             //add invisible elements
-            $dom = self::add_invisible_elements($dom);  
+            //if delay JS is active 
+            //(otherwise it'll hide elements JS relies on)
+            if(Config::get('speed_js','delay_js') === "true") {
+                $dom = self::add_invisible_elements($dom);  
+                $dom = self::set_onload($dom);            
+            }
             
             //add intersection
             $dom = self::add_intersection_observer($dom);            
-
-            //HTML replacements, must be done after templates added
-            $dom = self::set_onload($dom);            
             
             //Add CRF token
             $dom = self::add_csrf_token($dom);                 
@@ -1218,18 +1488,133 @@ class Speed {
             $dom = self::add_partytown($dom);                
             
             //Add image lazy loading //requires dom refresh
-            $dom = self::add_image_lazyload($dom);               
+            $dom = self::add_image_lazyload($dom);       
+            
+            //Make sure viewport is declared before preloads
+            $dom = self::move_viewport_to_top($dom);
 
             $html = $dom->outertext;
 
             $end_time = microtime(true);
             $elapsed_time = $end_time - $start_time;
-            $html .=  "<!-- Elapsed HTML " . number_format($elapsed_time,2) . "-->";
+            $html .=  "<!-- Optimised By                                                        
+   _______  ___________  __________  _____  ___  ____________
+  / __/ _ \/ __/ __/ _ \/  _/ __/\ \/ / _ \/ _ \/ __/ __/ __/
+ _\ \/ ___/ _// _// // // // _/   \  / ___/ , _/ _/_\ \_\ \  
+/___/_/  /___/___/____/___/_/     /_/_/  /_/|_/___/___/___/  v" . SPRESS_VER . "
+
+Performance optimization toolkit | speedifypress.com                                                               
+----
+HTML " . number_format($elapsed_time,2) . "-->";
 
         } 
 
 
         return $html;
+
+    }
+
+    /**
+     * Add page preloading to the HTML output.
+     *
+     * Will either add instant page preloading, or quicklink preloading, depending on the settings.
+     *
+     * Instant page preloading will preload all links on hover, while quicklink preloading will only preload cached links and do so in an intelligent manner, using a throttle and only preloading links that are in the viewport.
+     *
+     * @param HtmlDocument $dom The HTML output.
+     * @return HtmlDocument The modified HTML output.
+     */
+    public static function add_page_preloaders($dom) {
+        
+        $preloader_mode = Config::get('speed_cache', 'page_preload_mode');
+        if($preloader_mode == "disabled") {
+            return $dom;
+        }
+
+        //Both modes use instant page
+        $prefetch_src = SPRESS_PLUGIN_URL . 'assets/instant_page/instant_page.min.js';
+        
+        //Add before body end
+        $body = $dom->find('body', 0);
+        $scriptElement = $dom->createElement('script');
+        $scriptElement->src = $prefetch_src;
+        $scriptElement->setAttribute('type', 'module');
+        $scriptElement->setAttribute('rel', 'js-instantpage');//            
+        $body->appendChild($scriptElement);           
+  
+        
+        //Preload in viewport with throttle and only cached links
+        if($preloader_mode == "intelligent") {
+
+            $prerender_src = SPRESS_PLUGIN_URL . 'assets/quicklink/quicklink.umd.js';
+            $link_tagger_js = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/quicklink/link_tagger.js');
+            $cached_uri_list = Speed::get_root_cache_url() . '/'. Cache::get_cached_uris_filename();
+
+            //Minify it
+            $minifier = new Minify\JS($link_tagger_js);
+            $link_tagger_js = $minifier->minify();            
+            
+            //Add before body end
+            $body = $dom->find('body', 0);
+            $scriptElement = $dom->createElement('script');
+            $scriptElement->src = $prerender_src;
+            $scriptElement->setAttribute('rel', 'js-quicklink');
+            $body->appendChild($scriptElement);      
+
+            $scriptElement = $dom->createElement('script');
+            $scriptElement->setAttribute('rel', 'js-quicklink');
+            $scriptElement->innertext = "window.spdy_cached_uris = '" . ($cached_uri_list) . "';" . $link_tagger_js;
+            $body->appendChild($scriptElement);
+
+            
+        }
+
+        return $dom;
+
+    }
+
+    /**
+     * Adds custom code to the <head> and <body> sections of the HTML output.
+     *
+     * This function takes the HTML output as a simple_html_dom object and adds
+     * custom code to the <head> and <body> sections based on the configuration
+     * settings. The custom code is retrieved from the configuration settings
+     * as 'head_code' and 'body_code'.
+     *
+     * @param simple_html_dom $dom The HTML output as a simple_html_dom object.
+     * @return simple_html_dom The modified HTML output with the custom code added.
+     */
+    public static function code_insertions($dom) {
+
+        //Get replacements
+        $head_code = Config::get('speed_insertion', 'head_code');
+        $body_code = Config::get('speed_insertion', 'body_code');
+
+        //Process replacements
+        if($head_code) {
+
+            $headElement = $dom->find('head', 0);
+            if($headElement) {
+                $headElement->children(0)->outertext = $head_code . $headElement->children(0)->outertext;        
+            }                  
+            
+        }            
+
+        if($body_code) {
+
+            //Add before body end
+            $body = $dom->find('body', 0);
+            $scriptElement = $dom->createElement('template');
+            $scriptElement->outertext = $body_code;
+            $body->appendChild($scriptElement);                
+            
+        }            
+
+
+
+
+        return $dom;
+
 
     }
 
@@ -1249,20 +1634,34 @@ class Speed {
             $rel  = strtolower($link->getAttribute('rel') ?? '');
             $href = $link->getAttribute('href') ?? '';
 
-            if ($rel !== 'stylesheet' || !$href) continue;
-            if (!preg_match('@^https://fonts\.googleapis\.com/@i', $href)) continue;
+            // allow empty/missing rel  and preload-as-style
+            if (!$href) continue;
+            $as = strtolower($link->getAttribute('as') ?? '');
+            if ($rel && $rel !== 'stylesheet' && !($rel === 'preload' && $as === 'style')) continue;
+
+            // accept protocol-relative URLs too: //fonts.googleapis.com/...
+            if (!preg_match('@^(https?:)?//fonts\.googleapis\.com/@i', $href)) continue;
+
+            // normalize protocol-relative to https for caching consistency
+            if (strpos($href, '//') === 0) {
+                $href = 'https:' . $href;
+            }
 
             // Build (or reuse) a local CSS file for this exact Google CSS URL
             $localCssUrl = self::build_local_gfonts_css($href);
             if ($localCssUrl) {
                 // Swap the href to your locally cached CSS
                 $link->setAttribute('href', $localCssUrl);
+                if ($rel === 'preload') {
+                    $link->setAttribute('rel', 'stylesheet');
+                    $link->removeAttribute('as');
+                }                
                 
-                // Remove any preconnects to Google's font hosts
+                // Remove any preconnects or dns-prefetch to Google's font hosts
                 foreach ($dom->find('link') as $plink) {
                     $preRel = strtolower($plink->getAttribute('rel') ?? '');
                     $preHref = $plink->getAttribute('href') ?? '';
-                    if ($preRel === 'preconnect' && preg_match('@fonts\.(gstatic|googleapis)\.com@i', $preHref)) {
+                    if (($preRel === 'preconnect' || $preRel === 'dns-prefetch' || $preRel === 'preload') && preg_match('@fonts\.(gstatic|googleapis)\.com@i', $preHref)) {
                         $plink->outertext = '';
                     }
                 }
@@ -1333,7 +1732,7 @@ class Speed {
         }
 
         // Minify and write CSS
-        $minifier = new \MatthiasMullie\Minify\CSS($rewrittenCss);
+        $minifier = new Minify\CSS($rewrittenCss);
         $minified = $minifier->minify();
         file_put_contents($cssPath, $minified, LOCK_EX);
 
@@ -1403,11 +1802,61 @@ class Speed {
 
         // Create a new style element
         $styleElement = $dom->createElement('style');
-        $styleElement->innertext = '@media (max-width: 800px) {
-                h1, h2, h3, h4, h5, p, :not(.fa):not(.fab):not(.fas):not(.far):not([class*=" awb-icon-"]):not([class^="awb-icon-"]):not(.ld-icon):not([class*="fusion-icon"]):not([class*="icon"]):not(input) {
-                font-family: -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif!important;
+        $mobile_opt_css = ':root {
+            --spdy-ui-font: -apple-system, system-ui, BlinkMacSystemFont,"Segoe UI", Roboto, "Helvetica Neue", Arial,"Noto Sans", "Liberation Sans", sans-serif;
             }
-        }';
+
+            @layer spdy-ui-mobile {
+
+                @media (max-width: 800px){
+
+                    /* Apply to common *textual* elements only, with broad exclusions */
+                    :where(
+                        h1, h2, h3, h4, h5, h6,
+                        [class*="heading" i],
+                        p, small, strong, em, mark,
+                        ul, ol, li, dl, dt, dd,
+                        blockquote, figcaption,
+                        table, th, td,
+                        a, span, label,
+                        button, input, select, textarea
+                    ):not(
+                        /* exclude icon/glyph fonts */
+                        .fa, [class^="fa-"], [class*=" fa-"],
+                        .material-icons, [class*="material-"],
+                        .mdi, [class^="mdi-"], [class*=" mdi-"],
+                        .bi, [class^="bi-"], [class*=" bi-"],
+                        .ri, [class^="ri-"], [class*=" ri-"],
+                        .ti, [class^="ti-"], [class*=" ti-"],
+                        .bx, [class^="bx-"], [class*=" bx-"],
+                        .lnr, [class^="lnr-"], [class*=" lnr-"],
+                        .oi, [class^="oi-"], [class*=" oi-"],
+                        .ai, [class^="ai-"], [class*=" ai-"],
+                        .wi, [class^="wi-"], [class*=" wi-"],
+                        [class^="pe-7s"], [class*=" pe-7s"],
+                        .iconfont, [class*="iconfont"],
+                        /* generic catch-alls (last) */
+                        [class^="icon-"], [class*=" icon-"], [class$="-icon"], [class*="-icon "]
+                        /* exclusions */
+                        code, pre, kbd, samp, svg, math
+                    ) {
+                        font-family: var(--spdy-ui-font) !important;
+                        text-rendering: optimizeLegibility;
+                        -webkit-text-size-adjust: 100%;
+                    }
+
+                    /* Preserve monospace where it matters */
+                    :where(code, pre, kbd, samp) {
+                        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,"Liberation Mono", "Courier New", monospace;
+                    }
+
+                }
+            }';
+
+        $minifier = new Minify\CSS($mobile_opt_css);
+        $mobile_opt_css = $minifier->minify();             
+
+        $styleElement->innertext = $mobile_opt_css;
 
         // Append the script element directly to the head
         $headElement = $dom->find('head', 0);
@@ -1423,6 +1872,7 @@ class Speed {
      * Perform find-and-replace operations on the HTML output.
      *
      * @param string $html The HTML output.
+     * @param bool $strip_markers Whether to strip find-and-replace markers.
      * @return string The modified HTML output.
      *
      * The replace operations are defined in the configuration under the key
@@ -1439,45 +1889,144 @@ class Speed {
      *   is only performed on the first occurrence of the string.
      */
     private static function find_replace($html) {
+
+        //Get replacements
         $replacements = Config::get('speed_replace', 'speed_find_replace');
+
+        //See if we have any element scopes
+        $hasElementScopes = false;
         if ($replacements && is_array($replacements)) {
             foreach ($replacements as $rep) {
+                $scope = $rep['scope'];
+                if($scope == "first element" || $scope == "all elements") {
+                    $hasElementScopes = true;
+                }
+            }
+        }
+
+        //If we have element scopes, use simple_html_dom
+        if($hasElementScopes) {
+
+            // simple_html_dom.
+            $dom = (new HtmlDocument(""))->load($html,true, false);     
+
+            //Process replacements
+            foreach ($replacements as $rep) {
+
+                $find = $rep['find'];
+                $replacementText = $rep['replace'];
+                $scope = $rep['scope'];                
+
+                if($scope == "first element" || $scope == "all elements") {
+
+                    $ruleId = substr(md5((string)$find . '||' . (string)$replacementText), 0, 12);
+                
+                    foreach ($dom->find($find) as $el) {
+
+                        // Skip if this element was already processed by this exact rule
+                        if ($el->getAttribute('data-replaced') === $ruleId) {
+                            continue;
+                        }                 
+                        
+                        $outertext = $replacementText;
+                        $outertext = preg_replace(
+                            '/^<([a-z0-9-]+)(\s|>)/i',
+                            '<$1 data-replaced="'.$ruleId.'"$2',
+                            $outertext,
+                            1
+                        );                        
+                        
+                        $el->outertext = $outertext;
+                        if($scope == "first element") {
+                            break;
+                        }
+
+                    }
+
+                }
+
+
+            }
+
+            $html = $dom->outertext;
+
+        }
+
+
+        if ($replacements && is_array($replacements)) {
+            foreach ($replacements as $rep) {
+
                 $find = $rep['find'];
                 $replacementText = $rep['replace'];
                 $scope = $rep['scope'];
-    
-                // Prepare the marked replacement text using raw markers.
-                $markedReplacement = '@@@replaced@@@' . $replacementText . '@@@/replaced@@@';
-    
-                // Build a pattern that captures both raw markers and their HTML-encoded counterparts.
-                $pattern = '/((?:@@@replaced@@@).*?(?:@@@\/replaced@@@))/s';
-    
-                // Split the HTML into segments that are either within markers or not.
-                $parts = preg_split(
-                    $pattern,
-                    $html,
-                    -1,
-                    PREG_SPLIT_DELIM_CAPTURE
-                );
-    
-                // Process only segments not already within markers.
-                foreach ($parts as $index => $segment) {
-                    // Check for either the raw or encoded marker block.
-                    if (!preg_match('/^(?:@@@replaced@@@.*?@@@\/replaced@@@)$/s', $segment)) {
-                        if ($scope == "") {
-                            $parts[$index] = str_replace($find, $markedReplacement, $segment);
-                        } elseif ($scope == "first") {
-                            $parts[$index] = preg_replace(
-                                '@' . preg_quote($find, '@') . '@',
-                                $markedReplacement,
-                                $segment,
-                                1
-                            );
+
+                //CSS selector find/replace
+                if($scope == "first element" || $scope == "all elements") {
+
+
+                    continue;
+                    
+                    
+                } else {
+
+                    //Simple text find replace
+
+                    // Ensure we have a string 
+                    if (!is_string($html)) {
+                        $html = (string) $html;
+                    }
+
+                    // Ignore empty find needles to avoid runaway replacements.
+                    if ($find === '' || $find === null) {
+                        continue;
+                    }
+
+                    // Prepare the marked replacement text using raw markers.
+                    $markedReplacement = '@@@replaced@@@' . $replacementText . '@@@/replaced@@@';
+
+                    // Build a pattern that captures protected regions (already replaced).
+                    $pattern = '/((?:@@@replaced@@@).*?(?:@@@\/replaced@@@))/s';
+
+                    // Split the HTML into segments that are either within markers or not.
+                    $parts = preg_split($pattern, (string) $html, -1, PREG_SPLIT_DELIM_CAPTURE);
+
+                    // If regex fails for any reason, safely fall back to a direct replace path.
+                    if ($parts === false) {
+                        if ($scope === "" || $scope === "all" || $scope === "all text") {
+                            $html = str_replace($find, $markedReplacement, $html);
+                        } elseif ($scope === "first text" || $scope === "first") {
+                            $html = preg_replace('@' . preg_quote($find, '@') . '@', $markedReplacement, $html, 1);
+                        }
+                        continue;
+                    }
+
+                    // Process only segments not already within markers.
+                    foreach ($parts as $index => $segment) {
+                        // Segment is considered protected if it's exactly a marker block.
+                        $isMarked = (bool) preg_match('/^@@@replaced@@@.*?@@@\/replaced@@@$/s', $segment);
+
+                        if (!$isMarked) {
+                            if ($scope === "" || $scope === "all" || $scope === "all text") {
+                                $parts[$index] = str_replace($find, $markedReplacement, $segment);
+                            } elseif ($scope === "first text" || $scope === "first") {
+                                $parts[$index] = preg_replace(
+                                    '@' . preg_quote($find, '@') . '@',
+                                    $markedReplacement,
+                                    $segment,
+                                    1
+                                );
+                            } else {
+                                // Unknown "text" scope → default to "all".
+                                $parts[$index] = str_replace($find, $markedReplacement, $segment);
+                            }
                         }
                     }
+
+                    // Reassemble the HTML.
+                    $html = implode('', $parts);
+
+
                 }
-                // Reassemble the HTML.
-                $html = implode('', $parts);
             }
         }
         return $html;
@@ -1504,13 +2053,60 @@ class Speed {
 
     }
 
+    /**
+     * Ensure <meta name="viewport"> is the first child of <head>, before any preloads.
+     *
+     * @param \simplehtmldom\HtmlDocument $dom
+     * @return \simplehtmldom\HtmlDocument
+     */
+    private static function move_viewport_to_top($dom) {
+
+        $head = $dom->find('head', 0);
+        if (!$head) return $dom;
+
+        // Capture existing viewport meta (if any), remove all occurrences
+        $viewportHtml = '';
+        foreach ((array)$dom->find('meta') as $m) {
+            $nameAttr = strtolower(trim($m->getAttribute('name') ?? ''));
+            if ($nameAttr === 'viewport') {
+                if ($viewportHtml === '') {
+                    $viewportHtml = $m->outertext; // keep the first found as source
+                }
+
+                $dom->outertext = str_replace($viewportHtml, '', $dom->outertext);                
+
+            }
+        }
+
+        if($viewportHtml) {
+            $dom->outertext = preg_replace("@<head( ([^>]+))?>@", "<head$2>" . $viewportHtml, $dom->outertext, 1);
+        }
+
+        return $dom;
+    }
+
+
+    /**
+     * Adds lazy loading to images in the given HTML.
+     *
+     * This function is only applied if the 'preload_image' config option is set.
+     * It will add lazy loading to all images except those that are skipped
+     * according to the 'skip_lazyload' config option.
+     *
+     * @param object $dom The HTML DOM object to be modified.
+     * @return object The modified HTML DOM object.
+     */
     private static function add_image_lazyload($dom) {
 
         //Only continue if placeholder set
         $placeholder = Config::get('speed_code', 'preload_image');
         if(!$placeholder) {
             return $dom;
-        }  
+        }   
+
+        //Get images forced to be lazyload
+        $force_lazyload = trim(Config::get('speed_code', 'force_lazyload'));
+        $forced_file_names = ($force_lazyload !== '') ? preg_split('/\r\n|\r|\n/', $force_lazyload) : array();
 
         //Get lcp image if exists
         $lcp_image = CSS::get_lcp_image();
@@ -1522,18 +2118,59 @@ class Speed {
             //preload and skipped the configured images
             $do_skip = false;
             $skipped = trim(Config::get('speed_code', 'skip_lazyload'));
-            if($skipped) {
-                $file_names = explode("\n", $skipped);
-                foreach ($file_names as $file_name) {
-                    $file_name = trim($file_name);
-                    if(strstr($image->src, $file_name)) {
-                        $preload[$image->src] = array("src"=>$image->src,"imagesrcset"=>$image->srcset ?? null);
+            if($skipped || $lcp_image) {
+                $file_names = ($skipped !== '') ? preg_split('/\r\n|\r|\n/', $skipped) : array();
+
+                //Add in the LCP image if exists
+                if($lcp_image) {
+                    $file_names[] = basename($lcp_image);
+                }                
+
+                // normalize attributes (avoid null warnings)
+                $imgSrc    = isset($image->src) ? (string) $image->src : '';
+                $imgSrcset = isset($image->srcset) ? (string) $image->srcset : '';
+
+                foreach ((array) $file_names as $file_name) {
+                    $file_name = trim((string) $file_name);
+                    if ($file_name === '') {
+                        continue;
+                    }
+
+                    //Make sure doesn't match one of the $forced_file_names
+                    $skip_eager_load = false;
+                    foreach ($forced_file_names as $forced_file_name) {
+                        $forced_file_name = trim((string) $forced_file_name);
+                        if(strstr(strtolower($file_name), strtolower($forced_file_name))) {
+                            $skip_eager_load = true;
+                        }
+                    }
+                    if($skip_eager_load) {
+                        continue;
+                    }
+
+                    // Strip common WP size suffixes like -360x240 before matching
+                    $srcset_no_sizes = $imgSrcset !== ''
+                        ? preg_replace('@-[0-9]+x[0-9]+(?=\.)@', '', $imgSrcset)
+                        : '';                                         
+
+                    if (
+                        ($imgSrc !== '' && stripos($imgSrc, $file_name) !== false) ||
+                        ($imgSrcset !== '' && stripos($imgSrcset, $file_name) !== false) ||
+                        ($srcset_no_sizes !== '' && stripos($srcset_no_sizes, $file_name) !== false)
+                    ) {
+                        $preload[$imgSrc] = array(
+                            "src"          => $imgSrc,
+                            "imagesrcset"  => ($imgSrcset !== '' ? $imgSrcset : null),
+                        );
                         $do_skip = true;
-                        $image->setAttribute('loading','eager');
-                        $image->setAttribute('fetchpriority','high');  
-                        $image->setAttribute('decoding','async');                    
-                    }                    
+                        $image->setAttribute('loading', 'eager');
+                        $image->setAttribute('fetchpriority', 'high');
+                        $image->setAttribute('decoding', 'async');
+                        break; // already matched, no need to check other names
+                    }
                 }
+
+
             }
 
             if($do_skip == true) {
@@ -1548,11 +2185,6 @@ class Speed {
                 continue;
             }            
 
-            //Not needed for lcp image
-            if($src == $lcp_image) {
-                continue;
-            }
-
             //Not needed for SVG
             if(self::is_svg($src)) {
                 continue;
@@ -1562,6 +2194,11 @@ class Speed {
             if($image->hasClass('logged_in_exception')) {
                 continue;
             }
+
+            //Add a class that allows these to be skipped
+            if($image->hasClass('lazyload_exception')) {
+                continue;
+            }            
 
             // Get width and height
             $dimensions = self::get_dimensions($src, $image);
@@ -1598,7 +2235,7 @@ class Speed {
         $preload_html = "";
         foreach($preload AS $src=>$image) {
 
-           $preload_html .= "\n<link rel='preload' href='" . $image['src'] . "' as='image' imagesrcset='" . $image['imagesrcset'] ."' imagesizes='' />";
+           $preload_html .= "\n<link rel='preload' href='" . $image['src'] . "' as='image' fetchpriority='high' imagesrcset='" . $image['imagesrcset'] ."' imagesizes='' />";
 
         }
 
@@ -1724,6 +2361,7 @@ class Speed {
 	 * @throws Exception If the data URL is invalid, the output path is invalid, or the file cannot be written
 	 */
 	public static function save_data_image($dataUrl, $outputDirectory) {
+
 		// Validate the data URL
 		if (preg_match('/^data:image\/([a-zA-Z0-9\+\-\.]+);base64,/', $dataUrl, $type)) {
 
@@ -1753,7 +2391,26 @@ class Speed {
 					throw new \Exception("Failed to create directory: $outputDirectory");
 				}
 			}
-	
+
+            // -------------------------------------------------------------------
+            // Simple validation: ensure the output directory resolves inside the
+            // plugin's pre-cache path.  This prevents directory traversal or writes
+            // outside of the intended cache.  realpath() resolves symlinks and
+            // relative components; if resolution fails or the path doesn't start
+            // with the allowed base, throw an exception.
+            if ( $outputDirectory ) {
+                $resolved_dir = realpath( $outputDirectory );
+                $allowed_base = realpath( self::get_pre_cache_path() );
+                if (
+                    $resolved_dir === false ||
+                    $allowed_base === false ||
+                    strpos( $resolved_dir, rtrim( $allowed_base, DIRECTORY_SEPARATOR ) ) !== 0
+                ) {
+                    throw new \Exception( 'Invalid output directory: ' . $outputDirectory );
+                }
+            }
+            // -------------------------------------------------------------------
+
 			// Generate a unique file name with the appropriate extension
 			$fileName = uniqid('image_', true) . '.' . $type;
 			$outputPath = rtrim($outputDirectory, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $fileName;
@@ -1797,7 +2454,7 @@ class Speed {
 
     /**
      * Cleans an arbitrary URL fragment  and returns
-     * a fully‑qualified, sanitized URL pointing to this site.
+     * a fully-qualified, sanitized URL pointing to this site.
      *
      * @param  string $raw  The raw URL or URI fragment to sanitize.
      * @return string       A full, safe URI fragment.
@@ -1872,6 +2529,7 @@ class Speed {
         if (!empty(Cache::$ignore_querystrings)) {
             $ignore_keys = array_filter(array_map('trim', explode("\n", Cache::$ignore_querystrings)));
             $parsed_url = parse_url($full_url);
+            if ($parsed_url === false) { $parsed_url = []; } // avoid "array offset on bool"
             $query = [];
             if (isset($parsed_url['query'])) {
                 parse_str($parsed_url['query'], $query);
@@ -1883,7 +2541,8 @@ class Speed {
             }
             // Rebuild the query string.
             $query_string = http_build_query($query);
-            $full_url = $protocol . $host . $parsed_url['path'] . ($query_string ? '?' . $query_string : '');
+            $full_url = $protocol . $host . ($parsed_url['path'] ?? '') . ($query_string ? '?' . $query_string : '');
+
         }
         return $full_url;
     }    
@@ -2046,20 +2705,28 @@ class Speed {
      * @return void
      */
     public static function deleteSpecificFiles($dir, $patterns,  $recursive = false) {
-        // Ensure the directory exists
-        if (!is_dir($dir)) {
-            return;
-        }
 
-        //Ensure that the directory in within the cache directory
-        if (strpos($dir, Speed::get_root_cache_path()) === false
-            && strpos($dir, Speed::get_pre_cache_path()) === false) {
+        // Normalize and validate the directory path. Resolve any symlinks and
+        // ensure it is within an expected cache directory. Using realpath()
+        // mitigates directory-traversal attempts (e.g., "../../").
+        $resolved_dir = realpath( $dir );
+        if ( $resolved_dir === false || ! is_dir( $resolved_dir ) ) {
             return;
         }
+        $root_cache = realpath( Speed::get_root_cache_path() );
+        $pre_cache  = realpath( Speed::get_pre_cache_path() );
+        if ( $root_cache === false || $pre_cache === false ) {
+            return;
+        }
+        // Ensure the directory is within one of the allowed cache directories.
+        if ( strpos( $resolved_dir, $root_cache ) !== 0 && strpos( $resolved_dir, $pre_cache ) !== 0 ) {
+            return;
+        }
+        // Use the resolved path for subsequent operations.
+        $dir = $resolved_dir;
 
         // Normalize patterns for case-insensitive matching
         $patterns = array_map('strtolower', $patterns);
-
 
         if ($recursive) {
             // Iterate children first so we can remove empty directories
@@ -2131,17 +2798,35 @@ class Speed {
             $csrf_expiry_seconds = SPRESS_CSRF_EXPIRY_SECONDS;
         }
 
-        global $secret_key;
         $secret_key = NONCE_SALT;
+
+        //CSS token expiry
         $expiry = time() + $csrf_expiry_seconds; // Token expiry
-        $random = bin2hex(random_bytes(6)); // Generate a random string
-        // Combine expiry and random value into a single string.
-        $data = $expiry . ':' . $random . ":" . $url;
+
+        //Long token exiry (replacing woo tokens)
+        $long_expiry = time() + (function_exists('apply_filters') ? apply_filters('nonce_life', DAY_IN_SECONDS) : DAY_IN_SECONDS);
+
+        // Generate a random string
+        $random = bin2hex(random_bytes(6)); 
+        
+        // Include a simple session binding .
+        $session_binding = Cache::spdy_rest_session_identifier();       
+        
+        // Create an exact URL hash
+        $url1 = Url::parse($url);        
+        $reconstructedUrl1 = $url1->getScheme() . '://' . $url1->getHost() . rtrim($url1->getPath(), '/');
+        $url_hash = substr(hash('sha256', $reconstructedUrl1), 0, 8); // short hash
+
+        //Combine into single string
+        $data = $expiry . ':' . $long_expiry . ':' . $random . ":" . $url_hash . ':' . $session_binding;
+
         // Create a signature using HMAC-SHA256.
-        $signature = hash_hmac('sha256', $data, $secret_key);
+        // Trim the signature to 32 bytes.
+        $signature = substr(hash_hmac('sha256', $data, NONCE_SALT), 0, 32);
         // Concatenate the data and the signature.
         $token = $data . ':' . $signature;
         // Base64 encode the token so it can be safely included in HTML.
+        
         return base64_encode($token);
     }
 
@@ -2156,7 +2841,15 @@ class Speed {
      * @return array|false Returns an associative array with keys 'expiry', 'random', 'url', and 'signature'
      *                     if the token is valid and not expired. Returns false otherwise.
      */
-    public static function decode_csrf_token($token) {
+    public static function decode_csrf_token($token, $expiry_type='short') {
+
+        //Check token
+        if(empty($token)) {
+            return false;
+        }
+
+        //Set fail message
+        $fail_message = "";
 
         // Decode the token from base64.
         $decoded = base64_decode($token, true);
@@ -2167,40 +2860,65 @@ class Speed {
         // Split the decoded string on colons.
         $parts = explode(':', $decoded);
         
-        // We need at least 4 parts: expiry, random, url, signature.
-        if (count($parts) < 4) {
-            return false;
+        // We need at least 5 parts: expiry, random, url, uid, signature.
+        if (count($parts) < 5) {
+            $fail_message = "Malformed token";
         }
         
         // Extract the first part as expiry and the second as random.
         $expiry = array_shift($parts);
+        $long_expiry = array_shift($parts);
         $random = array_shift($parts);
+        $url = array_shift($parts);
         
-        // The signature is the last element; the URL is everything in between
+        // The signature is the last element; the session binding is everything in between
         // safer if the url has a colon
         $signature = array_pop($parts);
-        $url = implode(':', $parts);
+        $token_session_binding = implode(':', $parts);
         
+        //Test against current session
+        $current_session_binding  = Cache::spdy_rest_session_identifier();
+
         // Check if the expiry is numeric and not in the past.
-        if (!is_numeric($expiry) || time() > (int)$expiry) {
-            return false; // Token expired.
+        if($expiry_type != "short") {
+            $expiry_test = $long_expiry;
+        } else {
+            $expiry_test = $expiry;
         }
-        
-        // Recompute the signature based on the expiry, random, and URL.
-        $data = $expiry . ':' . $random . ':' . $url;
-        $expected_signature = hash_hmac('sha256', $data, NONCE_SALT);
+
+        //Test expiry
+        if (!is_numeric($expiry_test) || time() > (int)$expiry_test) {
+            $fail_message = "Token expired";
+        }
+
+        // Recompute the signature including the session binding.
+        $data = $expiry . ':' . $long_expiry . ':' . $random . ':' . $url . ':' . $current_session_binding;
+
+        //Get expected signature
+        $expected_signature = substr(hash_hmac('sha256', $data, NONCE_SALT), 0, 32);
         
         // Use hash_equals to mitigate timing attacks.
         if (!hash_equals($expected_signature, $signature)) {
-            return false; // Invalid signature.
+
+            //It's possible we've moved from a guest session to a logged in session
+            //only the same page, no refresh, if so validate    
+            // Recompute the signature with the old session binding.
+            $data = $expiry . ':' . $long_expiry . ':' . $random . ':' . $url . ':' .  hash('sha256', 'sg:'.$_COOKIE['spdy_guest']);
+            $expected_signature = substr(hash_hmac('sha256', $data, NONCE_SALT), 0, 32);
+
+            if (!hash_equals($expected_signature, $signature)) {
+                $fail_message = "Invalid signature ";
+            }
         }
         
         // Return the token components if everything checks out.
         return [
-            'expiry'    => (int)$expiry,
-            'random'    => $random,
-            'url'       => $url,
-            'signature' => $signature,
+            'expiry'         => (int)$expiry,
+            'long_expiry'    => (int)$long_expiry,
+            'random'         => $random,
+            'url'            => $url,
+            'signature'      => $signature,
+            'fail_message'   => $fail_message
         ];
     }
 

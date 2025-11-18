@@ -4,62 +4,157 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b
+class ComposerStaticInit772d588e7f0c104b0af8d994263a114b
 {
     public static $prefixLengthsPsr4 = array (
-        'W' => 
+        'c' => 
         array (
-            'Wa72\\Url\\' => 9,
+            'cweagans\\Composer\\' => 18,
         ),
         'S' => 
         array (
-            'Sabberworm\\CSS\\' => 15,
             'SPRESS\\' => 7,
-        ),
-        'M' => 
-        array (
-            'MatthiasMullie\\PathConverter\\' => 29,
-            'MatthiasMullie\\Minify\\' => 22,
         ),
     );
 
     public static $prefixDirsPsr4 = array (
-        'Wa72\\Url\\' => 
+        'cweagans\\Composer\\' => 
         array (
-            0 => __DIR__ . '/..' . '/wa72/url/src/Wa72/Url',
-        ),
-        'Sabberworm\\CSS\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/sabberworm/php-css-parser/src',
+            0 => __DIR__ . '/..' . '/cweagans/composer-configurable-plugin/src',
+            1 => __DIR__ . '/..' . '/cweagans/composer-patches/src',
         ),
         'SPRESS\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src',
         ),
-        'MatthiasMullie\\PathConverter\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/matthiasmullie/path-converter/src',
-        ),
-        'MatthiasMullie\\Minify\\' => 
-        array (
-            0 => __DIR__ . '/..' . '/matthiasmullie/minify/src',
-        ),
     );
 
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
-        'simplehtmldom\\Debug' => __DIR__ . '/..' . '/simplehtmldom/simplehtmldom/Debug.php',
-        'simplehtmldom\\HtmlDocument' => __DIR__ . '/..' . '/simplehtmldom/simplehtmldom/HtmlDocument.php',
-        'simplehtmldom\\HtmlNode' => __DIR__ . '/..' . '/simplehtmldom/simplehtmldom/HtmlNode.php',
-        'simplehtmldom\\HtmlWeb' => __DIR__ . '/..' . '/simplehtmldom/simplehtmldom/HtmlWeb.php',
+        'SPRESS\\App\\Config' => __DIR__ . '/../..' . '/src/App/Config.php',
+        'SPRESS\\App\\Dashboard' => __DIR__ . '/../..' . '/src/App/Dashboard.php',
+        'SPRESS\\App\\License' => __DIR__ . '/../..' . '/src/App/License.php',
+        'SPRESS\\App\\Menu' => __DIR__ . '/../..' . '/src/App/Menu.php',
+        'SPRESS\\Auth' => __DIR__ . '/../..' . '/src/Auth.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\CSS' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/CSS.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Exception' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Exception.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Exceptions\\BasicException' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Exceptions/BasicException.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Exceptions\\FileImportException' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Exceptions/FileImportException.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Exceptions\\IOException' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Exceptions/IOException.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Exceptions\\PatternMatchException' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Exceptions/PatternMatchException.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\JS' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/JS.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\Minify\\Minify' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/Minify/Minify.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\PathConverter\\Converter' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/PathConverter/Converter.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\PathConverter\\ConverterInterface' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/PathConverter/ConverterInterface.php',
+        'SPRESS\\Dependencies\\MatthiasMullie\\PathConverter\\NoConverter' => __DIR__ . '/../..' . '/src/Dependencies/MatthiasMullie/PathConverter/NoConverter.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSElement' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSElement.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\AtRuleBlockList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/AtRuleBlockList.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\CSSBlockList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/CSSBlockList.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\CSSList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/CSSList.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\CSSListItem' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/CSSListItem.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\Document' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/Document.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\CSSList\\KeyFrame' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/CSSList/KeyFrame.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Comment\\Comment' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Comment/Comment.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Comment\\CommentContainer' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Comment/CommentContainer.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Comment\\Commentable' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Comment/Commentable.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\OutputFormat' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/OutputFormat.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\OutputFormatter' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/OutputFormatter.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parser' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parser.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\Anchor' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/Anchor.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\OutputException' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/OutputException.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\ParserState' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/ParserState.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\SourceException' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/SourceException.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\UnexpectedEOFException' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/UnexpectedEOFException.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Parsing\\UnexpectedTokenException' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Parsing/UnexpectedTokenException.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Position\\Position' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Position/Position.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Position\\Positionable' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Position/Positionable.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\AtRule' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/AtRule.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\CSSNamespace' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/CSSNamespace.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\Charset' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/Charset.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\Import' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/Import.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\KeyframeSelector' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/KeyframeSelector.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\Selector' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/Selector.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Property\\Selector\\SpecificityCalculator' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Property/Selector/SpecificityCalculator.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Renderable' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Renderable.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\RuleSet\\AtRuleSet' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/RuleSet/AtRuleSet.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\RuleSet\\DeclarationBlock' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/RuleSet/DeclarationBlock.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\RuleSet\\RuleContainer' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/RuleSet/RuleContainer.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\RuleSet\\RuleSet' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/RuleSet/RuleSet.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Rule\\Rule' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Rule/Rule.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Settings' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Settings.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\CSSFunction' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/CSSFunction.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\CSSString' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/CSSString.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\CalcFunction' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/CalcFunction.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\CalcRuleValueList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/CalcRuleValueList.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\Color' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/Color.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\LineName' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/LineName.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\PrimitiveValue' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/PrimitiveValue.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\RuleValueList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/RuleValueList.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\Size' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/Size.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\URL' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/URL.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\Value' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/Value.php',
+        'SPRESS\\Dependencies\\Sabberworm\\CSS\\Value\\ValueList' => __DIR__ . '/../..' . '/src/Dependencies/Sabberworm/CSS/Value/ValueList.php',
+        'SPRESS\\Dependencies\\Wa72\\Url\\Psr7Uri' => __DIR__ . '/../..' . '/src/Dependencies/Wa72/Url/Psr7Uri.php',
+        'SPRESS\\Dependencies\\Wa72\\Url\\Url' => __DIR__ . '/../..' . '/src/Dependencies/Wa72/Url/Url.php',
+        'SPRESS\\Dependencies\\simplehtmldom\\Debug' => __DIR__ . '/../..' . '/src/Dependencies/simplehtmldom/Debug.php',
+        'SPRESS\\Dependencies\\simplehtmldom\\HtmlDocument' => __DIR__ . '/../..' . '/src/Dependencies/simplehtmldom/HtmlDocument.php',
+        'SPRESS\\Dependencies\\simplehtmldom\\HtmlNode' => __DIR__ . '/../..' . '/src/Dependencies/simplehtmldom/HtmlNode.php',
+        'SPRESS\\Dependencies\\simplehtmldom\\HtmlWeb' => __DIR__ . '/../..' . '/src/Dependencies/simplehtmldom/HtmlWeb.php',
+        'SPRESS\\RestApi' => __DIR__ . '/../..' . '/src/RestApi.php',
+        'SPRESS\\Speed' => __DIR__ . '/../..' . '/src/Speed.php',
+        'SPRESS\\Speed\\CSS' => __DIR__ . '/../..' . '/src/Speed/CSS.php',
+        'SPRESS\\Speed\\Cache' => __DIR__ . '/../..' . '/src/Speed/Cache.php',
+        'SPRESS\\Speed\\JS' => __DIR__ . '/../..' . '/src/Speed/JS.php',
+        'SPRESS\\Speed\\Unused' => __DIR__ . '/../..' . '/src/Speed/Unused.php',
+        'cweagans\\Composer\\Capability\\CommandProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/CommandProvider.php',
+        'cweagans\\Composer\\Capability\\Downloader\\BaseDownloaderProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Downloader/BaseDownloaderProvider.php',
+        'cweagans\\Composer\\Capability\\Downloader\\CoreDownloaderProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Downloader/CoreDownloaderProvider.php',
+        'cweagans\\Composer\\Capability\\Downloader\\DownloaderProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Downloader/DownloaderProvider.php',
+        'cweagans\\Composer\\Capability\\Patcher\\BasePatcherProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Patcher/BasePatcherProvider.php',
+        'cweagans\\Composer\\Capability\\Patcher\\CorePatcherProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Patcher/CorePatcherProvider.php',
+        'cweagans\\Composer\\Capability\\Patcher\\PatcherProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Patcher/PatcherProvider.php',
+        'cweagans\\Composer\\Capability\\Resolver\\BaseResolverProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Resolver/BaseResolverProvider.php',
+        'cweagans\\Composer\\Capability\\Resolver\\CoreResolverProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Resolver/CoreResolverProvider.php',
+        'cweagans\\Composer\\Capability\\Resolver\\ResolverProvider' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Capability/Resolver/ResolverProvider.php',
+        'cweagans\\Composer\\Command\\DoctorCommand' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Command/DoctorCommand.php',
+        'cweagans\\Composer\\Command\\PatchesCommandBase' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Command/PatchesCommandBase.php',
+        'cweagans\\Composer\\Command\\RelockCommand' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Command/RelockCommand.php',
+        'cweagans\\Composer\\Command\\RepatchCommand' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Command/RepatchCommand.php',
+        'cweagans\\Composer\\ConfigurablePlugin' => __DIR__ . '/..' . '/cweagans/composer-configurable-plugin/src/ConfigurablePlugin.php',
+        'cweagans\\Composer\\Downloader' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Downloader.php',
+        'cweagans\\Composer\\Downloader\\ComposerDownloader' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Downloader/ComposerDownloader.php',
+        'cweagans\\Composer\\Downloader\\DownloaderBase' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Downloader/DownloaderBase.php',
+        'cweagans\\Composer\\Downloader\\DownloaderInterface' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Downloader/DownloaderInterface.php',
+        'cweagans\\Composer\\Downloader\\Exception\\HashMismatchException' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Downloader/Exception/HashMismatchException.php',
+        'cweagans\\Composer\\Event\\PatchEvent' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Event/PatchEvent.php',
+        'cweagans\\Composer\\Event\\PatchEvents' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Event/PatchEvents.php',
+        'cweagans\\Composer\\Event\\PluginEvent' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Event/PluginEvent.php',
+        'cweagans\\Composer\\Event\\PluginEvents' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Event/PluginEvents.php',
+        'cweagans\\Composer\\Locker' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Locker.php',
+        'cweagans\\Composer\\Patch' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patch.php',
+        'cweagans\\Composer\\PatchCollection' => __DIR__ . '/..' . '/cweagans/composer-patches/src/PatchCollection.php',
+        'cweagans\\Composer\\Patcher' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher.php',
+        'cweagans\\Composer\\Patcher\\FreeformPatcher' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher/FreeformPatcher.php',
+        'cweagans\\Composer\\Patcher\\GitInitPatcher' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher/GitInitPatcher.php',
+        'cweagans\\Composer\\Patcher\\GitPatcher' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher/GitPatcher.php',
+        'cweagans\\Composer\\Patcher\\PatcherBase' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher/PatcherBase.php',
+        'cweagans\\Composer\\Patcher\\PatcherInterface' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Patcher/PatcherInterface.php',
+        'cweagans\\Composer\\Plugin\\Patches' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Plugin/Patches.php',
+        'cweagans\\Composer\\Resolver' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver.php',
+        'cweagans\\Composer\\Resolver\\Dependencies' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver/Dependencies.php',
+        'cweagans\\Composer\\Resolver\\PatchesFile' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver/PatchesFile.php',
+        'cweagans\\Composer\\Resolver\\ResolverBase' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver/ResolverBase.php',
+        'cweagans\\Composer\\Resolver\\ResolverInterface' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver/ResolverInterface.php',
+        'cweagans\\Composer\\Resolver\\RootComposer' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Resolver/RootComposer.php',
+        'cweagans\\Composer\\Util' => __DIR__ . '/..' . '/cweagans/composer-patches/src/Util.php',
     );
 
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitce59211e3f8bc5ed28f57056eb88342b::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit772d588e7f0c104b0af8d994263a114b::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit772d588e7f0c104b0af8d994263a114b::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit772d588e7f0c104b0af8d994263a114b::$classMap;
 
         }, null, ClassLoader::class);
     }

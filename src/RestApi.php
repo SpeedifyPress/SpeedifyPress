@@ -3,7 +3,7 @@
 namespace SPRESS;
 
 use SPRESS\Speed;
-use Wa72\Url\Url;
+use SPRESS\Dependencies\Wa72\Url\Url;
 
 use WP_REST_Server;
 
@@ -14,6 +14,26 @@ use WP_REST_Server;
  * @package SPRESS
  */
 class RestApi {
+
+
+    /**
+     * Maximum allowed size (in bytes) for the compressed CSS payload.  If the
+     * base64-decoded string exceeds this size, the request will be rejected
+     * to protect the server from resource-exhaustion attacks.
+     *
+     * @var int
+     */
+    private static $max_css_compressed_bytes = 1048576; // 1 MB
+
+    /**
+     * Maximum allowed size (in bytes) for the uncompressed CSS payload after
+     * gzdecode().  If the decompressed JSON exceeds this size, the request
+     * will be rejected.  This helps prevent zip-bomb-style attacks that
+     * expand to enormous sizes.
+     *
+     * @var int
+     */
+    private static $max_css_uncompressed_bytes = 2097152; // 2 MB
 
     /**
      * Initializes the class by registering the REST API routes.
@@ -54,7 +74,7 @@ class RestApi {
                 array(
                     'methods' => array('GET', 'POST'),
                     'callback' => array(__CLASS__, 'get_' . $data_type . '_data'),
-                    'permission_callback' => '__return_true', // Admin-only access as after auth check
+                    'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
                 )
             );
         }
@@ -66,7 +86,7 @@ class RestApi {
             array(
                 'methods' => 'POST',
                 'callback' => array(__CLASS__, 'update_config'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );
 
@@ -77,7 +97,7 @@ class RestApi {
             array(
                 'methods' => array('GET'),
                 'callback' => array(__CLASS__, 'clear_gfonts_cache'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );         
 
@@ -88,7 +108,7 @@ class RestApi {
             array(
                 'methods' => array('GET'),
                 'callback' => array(__CLASS__, 'clear_css_cache'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );  
 
@@ -99,7 +119,7 @@ class RestApi {
             array(
                 'methods' => array('GET'),
                 'callback' => array(__CLASS__, 'clear_page_cache'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );  
         
@@ -111,7 +131,7 @@ class RestApi {
             array(
                 'methods' => array('POST'),
                 'callback' => array(__CLASS__, 'check_license'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );          
 
@@ -122,7 +142,7 @@ class RestApi {
             array(
                 'methods' => array('GET'),
                 'callback' => array(__CLASS__, 'get_cloudflare_script'),
-                'permission_callback' => '__return_true', // Admin-only access as after auth check
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
         );           
 
@@ -134,17 +154,38 @@ class RestApi {
      * @param WP_REST_Request $request The request object containing config data.
      */
     public static function update_config($request) {
+
         $config = $request->get_json_params();
+
+        // Validate that we received an array.  Malformed input yields a 400 error.
+        if ( ! is_array( $config ) ) {
+            return new \WP_Error(
+                'invalid_config',
+                'Invalid configuration data.',
+                [ 'status' => 400 ]
+            );
+        }
+
         $config = self::transform_btoa($config);
 
         //Test and sanitize
         $config = App\Config::ensure_valid($config);
+
+        //Test for array
+        if ( ! is_array( $config ) ) {
+            return new \WP_Error(
+                'invalid_config',
+                'Configuration validation failed.',
+                [ 'status' => 400 ]
+            );
+        }        
 
         //See if allowed to enable
         if($config['config_key'] == "plugin"
             && ($config['plugin_mode'] == "enabled" || $config['plugin_mode'] == "partial")
         ) {
             
+            //Check can download
             $can_download = App\License::get_download_link();
             if(!$can_download) {
                 //Throw error
@@ -154,6 +195,43 @@ class RestApi {
                     [ 'status' => 403 ]
                 );
             }
+
+            // Check required PHP extensions when enabling the plugin.
+            // mbstring: used by functions like mb_str_split() and mb_ord().
+            if (!function_exists('mb_str_split') || !function_exists('mb_ord')) {
+                return new \WP_Error(
+                    'missing_mbstring',
+                    'The PHP mbstring extension must be enabled to activate the plugin.',
+                    ['status' => 500]
+                );
+            }
+            // iconv: used by the Simple HTML DOM parser for character conversion.
+            if (!function_exists('iconv')) {
+                return new \WP_Error(
+                    'missing_iconv',
+                    'The PHP iconv extension must be enabled to activate the plugin.',
+                    ['status' => 500]
+                );
+            }
+            // zlib: required by gzdecode() to decompress CSS payloads.
+            if (!function_exists('gzdecode')) {
+                return new \WP_Error(
+                    'missing_zlib',
+                    'The PHP zlib extension (gzdecode) must be enabled to activate the plugin.',
+                    ['status' => 500]
+                );
+            }            
+
+            //Check permalinks enabled
+            if(!get_option('permalink_structure')) {
+                //Throw error
+                return new \WP_Error(
+                    'no_permalinks',
+                    'Permalinks must be enabled to activate the plugin.',
+                    [ 'status' => 403 ]
+                );
+            }
+
         }
 
         //Save the config
@@ -163,9 +241,6 @@ class RestApi {
         //to the doc, update cache files
         Speed\CSS::update_config_to_cache($config);        
         Speed\JS::update_config_to_cache($config);   
-
-        //Write advanced cache
-        Speed\Cache::write_advanced_cache();
         
     }
 
@@ -185,19 +260,23 @@ class RestApi {
 
         $location = App\License::get_download_link(true);
         
-        if($location) {
+        if ( $location ) {
+            // Protect against SSRF by validating the host. Only allow the official domain.
+            $host = parse_url( $location, PHP_URL_HOST );
+            if ( $host !== 'speedifypress.com' ) {
+                return false;
+            }
+            // Fetch the worker script using the WordPress HTTP API with a timeout.
+            $response = wp_remote_get( $location, array( 'timeout' => 10 ) );
+            if ( is_wp_error( $response ) ) {
+                return false;
+            }
+            $contents = wp_remote_retrieve_body( $response );
 
-            //Get contents
-            $contents = file_get_contents($location);
-
-            if(strstr($contents, 'this.csrf_salt')) {
-
-                //Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
+            if ( strstr( $contents, 'this.csrf_salt' ) ) {
+                // Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
                 $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
-
-            } 
-            
-            //Return contents
+            }
             return $contents;
 
         }
@@ -254,10 +333,12 @@ class RestApi {
 
         $elapsed_time = microtime(true) - $start_time;
 
-        //If elapsed time is less than 2 seconds, sleep for remainder using usleep
-        if($elapsed_time < 1) {
-            $remainder = (1 - $elapsed_time) * 1000000;
-            usleep($remainder);
+        //If elapsed time is less than 1 second, sleep for remainder using usleep
+        if ($elapsed_time < 1.0) {
+            $micros = (int) max(0, round((1.0 - $elapsed_time) * 1000000));
+            if ($micros > 0) {
+                usleep($micros);
+            }
         }
 
         return $data;        
@@ -290,10 +371,12 @@ class RestApi {
 
         $elapsed_time = microtime(true) - $start_time;
 
-        //If elapsed time is less than 2 seconds, sleep for remainder using usleep
-        if($elapsed_time < 1) {
-            $remainder = (1 - $elapsed_time) * 1000000;
-            usleep($remainder);
+        //If elapsed time is less than 1 second, sleep for remainder using usleep
+        if ($elapsed_time < 1.0) {
+            $micros = (int) max(0, round((1.0 - $elapsed_time) * 1000000));
+            if ($micros > 0) {
+                usleep($micros);
+            }
         }
 
         return $data;
@@ -310,9 +393,17 @@ class RestApi {
         $json = $request->get_json_params();
         $data = array();
 
-        //Decode from base64
-        $license_number = self::get_decoded($json,'license_number');
-        $license = App\License::check_license($license_number);
+        //Decode from base64; handle missing or invalid license number
+        $license_number = self::get_decoded( $json, 'license_number' );
+        if ( $license_number === null ) {
+            return new \WP_Error(
+                'invalid_license',
+                'License number is missing or invalid.',
+                [ 'status' => 400 ]
+            );
+        }
+        $license = App\License::check_license( $license_number );
+
         if(isset($license['error'])
         && $license['error'] != '') {
             return new \WP_Error(
@@ -329,13 +420,57 @@ class RestApi {
 
     }    
 
+
+
     /**
-     * Processes a CSS update request from the public side.
+     * Public-facing API to update CSS.  Intended to be rate-limited to prevent
+     * abuse.  For each unique client IP, count the number of calls within the
+     * last minute.  If the count exceeds five, return a 429 Too Many Requests
+     * error.
      *
-     * @param WP_REST_Request $request The request object containing CSS data.
+     * The endpoint takes a JSON payload containing the following fields:
+     *
+     * - `compressedData`: a base64-encoded string containing the gzipped
+     *   CSS payload.
+     *
+     * The function performs the following steps:
+     *
+     * 1. Base64 decode the compressed payload.
+     * 2. GZIP decompress the decoded payload (suppress PHP warnings).
+     * 3. JSON parse the decompressed payload.
+     * 4. Validate the CSRF token and URL.
+     *
+     * If any step fails, an appropriate error response will be returned.
+     *
+     * @param \WP_REST_Request $request The request object containing the JSON
+     *     payload.
+     *
+     * @return array|WP_Error
      */
-    public static function update_css( \WP_REST_Request $request ) {
-    
+    public static function get_public_data(  \WP_REST_Request $request, $sent_compressed = true ) {
+
+        /**
+         * Simple rate limiting: throttle calls to this endpoint to prevent
+         * abuse or accidental repeated heavy requests.  For each unique
+         * client IP, count the number of calls within the last minute.  If
+         * the count exceeds five, return a 429 Too Many Requests error.
+         *
+         */        
+        $client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $rate_key  = 'spress_update_css_' . md5( $client_ip );
+        $request_count = (int) get_transient( $rate_key );
+        $request_count++;
+        // Store/update the count with a one-minute expiry.  Each call
+        // resets the expiry, effectively sliding the window forward.
+        set_transient( $rate_key, $request_count, MINUTE_IN_SECONDS );
+        if ( $request_count > 5 ) {
+            return new \WP_Error(
+                'too_many_requests',
+                'Too many requests, please slow down.',
+                [ 'status' => 429 ]
+            );
+        }
+
         $json = $request->get_json_params();
     
         // 1) Base64 decode
@@ -348,16 +483,45 @@ class RestApi {
             );
         }
     
-        // 2) GZIP decompress (suppress PHP warnings)
-        $uncompressed = @gzdecode( $b64 );
-        if ( $uncompressed === false ) {
+        // Enforce a maximum size on the compressed payload to mitigate
+        // resource-exhaustion (zip bomb) attacks.  If the decoded base64
+        // string exceeds the configured limit, reject the request.
+        if ( strlen( $b64 ) > self::$max_css_compressed_bytes ) {
             return new \WP_Error(
-                'decompression_failed',
-                'Failed to decompress CSS payload',
-                [ 'status' => 400 ]
+                'payload_too_large',
+                'Compressed CSS payload too large',
+                [ 'status' => 413 ]
             );
         }
+
+        // 2) GZIP decompress (suppress PHP warnings)
+        if($sent_compressed == true) {
+
+            $uncompressed = @gzdecode( $b64 );
+            if ( $uncompressed === false ) {
+                return new \WP_Error(
+                    'decompression_failed',
+                    'Failed to decompress CSS payload',
+                    [ 'status' => 400 ]
+                );
+            }
+
+        } else {
+
+            //Data was not gzipped
+            $uncompressed = $b64;
+
+        }
     
+        // Ensure the decompressed payload is below the maximum allowed size.
+        if ( strlen( $uncompressed ) > self::$max_css_uncompressed_bytes ) {
+            return new \WP_Error(
+                'payload_too_large',
+                'Decompressed CSS payload too large',
+                [ 'status' => 413 ]
+            );
+        }
+
         // 3) JSON parse
         $data = json_decode( $uncompressed, true );
         if ( $data === null && json_last_error() !== JSON_ERROR_NONE ) {
@@ -371,25 +535,50 @@ class RestApi {
         // 4) CSRF & URL validation
         $csrf    = $data['csrf'] ?? '';
         $decoded = Speed::decode_csrf_token( $csrf );
-        if ( ! $decoded || ! isset( $decoded['url'], $data['url'] ) ) {
+        
+        if ( !empty($decoded['fail_message']) || !isset( $decoded['url'], $data['url'] ) ) {
             return new \WP_Error(
                 'invalid_request',
-                'Invalid CSRF token or missing URL',
+                //'Invalid CSRF token or missing URL. ' . $decoded['fail_message'],
+                'Page expired. Please refresh the page.', //user friendly error message
                 [ 'status' => 403 ]
             );
+        }        
+
+        //Return data
+        return array( 'data' => $data, 'decoded' => $decoded );
+
+    }
+
+
+    /**
+     * Processes a CSS update request from the public side.
+     *
+     * @param WP_REST_Request $request The request object containing CSS data.
+     */
+    public static function update_css( \WP_REST_Request $request ) {
+            
+        //Get data with security tests
+        $maybe_data = self::get_public_data($request);
+        if ( is_wp_error( $maybe_data ) ) {
+            // Returning the WP_Error makes the REST API send a 429 response.
+            return $maybe_data;
+        } else {
+
+            $data = $maybe_data['data'];
+            $decoded = $maybe_data['decoded'];
+
         }
 
         //Compare URLs exactly
-        $url1 = Url::parse($decoded['url']);
         $url2 = Url::parse($data['url']);
-        
-        $reconstructedUrl1 = $url1->getScheme() . '://' . $url1->getHost() . rtrim($url1->getPath(), '/');
         $reconstructedUrl2 = $url2->getScheme() . '://' . $url2->getHost() . rtrim($url2->getPath(), '/');
+        $url_hash = substr(hash('sha256', $reconstructedUrl2), 0, 8); // short hash
         
-        if ($reconstructedUrl1 !== $reconstructedUrl2) {
+        if ($url_hash !== $decoded['url']) {
             return new \WP_Error(
                 'invalid_request',
-                'URL mismatch ' . $reconstructedUrl1 . $reconstructedUrl2,
+                'URL mismatch ' . $url_hash . $decoded['url'],
                 [ 'status' => 403 ]
             );
         }
@@ -406,6 +595,21 @@ class RestApi {
     
         // url: must be valid
         $url = esc_url_raw( $data['url'] );
+
+        //If it's just force includes, then we can skip the rest
+        if(!empty($data['force_includes_only']) && $data['force_includes_only'] == "1") {
+
+            $includes = Speed\CSS::process_force_includes(
+                $force_includes,
+                $url
+            );
+        
+            //Return REST response
+            return rest_ensure_response( [
+                'includes' => $force_includes ?? null,
+            ] );            
+
+        }
     
         // post_id: integer
         $post_id = isset( $data['post_id'] ) ? intval( $data['post_id'] ) : 0;
@@ -415,6 +619,14 @@ class RestApi {
         if ( ! empty( $data['post_types'] ) && is_array( $data['post_types'] ) ) {
             foreach ( $data['post_types'] as $pt ) {
                 $post_types[] = sanitize_key( (string) $pt );
+            }
+        }
+
+        //icon fonts: array of font names
+        $icon_fonts = array();
+        if ( ! empty( $data['icon_fonts'] ) && is_array( $data['icon_fonts'] ) ) {
+            foreach ( $data['icon_fonts'] as $icn ) {
+                $icon_fonts[] = sanitize_key( (string) $icn );
             }
         }
     
@@ -446,7 +658,7 @@ class RestApi {
             }
         }
     
-        // usedFontRules: either a pipe‑separated string or an array of URLs
+        // usedFontRules: either a pipe-separated string or an array of URLs
         $used_font_rules = [];
         if ( ! empty( $data['usedFontRules'] ) ) {
             // If it’s a string, split on |
@@ -493,14 +705,21 @@ class RestApi {
             $post_types,
             $invisible,
             $used_font_rules,
-            $lcp_image
+            $lcp_image,
+            $icon_fonts
         );
 
-
+        #print_r($unused);
+        #die();
     
         // 7) Return REST response
         return rest_ensure_response( [
             'reduction' => $unused['percent_reduction'] ?? null,
+            /*'css_vars' => $unused['css_vars'],
+            'markup' => $unused['markup'],
+            'fonts_css_icons' => $unused['fonts_css_icons'],
+            'fonts_css_text' => $unused['fonts_css_text'],*/
+            'includes' => $force_includes ?? null
         ] );
     }   
     
@@ -515,6 +734,12 @@ class RestApi {
      * @return array The transformed array with any base64 strings decoded.
      */
     public static function transform_btoa($formDataJson) {
+
+        // If the input is not an array, return it unchanged.
+        if ( ! is_array( $formDataJson ) ) {
+            return $formDataJson;
+        }            
+
         foreach ($formDataJson as $key => $value) {
 
             // If the value is a string, check if it's base64 encoded using regex pattern
@@ -538,11 +763,11 @@ class RestApi {
     public static function get_decoded($json, $key) {
 
         if (!isset($json[$key]) || !is_string($json[$key])) {
-            die(json_encode(['error' => 'invalid compressed data']));
+             return null;
         }
         $data = base64_decode($json[$key], true);
         if ($data === false) {
-            die(json_encode(['error' => 'invalid base64 encoding']));
+             return null;
         }
 
         return $data;

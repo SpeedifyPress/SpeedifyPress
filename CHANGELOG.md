@@ -5,6 +5,103 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.70.2 - 2025-11-18
+- Tweak to icon font identification
+
+### 0.70.1 - 2025-11-17
+- Add cookie fallback for CSRF token
+
+### 0.70.0 - 2025-11-14
+- Remove CSRF replacement from CF worker
+- Add Woo nonce replacement
+- Add improvements to CSRF token generation
+- Ensure templates are replaced before JS runs
+- Add page preloads/prerenders
+- Update Sabberworm version
+- Move vendor to dependencies
+- Create patch for HtmlNode charset    
+
+### 0.67.0 - 2025-10-23
+- Unused CSS tweaks to handle glitched CSS
+
+### 0.67.0 - 2025-10-22
+- Add page preloading
+- Fix double find replace
+- Forced image lazyloads
+- Admin menu restructure
+
+### 0.66.7 - 2025-10-17
+- Unused fonts fixes
+
+### 0.66.5 - 2025-10-16
+- Mobile font fixes
+- Activation compatibility checks
+
+### 0.66.4 - 2025-10-15
+- Fix debugging in Unused
+- Fix admin bar nonce timeout
+- Fix protocol relative Google fonts
+
+### 0.66.3 - 2025-10-15
+- Fixes for rest nonce expiring
+
+### 0.66.2 - 2025-10-14
+- Fixes to Unused class
+- Fixes for purging on post save
+- Fixes for rest nonce
+
+### 0.66.1 - 2025-10-14
+- Fix nonce expiry
+- Correct bug after removal of page headers
+
+### 0.66.0 - 2025-10-12
+- Add code insertion
+
+### 0.65.1 - 2025-10-11
+- Tweaks to Find/Replace
+
+### 0.65.0 - 2025-10-06
+- Add nonces and tighten security practices
+
+### 0.64.7 - 2025-10-06
+- Big fixes to caching. JS, CSS
+
+### 0.64.6 - 2025-10-04
+- Allow find/replace by CSS selector
+
+### 0.64.5 - 2025-10-02
+- Fixes for CSS vars
+- Fixes for JS modules delay
+- Fixes for LCP preloading
+
+### 0.64.4 - 2025-09-30
+- Tweaks to code editor display
+
+### 0.64.3 - 2025-09-30
+- Tweaks to icon font finding
+
+### 0.64.2 - 2025-09-28
+- Tweaks to find/replace display
+
+### 0.64.1 - 2025-09-28
+- Updates to footer display
+
+### 0.64.0 - 2025-09-27
+- Fixes for CF worker redirect handling
+- Add code highlighting
+- Improvements and fixes for logged-in caching
+- Add Multisite Compatibility
+- Add icon font lazyloading
+- Improve CSS selector force includes handling
+- Tighten up caching rules
+
+### 0.63.2 - 2025-09-08
+- Fixes for usage collector on incongnito
+
+### 0.63.1 - 2025-09-08
+- Fixes for conditional font display
+- Fixes for usage collector on incongnito
+
 ### 0.63.0 - 2025-09-08
 - Add local hosting of Google fonts
 - Add preloading of poster image for videos

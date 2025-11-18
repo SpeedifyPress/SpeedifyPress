@@ -6,8 +6,8 @@ use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Speed\CSS;
 
-use simplehtmldom\HtmlDocument;
-use MatthiasMullie\Minify;
+use SPRESS\Dependencies\simplehtmldom\HtmlDocument;
+use SPRESS\Dependencies\MatthiasMullie\Minify;
 
 /**
  * This `CSS` class is responsible for optimizing and managing CSS files for faster 
@@ -56,7 +56,7 @@ class JS {
 
             $minifier = new Minify\JS($callback);
             $jstxt = $minifier->minify();
-            $jstxt = "(function(){" . $jstxt . "})();";
+            $jstxt = "(function(){" . ($jstxt) . "})();";
             self::$delay_callback = $jstxt;
 
         }
@@ -104,7 +104,7 @@ class JS {
 
         $end_time = microtime(true);
         $elapsed_time = $end_time - $start_time;
-        $html .=  "<!-- Elapsed JS " . number_format($elapsed_time,2) . "-->";
+        $html .=  "<!-- JS " . number_format($elapsed_time,2) . "-->";
 
 
         return $html;
@@ -134,10 +134,17 @@ class JS {
         $exclude_scripts_array[] = "partytown"; // Always exclude partytown from delay
         $scripts = $dom->find('script');
     
-        foreach ((array) $scripts as $script) {
+        foreach ((array) $scripts AS $script) {
             $isExcluded = self::isExcluded($script, $exclude_scripts_array);
             $handler($script, $isExcluded);
         }
+
+        //Handle module preloads
+        $links = $dom->find('link');
+        foreach ((array) $links AS $link) {
+            $isExcluded = self::isExcluded($link, $exclude_scripts_array);
+            $handler($link, $isExcluded);
+        }        
     
         return $dom;
     }
@@ -159,16 +166,30 @@ class JS {
      * @param bool $isExcluded - Whether the script is excluded.
      */
     private static function handleDelayScript($script, $isExcluded) {
+
+        //Script with external source
         if (!$isExcluded && isset($script->src)) {
             $script->setAttribute('data-src', $script->src);
             $script->setAttribute('src', false);
+        //Module preloads
+        } elseif (!$isExcluded &&
+            isset($script->href) &&
+            isset($script->rel)
+        ) {
+            if($script->rel == "modulepreload") {
+                $script->setAttribute('data-href', $script->href);
+                $script->setAttribute('data-rel', $script->rel);
+                $script->setAttribute('href', false);        
+                $script->setAttribute('rel', false);                            
+            }
+        //Inline JS
         } elseif (
             !$isExcluded &&
             !isset($script->src) &&
             self::isInlineJavaScript($script)
         ) {
             self::convertInlineScript($script, 'data-src');
-        }
+        } 
     }
     
     /**

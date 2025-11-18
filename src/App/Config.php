@@ -72,7 +72,13 @@ class Config {
 				'helper' => 'Whether or not the cache functionality is enabled',
 				'type'	=> 'radio',
 				'value' => 'disabled',
-			),				
+			),	
+			'page_preload_mode' => array(
+				'name'   => 'Page preload mode',
+				'helper' => 'Which type of preloading to use for links',
+				'type'	=> 'radio',
+				'value' => 'disabled',
+			),							
 			'bypass_cookies' => array(
 				'name'   => 'Bypass on Cookies',
 				'helper' => 'Enter cookie names that will prevent caching if detected. Separate multiple with new lines.',
@@ -132,7 +138,12 @@ class Config {
 				'name'   => 'Gzipped Output',
 				'helper' => 'If the server or CDN isn\'t handling compression, set output to be gzipped',
 				'value' => 'false',
-			),															
+			),	
+			'replace_woo_nonces' => array(
+				'name'   => 'Replace Woo nonces',
+				'helper' => 'Allows much easier caching of WooCommerce pages',
+				'value' => 'false',
+			),																		
 		),			
 		'speed_css'  => array(
 			'css_mode' => array(
@@ -154,7 +165,7 @@ class Config {
 			'ignore_cookies' => array(
 				'name'   => 'Ignore Cookies',
 				'helper' => 'Enter cookies that should be ignored for both CSS collection and rewrite. Regex compatible. Separate multiple with new lines',
-				'value' => '',
+				'value'  => 'wordpress_logged_in',
 			),
 			'include_partytown' => array(
 				'name'   => 'Load with Partytown',
@@ -196,22 +207,22 @@ class Config {
 			'defer_exclude_urls' => array(
 				'name'   => 'Exclude URLs from defer',
 				'helper' => 'Do not defer URLs matching these patterns. Separate multiple with new lines',
-				'value' => '',
+				'value'  => '',
 			),						
 			'delay_js' => array(
 				'name'   => 'Delay JS',
 				'helper' => 'Delay JS execution by a certain amount of seconds',
-				'value' => 'js-extra' . "\n" . 'local_tag',
+				'value'  => '6',
 			),												
 			'delay_exclude' => array(
 				'name'   => 'Exclude scripts from delay',
 				'helper' => 'Do not delay scripts matching these patterns. Separate multiple with new lines',
-				'value' => '',
+				'value' =>  'js-extra',
 			),	
 			'delay_exclude_urls' => array(
 				'name'   => 'Exclude URLs from delay',
 				'helper' => 'Do not delay URLs matching these patterns. Separate multiple with new lines',
-				'value' => '',
+				'value' =>  '',
 			),						
 			'delay_seconds' => array(
 				'name'   => 'Delay Seconds',
@@ -235,16 +246,16 @@ class Config {
 			),																			
 		),					
 		'speed_code'  => array(
-			'page_headers' => array(
-				'name'   => 'Page Headers',
-				'helper' => 'Enter headers to be sent to the browser. Separate multiple with new lines.',
-				'value' => '',
-			),	
 			'skip_lazyload' => array(
 				'name'   => 'Skip Lazyload',
 				'helper' => 'Enter (partial) image filenames to skip lazy loading. These images will be preloaded.',
 				'value' => '',
 			),
+			'force_lazyload' => array(
+				'name'   => 'Force Lazyload',
+				'helper' => 'Enter (partial) image filenames to force lazy loading. These images will be lazy loaded even if identified as LCP.',
+				'value' => '',
+			),			
 			'preload_image' => array(
 				'name'   => 'Preload Image',
 				'helper' => 'Choose an image for the preload. This image will be displayed before lazyload. SVG recommended.',
@@ -257,12 +268,17 @@ class Config {
 			),	
 			'dont_preload_icon_fonts' => array(
 				'name'   => "Don't preload icon fonts",
-				'helper' => "Do not preload a font if it's an icon font",
+				'helper' => "Do not preload a font if it's an icon font.",
+				'value' => 'false',
+			),
+			'lazyload_icon_fonts' => array(
+				'name'   => "Lazyload icon fonts",
+				'helper' => "Only load icon fonts upon user interaction with the page",
 				'value' => 'false',
 			),
 			'preload_fonts_desktop_only' => array(
 				'name'   => 'Preload Fonts only on Desktop',
-				'helper' => 'Will attempt to detected mobile devices and not preload fonts on mobile. This will not work for desktop responsive screens. Only works if page caching is enabled.',
+				'helper' => 'Will not preload fonts on mobile. Only works if page caching is enabled.',
 				'value' => 'false',
 			),	
 			'system_fonts' => array(
@@ -276,7 +292,17 @@ class Config {
 				'name'   => 'HTML find/replace',
 				'value' => '',
 			),			
-		),			
+		),	
+		'speed_insertion'  => array(
+			'head_code' => array(
+				'name'   => 'Head Code',
+				'value' => '',
+			),	
+			'body_code' => array(
+				'name'   => 'Body Code',
+				'value' => '',
+			),						
+		),					
 		'external_scripts' => array(
 			'gfonts_locally' => array(
 				'name'   => 'Should google fonts be hosted locally?',
@@ -324,6 +350,7 @@ class Config {
 		self::$config = (array)get_option( 'spress_namespace_CONFIG', array() );
 		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
 
+
 		// Example of how to update one of the default configs
 		#$docs = self::$initial_config['docs'];
 		#$update = array("config_key"=>"docs","iframe"=>$docs['iframe']['value']);
@@ -350,7 +377,16 @@ class Config {
 		}		
 
 		// Disable for builder querystrings
-		$builder_querystrings = array('vc_', 'fb');
+		$builder_querystrings = array(
+		'vc_',          // WPBakery: vc_action, vc_editable, etc.
+		'fl_builder',   // Beaver Builder
+		'bricks',       // Bricks
+		'et_fb',        // Divi
+		'fb',           // Divi
+		'ct_builder',   // Oxygen
+		'brizy',        // Brizy (also brizy_post)
+		'vcv-',         // Visual Composer Website Builder (vcv-action, vcv-source-id)
+		);
 
 		// Loop through each builder keyword
 		foreach ($builder_querystrings as $builder_querystring) {
@@ -569,6 +605,12 @@ class Config {
                 continue;
             }
 
+            // special case: raw head and body code allowed
+            if ($section === 'speed_insertion' && ($key === 'head_code' || $key === 'body_code')) {
+                $clean[$key] = (string)$raw_value;
+                continue;
+            }			
+
             // array field: sanitize each nested value
             if (is_array($raw_value)) {
                 $sanitized = [];
@@ -605,6 +647,7 @@ class Config {
 
 			//Get the array frame
 			$frame = self::$config[ $config_key ];
+		
 
 			//Run through the frame and find matching keys
 			foreach ( $frame as $key_to_update=> $value ) {
@@ -655,6 +698,18 @@ class Config {
 					
 					//Save frame
 					$frame[ $key_to_update ]['value'] = $new_config[ $key_to_update ];
+
+				} else {
+
+					//For the tables, if there is no key it means everything has been deleted
+					if(
+					($key_to_update == "speed_find_replace")
+					|| 
+					(isset($new_config['cache_logged_in_users']) && $key_to_update == "cache_logged_in_users_exceptions")
+					) {
+						$frame[ $key_to_update ]['value'] = "";	
+					}				
+
 
 				}
 

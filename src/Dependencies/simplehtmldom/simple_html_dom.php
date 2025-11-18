@@ -1,0 +1,153 @@
+<?php
+
+/**
+ * Website: http://sourceforge.net/projects/simplehtmldom/
+ * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
+ *
+ * Licensed under The MIT License
+ * See the LICENSE file in the project root for more information.
+ *
+ * Authors:
+ *   S.C. Chen
+ *   John Schlick
+ *   Rus Carroll
+ *   logmanoriginal
+ *
+ * Contributors:
+ *   Yousuke Kumakura
+ *   Vadim Voituk
+ *   Antcs
+ *
+ * Version $Rev$
+ */
+
+if (defined('DEFAULT_TARGET_CHARSET')) {
+	define('\SPRESS\Dependencies\simplehtmldom\DEFAULT_TARGET_CHARSET', DEFAULT_TARGET_CHARSET);
+}
+
+if (defined('DEFAULT_BR_TEXT')) {
+	define('\SPRESS\Dependencies\simplehtmldom\DEFAULT_BR_TEXT', DEFAULT_BR_TEXT);
+}
+
+if (defined('DEFAULT_SPAN_TEXT')) {
+	define('\SPRESS\Dependencies\simplehtmldom\DEFAULT_SPAN_TEXT', DEFAULT_SPAN_TEXT);
+}
+
+if (defined('MAX_FILE_SIZE')) {
+	define('\SPRESS\Dependencies\simplehtmldom\MAX_FILE_SIZE', MAX_FILE_SIZE);
+}
+
+include_once 'HtmlDocument.php';
+include_once 'HtmlNode.php';
+
+if (!defined('DEFAULT_TARGET_CHARSET')) {
+	define('DEFAULT_TARGET_CHARSET', \SPRESS\Dependencies\simplehtmldom\DEFAULT_TARGET_CHARSET);
+}
+
+if (!defined('DEFAULT_BR_TEXT')) {
+	define('DEFAULT_BR_TEXT', \SPRESS\Dependencies\simplehtmldom\DEFAULT_BR_TEXT);
+}
+
+if (!defined('DEFAULT_SPAN_TEXT')) {
+	define('DEFAULT_SPAN_TEXT', \SPRESS\Dependencies\simplehtmldom\DEFAULT_SPAN_TEXT);
+}
+
+if (!defined('MAX_FILE_SIZE')) {
+	define('MAX_FILE_SIZE', \SPRESS\Dependencies\simplehtmldom\MAX_FILE_SIZE);
+}
+
+define('HDOM_TYPE_ELEMENT', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_TYPE_ELEMENT);
+define('HDOM_TYPE_COMMENT', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_TYPE_COMMENT);
+define('HDOM_TYPE_TEXT', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_TYPE_TEXT);
+define('HDOM_TYPE_ROOT', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_TYPE_ROOT);
+define('HDOM_TYPE_UNKNOWN', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_TYPE_UNKNOWN);
+define('HDOM_QUOTE_DOUBLE', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_QUOTE_DOUBLE);
+define('HDOM_QUOTE_SINGLE', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_QUOTE_SINGLE);
+define('HDOM_QUOTE_NO', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_QUOTE_NO);
+define('HDOM_INFO_BEGIN', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_BEGIN);
+define('HDOM_INFO_END', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_END);
+define('HDOM_INFO_QUOTE', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_QUOTE);
+define('HDOM_INFO_SPACE', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_SPACE);
+define('HDOM_INFO_TEXT', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_TEXT);
+define('HDOM_INFO_INNER', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_INNER);
+define('HDOM_INFO_OUTER', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_OUTER);
+define('HDOM_INFO_ENDSPACE', \SPRESS\Dependencies\simplehtmldom\HtmlNode::HDOM_INFO_ENDSPACE);
+
+define('HDOM_SMARTY_AS_TEXT', \SPRESS\Dependencies\simplehtmldom\HDOM_SMARTY_AS_TEXT);
+
+class_alias('\SPRESS\Dependencies\simplehtmldom\HtmlDocument', 'simple_html_dom', true);
+class_alias('\SPRESS\Dependencies\simplehtmldom\HtmlNode', 'simple_html_dom_node', true);
+
+function file_get_html(
+	$url,
+	$use_include_path = false,
+	$context = null,
+	$offset = 0,
+	$maxLen = -1,
+	$lowercase = true,
+	$forceTagsClosed = true,
+	$target_charset = DEFAULT_TARGET_CHARSET,
+	$stripRN = true,
+	$defaultBRText = DEFAULT_BR_TEXT,
+	$defaultSpanText = DEFAULT_SPAN_TEXT)
+{
+	if($maxLen <= 0) { $maxLen = MAX_FILE_SIZE; }
+
+	$dom = new simple_html_dom(
+		null,
+		$lowercase,
+		$forceTagsClosed,
+		$target_charset,
+		$stripRN,
+		$defaultBRText,
+		$defaultSpanText
+	);
+
+	$contents = file_get_contents(
+		$url,
+		$use_include_path,
+		$context,
+		$offset,
+		$maxLen + 1 // Load extra byte for limit check
+	);
+
+	if (empty($contents) || strlen($contents) > $maxLen) {
+		$dom->clear();
+		return false;
+	}
+
+	return $dom->load($contents, $lowercase, $stripRN);
+}
+
+function str_get_html(
+	$str,
+	$lowercase = true,
+	$forceTagsClosed = true,
+	$target_charset = DEFAULT_TARGET_CHARSET,
+	$stripRN = true,
+	$defaultBRText = DEFAULT_BR_TEXT,
+	$defaultSpanText = DEFAULT_SPAN_TEXT)
+{
+	$dom = new simple_html_dom(
+		null,
+		$lowercase,
+		$forceTagsClosed,
+		$target_charset,
+		$stripRN,
+		$defaultBRText,
+		$defaultSpanText
+	);
+
+	if (empty($str) || strlen($str) > MAX_FILE_SIZE) {
+		$dom->clear();
+		return false;
+	}
+
+	return $dom->load($str, $lowercase, $stripRN);
+}
+
+/** @codeCoverageIgnore */
+function dump_html_tree($node, $show_attr = true, $deep = 0)
+{
+	$node->dump($node);
+}

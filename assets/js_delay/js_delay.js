@@ -17,6 +17,7 @@ class JsDelayer {
         this.callback = callback;
         this.callback_run = false;
         this.hasTriggeredEvents = false;
+        this._loading = false;
 
         this.savedClicks = new Set();
         this.savedMouseovers = new Set();
@@ -70,6 +71,44 @@ class JsDelayer {
 
     }
     
+    /**
+     * Ensure any delayed <template>-wrapped DOM has been restored
+     * before we start executing deferred JS.
+     */
+    ensureTemplatesRestored() {
+        // Only check when there are candidates that could still be templates
+        const needsRestore = !!document.querySelector('.unused-invisible > template');
+        if (!needsRestore) {
+            return;
+        }
+
+        if (this.debug) {
+            console.log("Ensuring templates are restored before loading scripts...");
+        }
+
+        try {
+            if (typeof window.restoreTemplateContentAndImages === "function") {
+                // Prefer the existing helper if present
+                window.restoreTemplateContentAndImages();
+                return;
+            }
+
+            // Minimal inline fallback if helper is not available yet
+            document.querySelectorAll('.unused-invisible').forEach((element) => {
+                const firstChild = element.children[0];
+                if (firstChild && firstChild.tagName === 'TEMPLATE') {
+                    element.style.contentVisibility = '';
+                    element.style.containIntrinsicSize = '';
+                    const templateContent = firstChild.content.cloneNode(true);
+                    element.replaceChild(templateContent, firstChild);
+                }
+            });
+        } catch (err) {
+            if (this.debug) {
+                console.error("Error while restoring templates before JS load:", err);
+            }
+        }
+    }    
 
     /**
      * Tracks user interactions and saves click or mouseover events.
@@ -99,6 +138,8 @@ class JsDelayer {
      */
     startLoading(event) {
 
+        if (this._loading) return;     // prevent concurrent runs
+
         if (this.debug) {
             console.log("Starting script loading process...", event);
         }
@@ -107,6 +148,24 @@ class JsDelayer {
         if(typeof event != "undefined" && event.type == "mouseover" && matchMedia('(hover: hover)').matches == false) {
             return;
         }
+
+        // Defer only while the document is *loading*. "interactive" is fine (DOMContentLoaded has fired).
+        const domReady = document.readyState === "complete" || document.readyState === "interactive";
+        if (!domReady) {
+            if (!this._pendingDomReady) {
+                this._pendingDomReady = true;
+                if (this.debug) {
+                    console.log("DOM not ready yet; waiting for DOMContentLoaded before loading scripts.");
+                }
+                document.addEventListener("DOMContentLoaded", this.bound_start, { once: true });
+            }
+            return;
+        }  
+
+        // Ensure templates are restored before running any deferred JS on the DOM.
+        this.ensureTemplatesRestored();        
+        
+        this._loading = true; //prevent re-runs
 
         this.interactionEvents.forEach((event) => {
             window.removeEventListener(event, this.bound_start, { passive: true });
@@ -125,17 +184,63 @@ class JsDelayer {
         if(scripts.length == 0) return;
 
         scripts.forEach((script) => {
-            const src = script.getAttribute("data-src");
-            const link = document.createElement("link");
-            link.rel = "preload";
-            link.as = "script";
-            link.href = src;
 
-            if (this.debug) {
-                console.log("Preloading script:", src);
+            if (script.tagName === 'LINK') {
+
+                const href = script.getAttribute('data-href');
+                if (!href) return;
+
+                if (this.debug) console.log('Restoring modulepreload:', href);
+
+                script.setAttribute('href', href);
+                script.removeAttribute('data-href');                
+
+                if (script.hasAttribute('data-rel')) {
+                    script.setAttribute('rel', script.getAttribute('data-rel'));
+                    script.removeAttribute('data-rel');
+                }                
             }
 
-            document.head.appendChild(link);
+            if (script.tagName === 'SCRIPT') {
+
+                const isModule = (script.getAttribute('type') || '').toLowerCase() === 'module';
+
+                const src = script.getAttribute("data-src");
+                if (!src || src === 'null' || src === 'undefined') return;
+
+                const link = document.createElement("link");
+
+                if (isModule) {
+
+                    link.rel = 'modulepreload';
+                    link.href = src;
+
+                    // Carry over attrs so fetch mode/credentials match the eventual module load
+                    ['crossorigin', 'integrity', 'referrerpolicy'].forEach((attr) => {
+                        if (script.hasAttribute(attr)) {
+                            link.setAttribute(attr, script.getAttribute(attr));
+                        }
+                    });
+
+                    if (this.debug) {
+                        console.log('Modulepreloading:', src);
+                    }
+
+                } else {
+
+                    link.rel = "preload";
+                    link.as = "script";
+                    link.href = src;
+
+                    if (this.debug) {
+                        console.log("Preloading scriptz:", src);
+                    }
+
+                }
+
+                document.head.appendChild(link);
+
+            }
         });
     }
 
@@ -144,8 +249,9 @@ class JsDelayer {
      */
     loadScripts() {
 
-        const scriptsToLoad = this.getScriptOrder();
-        if(scriptsToLoad.length == 0) return;
+        // Only pass runnable <script> nodes to the final loader
+        const scriptsToLoad = this.getScriptOrder().filter((n) => n.tagName === 'SCRIPT');
+        if(scriptsToLoad.length == 0) return;        
 
         this.loadScriptsSequentially(scriptsToLoad);
     }
@@ -155,10 +261,10 @@ class JsDelayer {
      * @returns {Array} - Ordered list of script elements.
      */
     getScriptOrder() {
-        const allScripts = [...document.querySelectorAll("script[data-src]")];
+        const allScripts = [...document.querySelectorAll("script[data-src],link[data-rel='modulepreload']")];
 
         const firstScripts = allScripts.filter((script) => {
-            const dataSrc = script.getAttribute("data-src");
+            const dataSrc = script.getAttribute("data-src") || script.getAttribute("data-href");
             if (!dataSrc) return false;
 
             // Match any name in `this.loadFirst` against the full URL
@@ -166,7 +272,7 @@ class JsDelayer {
         });
 
         const lastScripts = allScripts.filter((script) => {
-            const dataSrc = script.getAttribute("data-src");
+            const dataSrc = script.getAttribute("data-src") || script.getAttribute("data-href");
             if (!dataSrc) return false;
 
             // Match any name in `this.loadLast` against the full URL
@@ -174,7 +280,7 @@ class JsDelayer {
         });
 
         const otherScripts = allScripts.filter((script) => {
-            const dataSrc = script.getAttribute("data-src");
+            const dataSrc = script.getAttribute("data-src") || script.getAttribute("data-href");
             if (!dataSrc) return false;
 
             // Exclude scripts matched in `firstScripts` and `lastScripts`
@@ -187,7 +293,7 @@ class JsDelayer {
         if (this.debug) {
             console.log("First scripts", firstScripts, this.loadFirst);
             console.log("Last scripts", lastScripts, this.loadLast);
-            console.log("Scripts to load in order:", scriptsToLoad.map((script) => script.getAttribute("data-src")));
+            console.log("Scripts to load in order:", scriptsToLoad.map((script) => (script.getAttribute("data-src") || script.getAttribute("data-href"))));
         }
 
 
@@ -235,36 +341,28 @@ class JsDelayer {
                 return;              
             }
 
-            const script = scripts[index];
-            const src = script.getAttribute("data-src");
+            const node = scripts[index];
 
-            if (this.debug) {
-                console.log("Loading script:", src, script);
-            }
-
-            if (src == null) {
-                
-                //console.error(`Failed to load script: ${src}`);
+            // Skip anything that's not a <script>
+            if (!node || node.tagName !== 'SCRIPT') {
                 processScript(index + 1);
-
-            } else {
-
-                script.onload = () => {
-                    if (this.debug) {
-                        console.log("Script loaded:", src);
-                    }
-                    processScript(index + 1);
-                };
-
-                script.onerror = () => {
-                    console.error(`Failed to load script: ${src}`);
-                    processScript(index + 1);
-                };
-
+                return;
             }
 
-            script.src = src;
-            script.removeAttribute("data-src");
+            const src = node.getAttribute('data-src');
+
+            // If we don't have a usable URL, skip WITHOUT writing back
+            if (!src || src === 'null' || src === 'undefined') {
+                if (this.debug) console.warn('Skipping script with invalid data-src:', node, src);
+                processScript(index + 1);
+                return;
+            }
+
+            node.onload  = () => processScript(index + 1);
+            node.onerror = () => processScript(index + 1);
+
+            node.src = src;
+            node.removeAttribute('data-src');
         };
 
         processScript(0);
@@ -296,7 +394,7 @@ class JsDelayer {
                 window.dispatchEvent(event);
             });
 
-            if (window.jQuery) {
+            if (window.jQuery && typeof jQuery(document).get === "function") {
                 const jqueryEvents = jQuery._data(jQuery(document).get(0), "events");
 
                 if (jqueryEvents && jqueryEvents.ready) {
@@ -388,6 +486,9 @@ class JsDelayer {
     document.addEventListener('loggedInExceptionsDone', startDelayer, { once: true });
   } else {
     // fire immediately
+    if((document.prerendering ?? false) == true) {
+        window.speed_js_vars.delay_seconds = 0;
+    }
     startDelayer();
   }
 })();

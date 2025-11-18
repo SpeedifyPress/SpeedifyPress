@@ -7,7 +7,6 @@
  * to serve cached pages.
  *
  * Configuration placeholders (to be replaced during activation):
- *   SPRESS_CACHE_ROOT
  *   SPRESS_SEPARATE_COOKIE_CACHE
  *   SPRESS_CACHE_LOGGED_IN_USERS
  *   SPRESS_CACHE_MOBILE_SEPARATELY
@@ -26,9 +25,8 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Define configuration constants with placeholder values if not already defined.
-if ( ! defined( 'SPRESS_CACHE_ROOT' ) ) {
-    define( 'SPRESS_CACHE_ROOT', '%%SPRESS_CACHE_ROOT%%' );
+if ( ! defined( 'SPRESS_MULTISITE_IDENTIFIER' ) ) {
+    define( 'SPRESS_MULTISITE_IDENTIFIER', '%%SPRESS_MULTISITE_IDENTIFIER%%' );
 }
 if ( ! defined( 'SPRESS_SEPARATE_COOKIE_CACHE' ) ) {
     define( 'SPRESS_SEPARATE_COOKIE_CACHE', '%%SPRESS_SEPARATE_COOKIE_CACHE%%' );
@@ -70,7 +68,7 @@ if ( ! defined( 'SPRESS_PRELOAD_FONTS_DESKTOP_ONLY' ) ) {
 //Require our SPRESS classes
 $file = __DIR__ . "/plugins/" . SPRESS_DIR_NAME . "/vendor/autoload.php";
 if (!file_exists($file)) {
-    exit;
+    return;
 }
 
 require_once $file;
@@ -82,7 +80,7 @@ require_once $file;
  */
 class AdvancedCache {
 
-    public static $cache_root;
+    public static $multisite_identifier;
     public static $separate_cookie_cache;
     public static $cache_logged_in_users;
     public static $cache_mobile_separately;
@@ -98,7 +96,7 @@ class AdvancedCache {
      */
     public static function init() {
         
-        self::$cache_root                 = SPRESS_CACHE_ROOT;
+        self::$multisite_identifier       = SPRESS_MULTISITE_IDENTIFIER;
         self::$separate_cookie_cache      = SPRESS_SEPARATE_COOKIE_CACHE;
         self::$cache_logged_in_users      = SPRESS_CACHE_LOGGED_IN_USERS;
         self::$cache_mobile_separately    = SPRESS_CACHE_MOBILE_SEPARATELY;
@@ -289,14 +287,6 @@ class AdvancedCache {
                 $content = file_get_contents($cache_file);
             }
 
-            // Generate the CSRF token.
-            $csrf_token = SPEED::generate_csrf_token(SPEED::get_url());
-            // Prepare a script block that exposes the token to JS.
-            $csrf_script = '<script id="spdy_csrfToken">window.spdy_csrfToken = "' . htmlspecialchars($csrf_token, ENT_QUOTES, 'UTF-8') . '";</script>';
-            // Replace the placeholder with the token script.
-            $content = preg_replace("@<script id=\"spdy_csrfToken\">.*?</script>@",$csrf_script,$content);
-
-
             // Check if we need to strip font preload sections.
             $shouldStrip = false;
             if (self::$preload_fonts_desktop_only === 'true') {
@@ -311,17 +301,21 @@ class AdvancedCache {
             }
 
             $elapsed_time = number_format(microtime(true) - $GLOBALS['start_time'],10);
-            $content .= "<!--E: $elapsed_time-->\n";
+            //$content .= "<!--E: $elapsed_time -->\n";
 
             // Set basic headers.
             header('Content-Type: text/html; charset=utf-8');
             header('Last-Modified: ' . gmdate('D, d M Y H:i:s', $last_modified) . ' GMT');
 
             // If originally gzipped
-            if ($isGz && SPRESS_FORCE_GZIPPED_OUTPUT === 'true') {
-                ini_set('zlib.output_compression', 0);
+            if (SPRESS_FORCE_GZIPPED_OUTPUT === 'true') {
+                ini_set('zlib.output_compression', '0');
+                $gz = gzencode($content, 6, ZLIB_ENCODING_GZIP);
                 header('Content-Encoding: gzip');
-                echo $raw_content;
+                header('Content-Length: ' . strlen($gz)); 
+                header('Vary: Accept-Encoding');
+                header('x-spdy-gz: 1'); 
+                echo $gz;
             } else {
                 echo $content;
             }
@@ -331,6 +325,46 @@ class AdvancedCache {
     }    
 
 
+    /**
+     * Serves the CSRF token as a JSON response.
+     *
+     * This function is only invoked if the original URI is '/_csrf'. It generates
+     * a CSRF token using SPEED::generate_csrf_token() and serves it as a JSON
+     * response with Content-Type 'application/json' and Cache-Control 'no-store,
+     * no-cache, must-revalidate, max-age=0'. The response is also marked with
+     * the 'Pragma: no-cache' header.
+     *
+     * @return void
+     */
+    public static function serve_csrf_token() {
+
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
+        if ($path === '/_csrf') {
+
+            // Ensure a binding exists BEFORE generating the token
+            if (empty($_COOKIE['spdy_guest'])) {
+                Cache::generate_guest_cookie();
+            }            
+
+            $page_url = isset($_SERVER['HTTP_X_PAGE_URL']) ? $_SERVER['HTTP_X_PAGE_URL'] : SPEED::get_url();
+            $csrf_token = Speed::generate_csrf_token($page_url);
+
+            header('X-CSRF-Token: ' . $csrf_token);
+            header('X-Content-Type-Options: nosniff');
+            header_remove('ETag');
+            header_remove('Last-Modified');            
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+            header('Content-Type: text/plain; charset=utf-8');
+
+            // For HEAD, no body needed
+            http_response_code(204); // No Content
+
+            exit;
+
+        }
+
+    }
 
 
     /**
@@ -339,6 +373,9 @@ class AdvancedCache {
      * @return void
      */
     public static function serve() {
+
+        //Token endpoint
+        self::serve_csrf_token();        
 
         $GLOBALS['start_time'] = microtime(true);
 

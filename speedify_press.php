@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.63.0
+Version: 0.70.20
 Text Domain: speedify-press
 Author URI: https://github.com/acid-drop
 */
@@ -49,4 +49,3 @@ if($enabled === false) {
 
 //Run the main plugin functions
 SPRESS\Speed::init();
-

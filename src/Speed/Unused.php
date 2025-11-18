@@ -2,20 +2,21 @@
 
 namespace SPRESS\Speed;
 
-use Sabberworm\CSS\CSSList\AtRuleBlockList;
-use Sabberworm\CSS\CSSList\CSSList;
-use Sabberworm\CSS\CSSList\CSSBlockList;
-use Sabberworm\CSS\CSSList\Document;
-use Sabberworm\CSS\OutputFormat;
-use Sabberworm\CSS\Parser as CSSParser;
-use Sabberworm\CSS\Settings;
-use Sabberworm\CSS\RuleSet\DeclarationBlock;
-use Sabberworm\CSS\Value\URL;
+use SPRESS\Dependencies\Sabberworm\CSS\CSSList\AtRuleBlockList;
+use SPRESS\Dependencies\Sabberworm\CSS\CSSList\CSSList;
+use SPRESS\Dependencies\Sabberworm\CSS\CSSList\CSSBlockList;
+use SPRESS\Dependencies\Sabberworm\CSS\CSSList\Document;
+use SPRESS\Dependencies\Sabberworm\CSS\Value\Value as CssValue;
+use SPRESS\Dependencies\Sabberworm\CSS\OutputFormat;
+use SPRESS\Dependencies\Sabberworm\CSS\Parser as CSSParser;
+use SPRESS\Dependencies\Sabberworm\CSS\Settings;
+use SPRESS\Dependencies\Sabberworm\CSS\RuleSet\DeclarationBlock;
+use SPRESS\Dependencies\Sabberworm\CSS\Value\URL;
 
 use SPRESS\App\Config;
 
-use MatthiasMullie\Minify;
-use Wa72\Url\Url as WaUrl;
+use SPRESS\Dependencies\MatthiasMullie\Minify;
+use SPRESS\Dependencies\Wa72\Url\Url as WaUrl;
 
 /**
  * This `Unused` class is responsible for finding the unused CSS in HTML content.
@@ -34,6 +35,8 @@ class Unused {
         'keyframes' => [],         
     ];
 
+    protected static $keep_map = []; // [placeholder => original]    
+
     /**
      * @var array<string,string>
      *   Maps a custom property name (e.g. "--h1_typography-font-family")
@@ -50,18 +53,36 @@ class Unused {
     public static $inline_css = [];
     public static $raw_css = [];
     public static $parsed_css = [];
+    public static $icon_fonts = [];
 
     // Toggle: when false, @font-face stays in the normal CSS (no separate fonts.css)
     public static $separate_fonts = true;
 
-    /** 
-     * bucket for extracted @font-face blocks ===
-     * Each item is ['css'=> string, 'wrappers'=> array<['name'=>string,'args'=>string]>, 'order'=> int]
+    /** Buckets for extracted @font-face blocks (icon vs text) ===
+     * Each item: ['css'=> string, 'wrappers'=> array<['name'=>string,'args'=>string]>, 'order'=> int]
      */
-    protected static $font_face_blocks = [];
+    protected static $icon_font_face_blocks = [];
+    protected static $text_font_face_blocks = [];
 
     /** monotonic sequence to preserve original order across traversal === */
     protected static $font_face_seq = 0;
+
+    protected static $debug_enabled = false; 
+    protected static $debug_file = '/tmp/spress-unused-debug.log';
+
+    protected static function debug($msg) {
+        if (!self::$debug_enabled) return;
+        $ts = date('Y-m-d H:i:s');
+        $line = "[$ts] $msg\n";
+        // Use FILE_APPEND and flock to avoid interleaving in concurrent runs.
+        $fh = @fopen(self::$debug_file, 'ab');
+        if ($fh) {
+            @flock($fh, LOCK_EX);
+            @fwrite($fh, $line);
+            @flock($fh, LOCK_UN);
+            @fclose($fh);
+        }
+    }    
 
     /**
      * Initializes the process of optimizing and extracting useful CSS from HTML content.
@@ -73,19 +94,25 @@ class Unused {
      *
      * @param string $html The HTML content to process.
      * @param array $allow_selectors An optional array of selectors that are allowed.
+     * @param array $icon_fonts An optional array of icon font family names
      * @return array An array containing optimized CSS, usage tracker statistics, percentage reduction, and used markup.
      */
 
-    public static function init($html, $allow_selectors = []) {
+    public static function init($html, $allow_selectors = [], $icon_fonts = null) {
 
         $start_time = microtime(true);
 
-        // if preloading only on desktop, we need to separate the font declarations
-        self::$separate_fonts =  (Config::get('speed_code', 'preload_fonts_desktop_only') === 'true');
+        //Set icon fonts
+        if($icon_fonts) {
+            self::$icon_fonts = $icon_fonts;
+        }
+
+        // if preloading only on desktop or lazyloading, we need to separate the font declarations
+        self::$separate_fonts =  (Config::get('speed_code', 'preload_fonts_desktop_only') === 'true') || (Config::get('speed_code', 'lazyload_icon_fonts') === 'true');
 
         // reset per-run font-face buckets/order ===
-        self::$font_face_blocks = [];
-        self::$font_face_seq = 0;
+        self::$icon_font_face_blocks = [];
+        self::$text_font_face_blocks = [];
 
         // Extract body classes manually before DOM load
         preg_match('/<body[^>]*class=["\']([^"\']+)["\']/', $html, $body_match);
@@ -117,10 +144,10 @@ class Unused {
         foreach(self::$inline_css AS $spcid => $css) {
 
             //Track usage
-            self::$usage_tracker['original_length'] += strlen($css);
+            self::$usage_tracker['original_length'] += strlen($css);        
 
             //Get used keyframe and fonts
-            self::find_used_fonts_keyframes_in_html($css);
+            self::find_used_fonts_keyframes_vars_in_html($css);
 
             //Get parsed
             $parsed = self::parse_css($home_url, $css, $spcid);
@@ -144,8 +171,20 @@ class Unused {
             self::process_sheet_for_css($url);
         }
 
-        // Build a single combined fonts CSS if enabled ===
-        $fonts_css = self::$separate_fonts ? self::render_fonts_css() : '';
+        // Build separate fonts CSS if enabled ===
+        $fonts_css_icons = self::$separate_fonts ? self::render_fonts_css(self::$icon_font_face_blocks) : '';
+        $fonts_css_text  = self::$separate_fonts ? self::render_fonts_css(self::$text_font_face_blocks) : '';
+        // Back-compat: combined (icons first to avoid overrides surprises)
+        $fonts_css = ($fonts_css_icons . $fonts_css_text);
+
+        foreach(self::$stylesheets_css AS $url => $css) {
+            $css = self::unprotect_at_risk_functions($css);
+            self::$stylesheets_css[$url] = $css;
+        }
+
+        //Debug used markup
+        self::debug("MARKUP " . print_r(self::$used_markup, true));
+        self::debug("VARS " . print_r(self::$css_variables, true));
 
         //Form return array
         return array("CSS"=>self::$stylesheets_css, 
@@ -154,8 +193,11 @@ class Unused {
                                             ? number_format((self::$usage_tracker['original_length'] - self::$usage_tracker['used_length']) / self::$usage_tracker['original_length'] * 100, 2)
                                             : 0,
                      "markup"=>self::$used_markup,
+                     "css_vars"=>self::$css_variables,
+                     "keep_map"=>self::$keep_map,
                      // expose fonts css ===
-                     "fonts_css"=>$fonts_css
+                     "fonts_css_icons"=>$fonts_css_icons,   // new: icon fonts only
+                     "fonts_css_text"=>$fonts_css_text      // new: non-icon (text) fonts
                     );
     }
 
@@ -170,7 +212,10 @@ class Unused {
         $result = array();
         foreach ($matches[1] as $index => $spcid) {
             if(isset($matches[2][$index])) {
-                $result[$spcid] = $matches[2][$index];
+                
+                $css = self::protect_at_risk_functions($matches[2][$index]);
+                $result[$spcid] = $css;
+
             }
         }
 
@@ -203,6 +248,7 @@ class Unused {
             }
 
             $url = $href_match[1] ?? false;
+            if (!$url) continue;
 
             if($url) {
 
@@ -231,9 +277,10 @@ class Unused {
         if($parsed) {
 
             // first collect all --* variables into self::$css_variables
-            self::collect_css_vars($parsed);
+            self::collect_css_vars($parsed);            
 
             self::find_used_fonts_keyframes_in_css($parsed, $url);
+
         } 
 
     }
@@ -252,8 +299,9 @@ class Unused {
         $data = self::transform_parsed_css($parsed, $url);
 
         //Sanitize based on the used blocks
-        $sanitized_css = self::render_css($data);
+        $sanitized_css = self::render_css($data);   
 
+        //Track length
         self::$usage_tracker['used_length'] += strlen($sanitized_css);
 
         //Add to global variable
@@ -280,6 +328,14 @@ class Unused {
         }
         if (!$css) return;
 
+        //All functions to force-keep
+        $css = self::protect_at_risk_functions($css);
+
+        //Get custom vars from original CSS
+        self::harvest_custom_vars_from_text($css);
+
+        //Get font families from original CSS
+        self::find_used_fonts_keyframes_vars_in_html($css);
 
         //set original length
         self::$usage_tracker['original_length'] += strlen($css);
@@ -310,9 +366,15 @@ class Unused {
      * parsed CSS storage. If a URL is provided, it will also convert relative URLs within the parsed CSS.
      */
 
-    public static function parse_css($url = null, $css, $identifier = null) {        
+    public static function parse_css($url = null, $css, $identifier = null) {   
 
-        $config = Settings::create()->withMultibyteSupport(false);
+        //Subs for hard-to-handle at blocks
+        $css = self::substitute_at_block_names($css);
+
+        //Subs for glitches
+        $css = self::sanitize_css_glitches($css);
+
+        $config = Settings::create()->withMultibyteSupport(false)->withLenientParsing(true);   // explicitly enable lenient parsing;
         $parser = new CSSParser($css, $config);
         $parsed = $parser->parse();
 
@@ -324,6 +386,110 @@ class Unused {
         self::$parsed_css[$identifier] = $parsed;
 
         return $parsed;
+
+    }
+
+    /**
+     * Remove templating artifacts that appear inside CSS declarations and can
+     * break the parser (e.g. "padding: 10 {{ val[1] }}").
+     * - Strips double-curly blocks {{ ... }} within declarations.
+     * - If a padding value ends up as a bare integer, append "px" (very common case).
+     *   We do NOT blanket-fix other properties (keep it surgical).
+     */
+    protected static function sanitize_css_glitches(string $css): string {
+        
+        // 0) Log templating fragments if present (supports "{ { ... } }" spacing)
+        if (self::$debug_enabled && preg_match_all('/\{\s*\{[\s\S]*?\}\s*\}/', $css, $mm)) {
+            foreach ($mm[0] as $frag) {
+                $snippet = preg_replace('/\s+/', ' ', trim($frag));
+                self::debug('[SANITIZE] found templating fragment: ' . $snippet);
+            }
+        }
+
+        // 1) Remove any "{{ … }}" fragments anywhere in CSS to avoid parser breakage.
+        //    (Conservative but effective given these only appear in values.)
+        $css = preg_replace('/\{\s*\{[\s\S]*?\}\s*\}/', '', $css);
+
+        // 2) Fix bare integer paddings that would have been "padding: 10 {{…}}"
+        //    Handle both ";" and "}" terminators; keep it to the single-value case.
+        //    Examples matched:
+        //      "padding:10}"   → "padding:10px}"
+        //      "padding: 9 ;"  → "padding:9px;"
+        $css = preg_replace(
+            '/\b(padding(?:-(?:top|right|bottom|left))?)\s*:\s*(\d+)\s*(?=(?:;|}))/i',
+            '$1:$2px',
+            $css
+        );
+
+        // 3) Replace NaN% with 0% (e.g., "left: NaN%;" → "left: 0%")
+        $css = preg_replace('/:\s*NaN%\s*(?=(?:;|}))/i', ':0%', $css);
+
+        return $css;
+    }  
+
+
+    /**
+     * Replaces @container, @layer, @supports and @scope at-rules with a different at-rule
+     * that is used for the internal CSS parser. This is required because
+     * the internal CSS parser does not support custom at-rules.
+     *
+     * @param string $csstxt The CSS string to process.
+     *
+     * @return string The processed CSS string.
+     */
+    public static function substitute_at_block_names($csstxt) {
+
+        foreach(array('container','layer','supports','scope') AS $block) {
+
+            //Fix for blocks
+            $csstxt = preg_replace('/@'.$block.'\s*?([^{;]+)?\s?\{/', '@media 00'. strtoupper($block) . CSS::$script_name . '$1{', $csstxt);
+
+        }
+
+        // DEBUG: capture original @media headers before parsing
+        if (self::$debug_enabled) {
+            if (preg_match_all('/@media\s+([^{]+)\{/', $csstxt, $m)) {
+                foreach ($m[1] as $args) {
+                    $hasAnd = (stripos($args, ' and ') !== false) || (preg_match('/\)\s*and\s*\(/i', $args));
+                    self::debug('[MEDIA:RAW-BEFORE] ' . trim($args) . ' | and=' . ($hasAnd?'yes':'no'));
+                }
+            }
+        }
+        
+
+        return $csstxt;
+
+    }    
+
+    /**
+     * Replaces @container and @layer at-rules with a different at-rule
+     * that is used for the internal CSS parser. This is required because
+     * the internal CSS parser does not support custom at-rules.
+     *
+     * @param string $css The CSS string to process.
+     *
+     * @return string The processed CSS string.
+     */
+    public static function replace_substitute_at_block_names($csstxt) {
+
+        foreach(array('container','layer','supports','scope') AS $block) {
+
+            //Replace back the hacks
+            $csstxt = str_replace('@media 00' . strtoupper($block) . CSS::$script_name, '@' . $block, $csstxt);
+
+        }
+
+        // DEBUG: capture @media headers after render/minify replacement
+        if (self::$debug_enabled) {
+            if (preg_match_all('/@media\s+([^{]+)\{/', $csstxt, $m)) {
+                foreach ($m[1] as $args) {
+                    $hasAnd = (stripos($args, ' and ') !== false) || (preg_match('/\)\s*and\s*\(/i', $args));
+                    self::debug('[MEDIA:RAW-AFTER] ' . trim($args) . ' | and=' . ($hasAnd?'yes':'no'));
+                }
+            }
+        }        
+
+        return $csstxt;
 
     }
 
@@ -352,7 +518,7 @@ class Unused {
     
             if ($node->hasAttribute('style')) {
                 $style = $node->getAttribute('style');
-                self::find_used_fonts_keyframes_in_html($style);
+                self::find_used_fonts_keyframes_vars_in_html($style);
             }
         }
     
@@ -375,16 +541,29 @@ class Unused {
      * @param string $html The HTML content to parse for font and animation usage.
      * @return void
      */
-    public static function find_used_fonts_keyframes_in_html($html) {
+    public static function find_used_fonts_keyframes_vars_in_html($html) {
+
+        //Get custom vars from original CSS
+        self::harvest_custom_vars_from_text($html);        
+
+        //self::debug("FONT TESTING " . print_r($html,true));
 
         // Extract font-family
         if (preg_match_all('/font-family\s*:\s*([^;]+);?/', $html, $matches)) {
             foreach ($matches[1] as $font) {
 
+                self::debug("FONT FINDER FONT IS " . print_r($font,true));
+
                 //  If it's using var(--some-var, optional-fallback), resolve:
                 if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)/', $font, $m)) {
-                    $var_name = $m[1];
+
+                    self::debug("FONT FINDER " . print_r($m,true));
+
+                    $var_name = $m[1];                    
                     if (isset(self::$css_variables[$var_name])) {
+
+                        self::debug("FONT FINDER " . $var_name . " WAS SET as " . self::$css_variables[$var_name]);
+
                         foreach (explode(',', self::$css_variables[$var_name]) as $fam) {
                             $fam_clean = trim(trim($fam), "\"'");
                             if ($fam_clean !== '') {
@@ -408,6 +587,7 @@ class Unused {
     
         // Extract animation-name and animation shorthand
         if (preg_match_all('/animation(?:-name)?\s*:\s*([^;]+);?/', $html, $matches)) {
+            
             foreach ($matches[1] as $animation_value) {
                 $animations = explode(',', $animation_value);
                 foreach ($animations as $anim) {
@@ -457,7 +637,7 @@ class Unused {
                 self::find_used_fonts_keyframes_in_css($content, $base_url);
 
                 
-            } elseif ($content instanceof DeclarationBlock) {
+            } elseif ($content instanceof DeclarationBlock) {                
 
                 $selectors = $content->getSelectors();
     
@@ -466,16 +646,17 @@ class Unused {
                 $should_include = false;
     
                 foreach ($parsed_selectors as $selector) {
+
                     if (self::should_include($selector)) {
                         
                         $should_include = true;
     
                         // If included, check for font-family usage
                         foreach ($content->getRules() as $rule) {
-
+                    
                             $rule_name = strtolower($rule->getRule());
                             $val = $rule->getValue();
-                            $val_str = $val instanceof \Sabberworm\CSS\Value\Value ? $val->render(OutputFormat::createCompact()) : (string) $val;
+                            $val_str = $val instanceof CssValue ? $val->render(OutputFormat::createCompact()) : (string) $val;
                     
                             // If this is a CSS custom-property (starts with "--"), store it and skip:
                             if (strpos($rule_name, '--') === 0) {
@@ -494,8 +675,17 @@ class Unused {
                                         $var_name = $m[1]; // "--h1_typography-font-family"
 
                                         if (isset(self::$css_variables[$var_name])) {
+
+
                                             // Get e.g. "Oswald,Verdana,Geneva,sans-serif"
                                             $real_families = self::$css_variables[$var_name];
+
+                                            //If that is also a var name split down again
+                                            if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)/', $real_families, $inner)) {
+                                                    $inner_var_name = $inner[1]; // "--h1_typography-font-family"
+                                                    $real_families = self::$css_variables[$inner_var_name];
+                                            }
+
                                             foreach (explode(',', $real_families) as $fam) {
                                                 // Trim any stray quotes or spaces
                                                 $fam_clean = trim(trim($fam), "\"'");
@@ -552,6 +742,7 @@ class Unused {
                     
                             // Capture animation-name or shorthand animation
                             if ($rule_name === 'animation' || $rule_name === 'animation-name') {
+
                                 $names = explode(',', $val_str);
                                 foreach ($names as $name) {
                                     $parts = preg_split('/\s+/', trim($name));
@@ -675,7 +866,21 @@ class Unused {
     
             if ($content instanceof AtRuleBlockList) {
                 $at_rule_name = $content->atRuleName();
-                $args = $content->atRuleArgs();
+                $args = $content->atRuleArgs();            
+
+                // DEBUG: compare Sabberworm args to raw header
+                if (self::$debug_enabled && strcasecmp($at_rule_name, 'media') === 0) {
+                    $raw = $content->render(OutputFormat::createCompact());
+                    $rawArgs = '';
+                    if (preg_match('/^@media\s+([^{]+)\{/', $raw, $mm)) {
+                        $rawArgs = trim($mm[1]);
+                    }
+                    $strArgs = trim((string)$args);
+                    $flagAndArgs = (stripos($strArgs, ' and ') !== false) || preg_match('/\)\s*and\s*\(/i', $strArgs);
+                    $flagAndRaw  = (stripos($rawArgs,  ' and ') !== false) || preg_match('/\)\s*and\s*\(/i', $rawArgs);
+                    self::debug('[MEDIA:PARSED] args=' . $strArgs . ' | and=' . ($flagAndArgs?'yes':'no'));
+                    self::debug('[MEDIA:RENDER] args=' . $rawArgs .  ' | and=' . ($flagAndRaw ?'yes':'no'));
+                }                
     
                 // @media, @supports, etc. rules
                 $items[] = [
@@ -719,19 +924,29 @@ class Unused {
                         $font = trim($match[1]);
                         $fam_clean = trim(trim($font), "\"'");
 
+                        // Determine icon-vs-text font
+                        $isIconFont = CSS::is_icon_font($fam_clean) || in_array($fam_clean, self::$icon_fonts);
+
                         if (self::$separate_fonts) {
 
-                            // Only keep font-face if its family is actually used on page or in the CSS
-                            // we can't check here if it'll actually be downloaded
-                            if (isset(self::$used_markup['fonts'][$fam_clean])) {
-                                // Store to dedicated bucket with wrapper context and stable order; skip adding to normal css list
-                                self::$font_face_blocks[] = [
+                            // Send ALL @font-face to separate buckets, not the main CSS.
+                            if ($isIconFont) {
+                                self::$icon_font_face_blocks[] = [
                                     'css'      => $css,
                                     'wrappers' => $wrapper_stack,
                                     'order'    => self::$font_face_seq++,
                                 ];
+                            } else {
+                                // Keep non-icon fonts only if used
+                                if (isset(self::$used_markup['fonts'][$fam_clean])) {
+                                    self::$text_font_face_blocks[] = [
+                                        'css'      => $css,
+                                        'wrappers' => $wrapper_stack,
+                                        'order'    => self::$font_face_seq++,
+                                    ];
+                                }
                             }
-                            // Always skip adding to the main css stream (fonts are separated)
+                            // Always skip adding to the main css when separating fonts
                             continue;
 
                         } else {
@@ -797,6 +1012,7 @@ class Unused {
     protected static function parse_selectors(array $selectors) {
         $result = [];
         foreach ($selectors as $sel) {
+            $orig = is_object($sel) && method_exists($sel, 'getSelector') ? $sel->getSelector() : (string)$sel;             
             // Use getSelector() instead of __toString()
             if (is_object($sel) && method_exists($sel, 'getSelector')) {
                 $selector = $sel->getSelector();
@@ -811,7 +1027,13 @@ class Unused {
                 'tags' => [],
                 'attrs' => []
             ];
-            $selector = preg_replace('/(?<!\\\\)::?[a-zA-Z0-9_-]+(\(.+?\))?/', '', $selector);
+            
+            $selector = self::strip_pseudo_fn(self::strip_pseudo_fn(self::strip_pseudo_fn($selector,'where'),'is'),'has');
+            $selector = self::strip_pseudo_fn($selector, 'not'); // removes negations from the reduced copy only
+
+            // Drop all pseudo-classes/elements from the reduced copy (e.g. :after, ::marker, :hover, :nth-child(...))
+            $selector = preg_replace('/::?[a-zA-Z-]+(?:\([^()]*\))?/', '', $selector);            
+
             $selector = preg_replace_callback('/\[([A-Za-z0-9_:-]+)(\W?=[^\]]+)?\]/', function($m) use (&$data) {
                 $data['attrs'][] = $m[1];
                 return '';
@@ -824,12 +1046,26 @@ class Unused {
                 $data['ids'][] = $m[1];
                 return '';
             }, $selector);
-            $selector = preg_replace_callback('/[a-zA-Z0-9_-]+/', function($m) use (&$data) {
+            // N.B Treat only real type selectors as tags; ignore things like :after, :hover, ::marker, etc.
+            $selector = preg_replace_callback('/(?<!:)[a-zA-Z][a-zA-Z0-9_-]*/', function($m) use (&$data) {
                 $data['tags'][] = $m[0];
                 return '';
-            }, $selector);
-            $result[] = array_filter($data);
+            }, $selector);            
+
+            $parsed = array_filter($data);
+            // Minimal parse log (helps spot when :after becomes a "tag")
+            self::debug('PARSE ' .
+                'sel="' . $orig . '" ' .
+                '→ classes=[' . implode(',', $parsed['classes'] ?? []) . '] ' .
+                'ids=[' . implode(',', $parsed['ids'] ?? []) . '] ' .
+                'tags=[' . implode(',', $parsed['tags'] ?? []) . '] ' .
+                'attrs=[' . implode(',', $parsed['attrs'] ?? []) . ']'
+            );
+
+            $result[] = $parsed;
+
         }
+
         return $result;
     }
 
@@ -845,10 +1081,12 @@ class Unused {
             if (isset($item['css'])) {
                 if (!isset($item['selectors'])) {
                     // e.g. @font-face or @keyframes — no selectors, always include
+                    self::debug('EMIT block (no selectors): ' . substr($item['css'], 0, 80) . '...');
                     $output[] = $item['css'];
                 } else {
                     foreach ($item['selectors'] as $selector) {
                         if (self::should_include($selector)) {
+                            self::debug('EMIT sel="' . $selector['selector'] . '" css=' . substr($item['css'], 0, 80) . '...');
                             $output[] = $item['css'];
                             break;
                         }
@@ -858,17 +1096,151 @@ class Unused {
              elseif (!empty($item['rulesets'])) {
                 $nested = self::render_css($item['rulesets']);
                 if ($nested) {
+                    self::debug('EMIT at-rule: ' . ($item['at_rule'] ?? '(unknown)'));
+                    if (self::$debug_enabled && isset($item['at_rule']) && stripos($item['at_rule'], '@media') === 0) {
+                        // Log the exact header we are about to emit
+                        if (preg_match('/^@media\s+([^{]+)$/', trim($item['at_rule']), $mm)) {
+                            $args = trim($mm[1]);
+                            $hasAnd = (stripos($args, ' and ') !== false) || (preg_match('/\)\s*and\s*\(/i', $args));
+                            self::debug('[MEDIA:EMIT] ' . $args . ' | and=' . ($hasAnd?'yes':'no'));
+                        } else {
+                            self::debug('[MEDIA:EMIT] ' . ($item['at_rule'] ?? '(unknown)'));
+                        }
+                    } else {
+                        self::debug('EMIT at-rule: ' . ($item['at_rule'] ?? '(unknown)'));
+                    }                    
                     $output[] = sprintf('%s { %s }', $item['at_rule'], $nested);
                 }
             }
         }
         $csstxt = implode('', $output);
 
+        //Container and layer fixes
+        $csstxt = self::replace_substitute_at_block_names($csstxt);
+
+        // RESTORE real function names
+        $csstxt = self::unprotect_at_risk_functions($csstxt);     
+
         //Minify it
         $minifier = new Minify\CSS($csstxt);
         $csstxt = $minifier->minify();
 
         return $csstxt;
+
+    }
+
+    // Remove a balanced pseudo-function (e.g. :not(...)) from a selector string.
+    protected static function strip_pseudo_fn(string $sel, string $fn): string {
+        $out = ''; $i = 0; $n = strlen($sel);
+        $pat = '/:(?:' . preg_quote($fn, '/') . ')\(/i';
+        while ($i < $n) {
+            if (!preg_match($pat, $sel, $m, PREG_OFFSET_CAPTURE, $i)) {
+                $out .= substr($sel, $i);
+                break;
+            }
+            $pos = $m[0][1];
+            $out .= substr($sel, $i, $pos - $i);
+            $i = $pos + strlen($m[0][0]); // after "("
+            $depth = 1;
+            while ($i < $n && $depth > 0) {
+                $ch = $sel[$i];
+                if ($ch === '(') $depth++;
+                elseif ($ch === ')') $depth--;
+                $i++;
+            }
+        }
+        return $out;
+    }
+
+    // Return classes from the raw selector, ignoring anything inside :not(...)
+    protected static function classes_ignore_not(string $sel): array {
+        $noNot = self::strip_pseudo_fn($sel, 'not');
+        preg_match_all('/\.([A-Za-z0-9_-]+)/', $noNot, $m);
+        return array_unique($m[1] ?? []);
+    }
+
+
+    /**
+     * Protects functions that are at risk of being minified.
+     *
+     * Finds all instances of functions like `hsl` and `calc` and replaces them with
+     * a unique placeholder. The original function is stored in the `keep_map`
+     * array with the placeholder as the key.
+     *
+     * This is necessary because Sabberworm can mangle them
+     * 
+     */
+    protected static function protect_at_risk_functions(string $css): string {
+        $fns = ['hsl','hsla','rgb','rgba','clamp','min','max','calc','color','color-mix','lab','lch'];
+        $len = strlen($css);
+        $i = 0; $out = '';
+
+        while ($i < $len) {
+            if ($i+1 < $len && $css[$i] === '/' && $css[$i+1] === '*') {
+                $j = strpos($css, '*/', $i+2);
+                if ($j === false) { $out .= substr($css, $i); break; }
+                $out .= substr($css, $i, $j + 2 - $i);
+                $i = $j + 2;
+                continue;
+            }
+            if (preg_match('/\G([a-zA-Z-]+)\s*\(/A', $css, $m, 0, $i)) {
+                $name  = strtolower($m[1]);
+                $start = $i;
+                $i += strlen($m[0]); // after '('
+                if (!in_array($name, $fns, true)) { $out .= substr($css, $start, strlen($m[0])); continue; }
+
+                $depth=1; $inS=false; $inD=false; $argStart=$i;
+                while ($i < $len && $depth > 0) {
+                    if (!$inS && !$inD && $i+1 < $len && $css[$i] === '/' && $css[$i+1] === '*') { $j = strpos($css,'*/',$i+2); if ($j===false){$i=$len;break;} $i=$j+2; continue; }
+                    $ch = $css[$i];
+                    if ($ch === '"' && !$inS && ($i===0 || $css[$i-1] !== '\\')) { $inD = !$inD; $i++; continue; }
+                    if ($ch === "'" && !$inD && ($i===0 || $css[$i-1] !== '\\')) { $inS = !$inS; $i++; continue; }
+                    if (!$inS && !$inD) {
+                        if ($ch === '(') { $depth++; $i++; continue; }
+                        if ($ch === ')') { $depth--; $i++; if ($depth===0) break; continue; }
+                    }
+                    $i++;
+                }
+                $args = substr($css, $argStart, ($i - 1) - $argStart);
+                $full = substr($css, $start, $i - $start);          // "name(args)"
+
+                $hash = md5($args);
+                $placeholder = "__keep__{$name}(k{$hash})";          // << alpha-prefixed
+
+                $out .= $placeholder;                                // replace ENTIRE call
+                self::$keep_map[$placeholder] = $full;               // map exact placeholder → original call
+                continue;
+            }
+            $out .= $css[$i]; $i++;
+        }
+        return $out;
+    }
+
+    /**
+     * Replaces placeholders with their original values in a CSS string.
+     *
+     * When we minimize CSS, we replace `@at-risk` functions with placeholders
+     * to prevent them from being minified. This function takes a minimized CSS
+     * string and replaces those placeholders with their original values.
+     *
+     * @param string $css The CSS string to process.
+     * @return string The CSS string with placeholders replaced.
+     */
+    protected static function unprotect_at_risk_functions(string $css): string {
+        return self::$keep_map ? strtr($css, self::$keep_map) : $css;
+    }    
+    
+
+    // Capture custom properties from raw CSS text 
+    protected static function harvest_custom_vars_from_text(string $css): void {
+        if (!preg_match_all('/(?P<name>--[A-Za-z0-9_-]+)\s*:\s*(?P<value>[^;]*?)\s*;/s', $css, $m, PREG_SET_ORDER)) {
+            return;
+        }
+        foreach ($m as $mm) {
+            $name  = $mm['name'];
+            $value = trim($mm['value']);
+            self::$css_variables[$name] = $value;
+        }
 
     }
 
@@ -885,7 +1257,7 @@ class Unused {
                 foreach ($content->getRules() as $rule) {
                     $rule_name = strtolower($rule->getRule());
                     $val       = $rule->getValue();
-                    $val_str   = $val instanceof \Sabberworm\CSS\Value\Value
+                    $val_str   = $val instanceof CssValue
                             ? $val->render(OutputFormat::createCompact())
                             : (string)$val;
                     if (strpos($rule_name, '--') === 0) {
@@ -899,8 +1271,7 @@ class Unused {
                 self::collect_css_vars($content);
             }
         }
-    }    
-
+    }       
 
     /**
      * Determine if a CSS selector should be included in the final output.
@@ -922,10 +1293,19 @@ class Unused {
         //Attrs get a pass
         if (!empty($selector['attrs']) && empty($selector['classes']) && empty($selector['ids']) && empty($selector['tags'])) return true;
 
-        //Test passed classes against selector
-        foreach (self::$allow_selectors as $class) {
+        // NEW: if selector uses :where/:is/:has, include when any non-negated class from the raw selector is used.
+        $raw = $selector['selector'] ?? '';
+        if ($raw !== '' && (stripos($raw, ':where(') !== false || stripos($raw, ':is(') !== false || stripos($raw, ':has(') !== false)) {
+            foreach (self::classes_ignore_not($raw) as $c) {
+                if (isset(self::$used_markup['classes'][$c])) return true;
+            }
+            // fall through to legacy checks if no class anchor found
+        }        
 
+        //Test passed classes against selector
+        foreach (self::$allow_selectors as $class) {                     
             if(preg_match("@".$class."@i",$selector['selector'],$matches)) {
+                self::debug('INCLUDE allow-match sel="' . $selector['selector'] . '" by rule /' . $class . '/i');    
                 return true;
             }
         }
@@ -945,7 +1325,27 @@ class Unused {
 		}
 
 
-		return $valid;
+        if (!$valid) {
+            // Pinpoint the first failing anchor for fast debugging
+            $reason = [];
+            if (!empty($selector['classes']) && !self::is_used($selector['classes'], 'classes')) {
+                $missing = array_values(array_diff($selector['classes'], array_keys(self::$used_markup['classes'] ?? [])));
+                $reason[] = 'missing class(es): ' . implode(',', $missing);
+            }
+            if (!empty($selector['ids']) && !self::is_used($selector['ids'], 'ids')) {
+                $missing = array_values(array_diff($selector['ids'], array_keys(self::$used_markup['ids'] ?? [])));
+                $reason[] = 'missing id(s): ' . implode(',', $missing);
+            }
+            if (!empty($selector['tags']) && !self::is_used($selector['tags'], 'tags')) {
+                $missing = array_values(array_diff($selector['tags'], array_keys(self::$used_markup['tags'] ?? [])));
+                $reason[] = 'missing tag(s): ' . implode(',', $missing);
+            }
+            self::debug('SKIP sel="' . $selector['selector'] . '" → ' . implode('; ', $reason));
+        } else {
+            self::debug('INCLUDE sel="' . $selector['selector'] . '"');
+        }
+        return $valid;
+
     }
 
     /**
@@ -1023,14 +1423,42 @@ class Unused {
      */
     protected static function fetch($url) {
 
+        self::debug("FETCH $url");
+
         $file = self::url_to_local($url);
-        if ($file && file_exists($file)) {
+
+        self::debug("FILE $file");
+
+        if ($file && file_exists($file) && strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'css') {
             $css = file_get_contents($file);
             if ($css !== false) self::$raw_css[$url] = $css;
             return $css;
         }
 
+        //File wasn't available locally, get remote
+        //Could apply to PHP generated stylesheets
+        $resp = wp_remote_get($url, [
+            'timeout'      => 12,
+            'redirection'  => 3,
+            'headers'      => ['Accept' => 'text/css,*/*;q=0.1'],
+            'sslverify'    => apply_filters('https_local_ssl_verify', true),
+        ]);
+
+        //self::debug("RESP " . print_r($resp,true));
+
+        if (!is_wp_error($resp) && (int) wp_remote_retrieve_response_code($resp) === 200) {
+            $css = wp_remote_retrieve_body($resp);
+            //self::debug("CSS " . print_r($css,true));
+        }
+
+        if ($css !== false && $css !== null) {
+            self::$raw_css[$url] = $css;
+            return $css;
+        }
+
         return false;
+
+
     }
 
      /**
@@ -1042,10 +1470,11 @@ class Unused {
      */
     public static function url_remove_querystring($url) {
         
-        return preg_replace('#\?.*$#', '', $url);
+        $url = html_entity_decode($url, ENT_QUOTES);
+        return remove_query_arg(['ver','v','version'], $url);
+
 
     }
-
 
 
     /**
@@ -1083,28 +1512,39 @@ class Unused {
 
 
     /**
-     * Minify and return the combined @font-face CSS we collected.
+     * Minify and return the combined @font-face CSS for a given bucket.
      * Preserves original order and wrapper at-rules (e.g. @supports/@media).
+     *
+     * @param array $bucket Array of ['css','wrappers','order'] items.
+     * @param string $type text or icon
      */
-    protected static function render_fonts_css() {
-        if (empty(self::$font_face_blocks)) return '';
+    protected static function render_fonts_css(array $bucket, $type = 'text') {
+        if (empty($bucket)) return '';
 
         // Stable original order
-        usort(self::$font_face_blocks, function($a,$b){ return $a['order'] <=> $b['order']; });
+        usort($bucket, function($a,$b){ return $a['order'] <=> $b['order']; });
 
         $parts = [];
-        foreach (self::$font_face_blocks as $item) {
+        foreach ($bucket as $item) {
             $css = $item['css'];
             // Re-wrap with original at-rules, from outermost to innermost
             if (!empty($item['wrappers'])) {
                 foreach ($item['wrappers'] as $wrap) {
                     $prefix = trim($wrap['name'].' '.$wrap['args']);
-                    $css = $prefix . ' {' . $css . '}';
+                    if($type == 'text') {
+                        $css = $prefix . ' {' . $css . '}';
+                    } else {
+                        $css = $prefix . ' {' . $css . '}';
+                    }
                 }
             }
             $parts[] = $css;
         }
         $fonts_css = implode('', $parts);
+
+        // Replace back the layer and container hacks
+        $fonts_css = self::replace_substitute_at_block_names($fonts_css);
+
         $minifier = new Minify\CSS($fonts_css);
         return $minifier->minify();
     }
