@@ -143,7 +143,12 @@ class Config {
 				'name'   => 'Replace Woo nonces',
 				'helper' => 'Allows much easier caching of WooCommerce pages',
 				'value' => 'false',
-			),																		
+			),	
+			'replace_ajax_nonces' => array(
+				'name'   => 'Replace AJAX nonces',
+				'helper' => 'Allows much easier caching of pages that use AJAX',
+				'value' => 'false',
+			),																					
 		),			
 		'speed_css'  => array(
 			'css_mode' => array(
@@ -154,8 +159,8 @@ class Config {
 			),			
 			'include_patterns' => array(
 				'name'   => 'Include Patterns',
-				'helper' => 'Selectors in CSS files that match these patterns will always be included. Separate multiple with new lines',
-				'value' => '',
+				'helper' => 'Selectors in CSS files that match these patterns will always be included. Some common examples have been included by default. Separate multiple with new lines',
+				'value' => "opened\n-open\nclosed\ntrigger\ntoggl\ndropdown\nslider\nswiper\nmenu-mobile\nmobile-menu\nselect2\nactive\nslick\npop-\ndrawer\nsidebar\nowl\nloading\nstars\nmodal\nwc-block\nwp-block-navigation\nshow-password-input\nscreen-reader-text\neasyzoom\nicon-fullscreen\naos\ntab\nemoji",
 			),
 			'ignore_urls' => array(
 				'name'   => 'Ignore URLs',
@@ -285,7 +290,12 @@ class Config {
 				'name'   => 'Use system fonts',
 				'helper' => 'Use high-speed system fonts for mobile devices. Will automatically prevent preloading standard fonts on mobile devices.',
 				'value' => 'false',
-			),																			
+			),		
+			'icon_font_names' => array(
+				'name'   => 'Icon font names',
+				'helper' => 'List of icon font filenames. A common list is included by default',
+				'value' => "fontawesome\nfa-\nmaterialicons\nionicons\nfeather\nsimplelineicons\ntypicons\nentypo\nicomoon\nlineicons\niconfont\nmdi\nflaticon\nicons\nmodules\nwoosidecart",
+			)																						
 		),		
 		'speed_replace'  => array(
 			'speed_find_replace' => array(
@@ -350,11 +360,10 @@ class Config {
 		self::$config = (array)get_option( 'spress_namespace_CONFIG', array() );
 		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
 
-
 		// Example of how to update one of the default configs
-		#$docs = self::$initial_config['docs'];
-		#$update = array("config_key"=>"docs","iframe"=>$docs['iframe']['value']);
-		#self::update_config($update);
+		$docs = self::$initial_config['icon_font_names'];
+		$update = array("config_key"=>"icon_font_names","iframe"=>$icon_font_names['iframe']['value']);
+		self::update_config($update);
 
 
 	}

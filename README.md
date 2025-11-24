@@ -40,28 +40,23 @@ SpeedifyPress is a performance optimization toolkit for WordPress, built for dev
 
 ## ⚡ Quick Start
 
-1. **Subscribe to the Newsletter**  
-   SpeedifyPress is available exclusively to subscribers. Subscribe at the [Adventures in WordPressing Substack](https://adventuresinwordpressing.substack.com/p/speedifypress) to get access.
+1. **Download SpeedifyPress**  
+   Simply download the zip from this repository or from [https://speedifypress.com/license/free/](https://speedifypress.com/license/free/)
 
-2. **Download SpeedifyPress**  
-   After subscribing, you'll receive a link to download the latest version of the plugin. Or you can download it from this repository.
-
-3. **Install the Plugin on Your WordPress Site**  
+2. **Install the Plugin on Your WordPress Site**  
    - Log in to your WordPress dashboard  
    - Go to **Plugins → Add New → Upload Plugin**  
    - Upload the `.zip` file and click **Install Now**  
    - Activate the plugin
 
-4. **Enter your Invoice Number**  
-   On the Dashboard, you can enter your Substack invoice number to unlock the plugin. 
+3. **Access the Dashboard and Register**  
+   Once the installation is finished, click "I need a license" in the Dashboard. For single sites, we'll email you a free license. 
 
-5. **Get Personal Help with Setup**  
-   As a subscriber, you get direct help with installation and configuration. We'll make sure it's dialed in perfectly for your setup. Just head to our [Discussion Forum](https://github.com/acid-drop/SpeedifyPress/discussions).
+4. **Subscribe to the Newsletter**  
+   Subscribe fo free at the [Adventures in WordPressing Substack](https://adventuresinwordpressing.substack.com/p/speedifypress) to find out how we're using the plugin on real sites. 
 
-6. **Enjoy the Speed**  
+5. **Enjoy the Speed**  
    Your site is now equipped with professional-grade optimization tools — faster load times, improved performance scores, and happier users.
-
-> 💬 Need help? Reach out via the subscriber portal or email for expert support.
 # 📚 Documentation 
 
 ## How to use the  Cache Settings?

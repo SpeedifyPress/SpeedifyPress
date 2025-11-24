@@ -874,9 +874,10 @@ class CSSUsageCollector {
     });    
 
     //Don't collect if logged in exceptions
-    let num_logged_in_exceptions = document.querySelectorAll('.logged_in_exception').length;
+    //let num_logged_in_exceptions = document.querySelectorAll('.logged_in_exception').length;
+    /* Re-enabled, but the CSS must be added to the custom preload for this to work properly */
 
-    if(resolutions[deviceType] === 'true' && num_logged_in_exceptions === 0) {
+    if(resolutions[deviceType] === 'true') {
         var includePatterns = JSON.parse(speed_css_vars.include_patterns); // patterns to always include
         includePatterns = includePatterns.map(pattern => new RegExp(pattern.replace(/\\\\/g, '\\')));
         const collector = new CSSUsageCollector(false, includePatterns); // Pass false to disable warning logging

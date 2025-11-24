@@ -486,7 +486,7 @@ class JsDelayer {
     document.addEventListener('loggedInExceptionsDone', startDelayer, { once: true });
   } else {
     // fire immediately
-    if((document.prerendering ?? false) == true) {
+    if (document.prerendering === true) {
         window.speed_js_vars.delay_seconds = 0;
     }
     startDelayer();
