@@ -38,6 +38,7 @@ class Cache {
     public static $preload_fonts_desktop_only;           //string: 'true' or 'false'
     public static $multisite_identifier;                 //string: blogid or empty
     public static $replace_woo_nonces;                   //string: 'true' or 'false'
+    public static $replace_ajax_nonces;                   //string: 'true' or 'false'
 
     /**
      * Initializes the cache settings from configuration.
@@ -107,14 +108,16 @@ class Cache {
         //Register purge hook, more careful with this one
         add_action( 'post_updated',            array( __CLASS__, 'purge_if_core_fields_changed' ), 10, 3 );
 
-        //Turn off Woo nonces
-        if(self::$replace_woo_nonces === 'true') {
+        //Turn off Woo/AJAX  nonces
+        if(self::$replace_woo_nonces === 'true' || self::$replace_ajax_nonces === 'true') {
             
-            //Disable Woo nonces
-            add_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
+            if(self::$replace_woo_nonces === 'true') {
+                //Disable Woo nonces
+                add_filter('woocommerce_store_api_disable_nonce_check', '__return_true');
 
-            //Add our own to REST dispatch
-            add_filter('rest_pre_dispatch', array(__CLASS__, 'custom_rest_pre_dispatch'), 10, 3);
+                //Add our own to REST dispatch
+                add_filter('rest_pre_dispatch', array(__CLASS__, 'custom_rest_pre_dispatch'), 10, 3);
+            }
 
             //Prevent createPreloadingMiddleware from storing carts
             add_action( 'wp_print_footer_scripts', function () {
@@ -176,37 +179,45 @@ class Cache {
             return $result; // read-only
         }
 
-        // Basic Origin/Referer check (keeps CSRF robust even if token leaks)
-        $host = (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
-        $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-        $referer = $_SERVER['HTTP_REFERER'] ?? '';
-        if ($origin && stripos($origin, $host) !== 0) {
-            return new \WP_Error('spdy_csrf_origin', 'Invalid origin', ['status' => 403]);
-        }
-        if (!$origin && $referer && stripos($referer, $host) !== 0) {
-            return new \WP_Error('spdy_csrf_referer', 'Invalid referer', ['status' => 403]);
-        }
-
-        // Get token from our header
-        $token = $_SERVER['HTTP_X_SPDY_CSRF'] ?? '';
-        if ($token === '') {
-            return new \WP_Error('spdy_csrf_missing', 'CSRF token missing', ['status' => 403]);
-        }
-
-        // Verify token against current request/session
-        $decoded = Speed::decode_csrf_token( $token, 'long' );        
-        if ( !empty($decoded['fail_message'])) {
-            return new \WP_Error(
-                'invalid_request',
-                'Invalid CSRF token or missing URL. ' . $decoded['fail_message'],
-                [ 'status' => 403 ]
-            );
-        }            
-        
+        $check = self::validate_spdy_csrf();
+        if(is_wp_error($check)) {
+            return $check;
+        }                 
 
         return $result;
 
     }
+
+    protected static function validate_spdy_csrf() {
+
+        $host    = (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
+        $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
+        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+
+        if($origin && stripos($origin, $host) !== 0) {
+            return new \WP_Error('spdy_csrf_origin', 'Invalid origin', array('status' => 403));
+        }
+
+        if(!$origin && $referer && stripos($referer, $host) !== 0) {
+            return new \WP_Error('spdy_csrf_referer', 'Invalid referer', array('status' => 403));
+        }
+
+        $token = $_SERVER['HTTP_X_SPDY_CSRF'] ?? '';
+        if($token === '') {
+            return new \WP_Error('spdy_csrf_missing', 'CSRF token missing', array('status' => 403));
+        }
+
+        $decoded = Speed::decode_csrf_token($token, 'long');
+        if(!empty($decoded['fail_message'])) {
+            return new \WP_Error(
+                'invalid_request',
+                'Invalid CSRF token or missing URL. ' . $decoded['fail_message'],
+                array('status' => 403)
+            );
+        }
+
+        return true;
+    }    
 
     /**
      * Returns a unique identifier for the current user session.
@@ -336,7 +347,7 @@ class Cache {
         // If the original and modified URL differ, save in a lookup
         // so we can purge both when required
         if ($url != $modified_url) {
-            $lookup_file = Speed::get_root_cache_path() . '/'. Cache::get_cached_uris_filename();
+            $lookup_file = Speed::get_root_cache_path() . '/lookup_uris.json';;
             
             // Initialize current lookup as an array.
             $current_lookup = [];
@@ -371,7 +382,10 @@ class Cache {
         $html = self::save_cache($cache_file,$html);
         
         //$url has now been cached, update links index
-        self::write_cached_uri($url);
+        //if this is a post or a page
+        if ( is_singular( array( 'post', 'page' ) ) ) {
+            self::write_cached_uri($url);    
+        }
 
         return $html;
 

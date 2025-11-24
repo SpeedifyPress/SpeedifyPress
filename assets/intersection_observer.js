@@ -45,10 +45,10 @@
             if (node.tagName === 'IMG') {
               observeLazyImage(node);
             } else {
-              node.querySelectorAll?.('img[data-lazy-src], img[data-lazy-srcset]').forEach(observeLazyImage);
+              node.querySelectorAll && node.querySelectorAll('img[data-lazy-src], img[data-lazy-srcset]').forEach(observeLazyImage);
             }
           } else if (node.nodeType === 11) { // DocumentFragment
-            node.querySelectorAll?.('img[data-lazy-src], img[data-lazy-srcset]').forEach(observeLazyImage);
+            node.querySelectorAll && node.querySelectorAll('img[data-lazy-src], img[data-lazy-srcset]').forEach(observeLazyImage);
           }
         });
       } else if (mutation.type === 'attributes') {

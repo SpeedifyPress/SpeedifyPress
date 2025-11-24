@@ -798,31 +798,16 @@ class CSS {
      *
      * @param string $fontFile Path to .woff or .woff2 file
      * @return bool
-     * @throws Exception if file not found
      */
     public static function is_icon_font($fontFile)    {
 
         // 1. Name-based heuristic for common icon font names
-        $knownIconFontNames = [
-            'fontawesome',
-            'fa-',
-            'materialicons',
-            'ionicons',
-            'feather',
-            'simplelineicons',
-            'typicons',
-            'entypo',
-            'icomoon',
-            'lineicons',
-            'iconfont',
-            'mdi',
-            'flaticon',
-            'icons',
-            'modules',
-        ];
+        $knownIconFontNames = array_filter(explode("\n", Config::get('speed_code', 'icon_font_names')));
 
         foreach ($knownIconFontNames as $name) {
-            if (strpos(strtolower(str_replace("_","",str_replace("-","",str_replace(" ", "",$fontFile)))), $name) !== false) {
+            if (strpos(strtolower(str_replace("_","",str_replace("-","",str_replace(" ", "",$fontFile)))), $name) !== false
+            || strpos(strtolower($fontFile), $name) !== false
+            ) {
                 return true; // Found a known icon font keyword
             }
         }
@@ -960,6 +945,12 @@ class CSS {
         $ignore_cookies = array_filter(explode("\n", Config::get('speed_css', 'ignore_cookies')));
         $current_uri = Speed::get_url();
         $match_found = false;
+
+        //If preview mode, don't block wordpress_logged_in
+        //by removing from $ignore_cookies
+        if(self::$mode == "preview") {
+            $ignore_cookies = array_diff($ignore_cookies, array("wordpress_logged_in"));
+        }
 
         // Check URL patterns
         foreach ($ignore_urls as $pattern) {

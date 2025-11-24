@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.72.3 - 2025-11-24
+- JS old version compatibility
+- Increase CSS request limit 
+- Add page template tags
+- Improve cached uris list
+- Allow user to add font filenames
+
+### 0.72.2 - 2025-11-20
+- Allow CSS to be collected even with logged in caching
+
+### 0.72.1 - 2025-11-20
+- Fix CSRF for domains in subfolders
+
+### 0.72.0 - 2025-11-20
+- Allow turning off of all AJAX nonces
+
 ### 0.71.0 - 2025-11-20
 - Update to licensing system
 

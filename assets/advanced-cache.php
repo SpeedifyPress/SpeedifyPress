@@ -339,7 +339,7 @@ class AdvancedCache {
     public static function serve_csrf_token() {
 
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
-        if ($path === '/_csrf') {
+        if ($path === '/_csrf' || basename($path) === '_csrf') {
 
             // Ensure a binding exists BEFORE generating the token
             if (empty($_COOKIE['spdy_guest'])) {

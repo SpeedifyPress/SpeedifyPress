@@ -460,13 +460,17 @@ class RestApi {
         $rate_key  = 'spress_update_css_' . md5( $client_ip );
         $request_count = (int) get_transient( $rate_key );
         $request_count++;
+
+        //Set request limit
+        $request_limit = 10;
+
         // Store/update the count with a one-minute expiry.  Each call
         // resets the expiry, effectively sliding the window forward.
         set_transient( $rate_key, $request_count, MINUTE_IN_SECONDS );
-        if ( $request_count > 5 ) {
+        if ( $request_count > $request_limit ) {
             return new \WP_Error(
                 'too_many_requests',
-                'Too many requests, please slow down.',
+                'Too many requests (' . $request_count . '), please slow down.',
                 [ 'status' => 429 ]
             );
         }
@@ -543,7 +547,7 @@ class RestApi {
                 'Page expired. Please refresh the page.', //user friendly error message
                 [ 'status' => 403 ]
             );
-        }        
+        }
 
         //Return data
         return array( 'data' => $data, 'decoded' => $decoded );
@@ -708,9 +712,6 @@ class RestApi {
             $lcp_image,
             $icon_fonts
         );
-
-        #print_r($unused);
-        #die();
     
         // 7) Return REST response
         return rest_ensure_response( [

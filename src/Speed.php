@@ -77,6 +77,11 @@ class Speed {
         //Cron action
         add_action('run_gtag_cron', array(__CLASS__,'run_gtag_cron'));
 
+		//Include pluggable files
+		if(Config::get( 'speed_cache', 'replace_ajax_nonces' ) === 'true') {
+			require_once( dirname(__FILE__) . '/App/Pluggable/check_ajax_referer.php' );
+		}        
+
 
     }
 
@@ -358,7 +363,7 @@ class Speed {
      * @param string $html The HTML output.
      * @return string The modified HTML output.
      */
-    private static function tag_html($dom) {                        
+    private static function tag_html($dom, $object_id) {                        
 
         // Define display elements we want to tag
         $displayElements = [
@@ -371,6 +376,19 @@ class Speed {
         // Start from the body or root element
         $depthThreshold = 13;
         self::traverse_and_tag($html, 0, $depthThreshold, $displayElements);
+
+        //Add object id after the title
+        $title = $dom->find('title', 0);
+        if($title) {
+            $title->outertext = $title->outertext . '<template id="spdy-head-' . $object_id . '"></template>';
+        }
+
+        //Add object id at doc end
+        $body = $dom->find('body', 0);
+        $scriptElement = $dom->createElement('template');
+        $scriptElement->outertext = '<template id="spdy-body-' . $object_id . '"></template>';
+        $body->appendChild($scriptElement);            
+
 
         return $dom;
          
@@ -430,6 +448,21 @@ class Speed {
         //Minify it
         $minifier = new Minify\JS($woo_rest_token_injection);
         $woo_rest_token_injection = $minifier->minify();
+
+        $prefix = '';
+
+        if(Config::get('speed_cache', 'replace_woo_nonces') === 'true') {
+            $prefix .= 'window.spdy_replaceWooNonces = true;';
+        }
+
+        if(Config::get('speed_cache', 'replace_ajax_nonces') === 'true') {
+            $prefix .= 'window.spdy_replaceAjaxNonces = true;';
+        }
+
+        if($prefix !== '') {
+            $woo_rest_token_injection = $prefix . $woo_rest_token_injection;
+        }
+        
 
         // Create a new script element
         $scriptElement = $dom->createElement('script');
@@ -1155,7 +1188,7 @@ class Speed {
         };        
 
         function spdyFetchCsrf(path) {
-        if (typeof path !== \'string\' || !path) path = \'/_csrf\';
+        if (typeof path !== \'string\' || !path) path = \'_csrf\';
 
         var now = Date.now();
         if (_spdyInflight || now - _spdyLast < 800) return;
@@ -1318,7 +1351,7 @@ class Speed {
                 $element->setAttribute('data-spcid', $content_id);
             }
     
-            // Use the current element’s UID as the new parent key for children
+            // Use the current element's UID as the new parent key for children
             $parentKey = $spuid;
         }
     
@@ -1409,7 +1442,16 @@ class Speed {
             $dom = (new HtmlDocument(""))->load($html,true, false);     
 
             //add id tags to HTML
-            $dom = self::tag_html($dom);
+            //Get current page/post ID from WordPress
+            $obj = function_exists('get_queried_object') ? get_queried_object() : null;
+            if ( $obj ) {
+                $base = strtolower( str_replace( 'WP_', '', get_class( $obj ) ) );
+                $object_id = $base . '-' . get_queried_object_id(); // e.g. post-123, term-7909, user-5
+            } else {
+                $object_id = 'none-0';
+            }
+
+            $dom = self::tag_html($dom,$object_id);
 
             //Do google fonts
             if(Config::get('external_scripts','gfonts_locally') === "true") {
@@ -1425,7 +1467,9 @@ class Speed {
             }       
 
             //Enable replacement of Woo nonces
-            if(Config::get('speed_cache', 'replace_woo_nonces') === 'true') {
+            if(Config::get('speed_cache', 'replace_woo_nonces') === 'true'
+            || Config::get('speed_cache', 'replace_ajax_nonces') === 'true'
+            ) {
                 $dom = self::add_woo_injects($dom);
             }                
 
@@ -1548,7 +1592,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
 
             $prerender_src = SPRESS_PLUGIN_URL . 'assets/quicklink/quicklink.umd.js';
             $link_tagger_js = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/quicklink/link_tagger.js');
-            $cached_uri_list = Speed::get_root_cache_url() . '/'. Cache::get_cached_uris_filename();
+            $cached_uri_list = Speed::get_root_cache_url() . '/'. Cache::get_cached_uris_filename() . "?" . time();
 
             //Minify it
             $minifier = new Minify\JS($link_tagger_js);
@@ -1836,7 +1880,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
                         [class^="pe-7s"], [class*=" pe-7s"],
                         .iconfont, [class*="iconfont"],
                         /* generic catch-alls (last) */
-                        [class^="icon-"], [class*=" icon-"], [class$="-icon"], [class*="-icon "]
+                        [class^="icon-"], [class*=" icon-"], [class$="-icon"], [class*="-icon "], [class*="-icon-"],
                         /* exclusions */
                         code, pre, kbd, samp, svg, math
                     ) {
