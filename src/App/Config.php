@@ -361,9 +361,9 @@ class Config {
 		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
 
 		// Example of how to update one of the default configs
-		$docs = self::$initial_config['icon_font_names'];
+		/*$docs = self::$initial_config['icon_font_names'];
 		$update = array("config_key"=>"icon_font_names","iframe"=>$icon_font_names['iframe']['value']);
-		self::update_config($update);
+		self::update_config($update);*/
 
 
 	}

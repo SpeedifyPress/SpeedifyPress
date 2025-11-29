@@ -99,7 +99,29 @@ class RestApi {
                 'callback' => array(__CLASS__, 'clear_gfonts_cache'),
                 'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
             )
-        );         
+        );   
+        
+        // Route for compressX actions
+        register_rest_route(
+            'speedifypress',
+            '/handle_compressx/?',
+            array(
+                'methods' => array('GET'),
+                'callback' => array(__CLASS__, 'handle_compressx'),
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
+            )
+        );                      
+
+        // Route for getting info on installed plugins
+        register_rest_route(
+            'speedifypress',
+            '/get_compressx_data/?',
+            array(
+                'methods' => array('GET'),
+                'callback' => array(__CLASS__, 'get_compressx_data'),
+                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
+            )
+        );                   
 
         // Route for clearing unused CSS cache
         register_rest_route(
@@ -308,6 +330,185 @@ class RestApi {
         return true;
 
     }
+
+     /**
+     * Info on installed plugins
+     *
+     * @return array 
+     */
+    public static function get_compressx_data() {     
+
+        //Check multisite
+        if(is_multisite()) {
+            return new \WP_Error(
+                'multisite_unsupported',
+                'Multisite is not supported',
+                [ 'status' => 403 ]
+            );              
+        }
+        
+        $plugin_file = 'compressx/compressx.php';
+        $status = '';
+        $version = '';
+
+        //Get currently installed plugins
+        $plugins = get_plugins();
+
+        if(!empty($plugins[$plugin_file])) {
+
+            $status = "deactivated";
+            //See if plugin is activated
+            if(is_plugin_active($plugin_file)) {
+                $status = "activated";
+            }
+
+            $activation_url = "";
+            if($status == 'deactivated') {
+
+                //Get activation URL
+                $action_url = wp_nonce_url(
+                    self_admin_url(
+                        'plugins.php?action=activate&plugin=' . rawurlencode( $plugin_file )
+                    ),
+                    'activate-plugin_' . $plugin_file
+                );
+
+            } else {
+
+                //Get deactivation URL
+                $action_url = wp_nonce_url(
+                    self_admin_url(
+                        'plugins.php?action=deactivate&plugin=' . rawurlencode( $plugin_file )
+                    ),
+                    'deactivate-plugin_' . $plugin_file
+                );
+
+            }
+
+            //Get version
+            $version = $plugins[$plugin_file]['Version'];
+            
+
+        }
+
+        //Check if configured with our preferred options
+        $compressx_auto_optimize = get_option('compressx_auto_optimize');
+        $compressx_quality = get_option('compressx_quality');
+        if(!empty($compressx_auto_optimize) && !empty($compressx_quality)) {
+            $status = 'configured';
+        }
+    
+        
+        //Check rewrites OK
+        $can_rewrite = false;
+        if(($status == 'activated' || $status == 'configured') && defined('COMPRESSX_DIR')) {
+
+            //Get rewrite info
+             include_once COMPRESSX_DIR . '/includes/class-compressx-rewrite-checker.php';
+             $test = new \CompressX_Rewrite_Checker();
+             $can_rewrite=$test->test();
+
+            //Get CompressX admin url, like /wp-admin/admin.php?page=CompressX
+            if(!is_multisite())  {
+                $admin_url = admin_url('admin.php?page=' . COMPRESSX_SLUG);
+            } else  {
+                $admin_url = network_admin_url('admin.php?page=' . COMPRESSX_SLUG);
+            }   
+
+        }
+
+        return array("status"=>$status,"version"=>$version,"action_url"=>str_replace("&amp;","&",$action_url),"admin_url"=>$admin_url,"can_rewrite"=>$can_rewrite);
+
+        
+        
+    }
+
+     /**
+     * Configures  CompressX
+     *
+     */
+    public static function configure_compressx() {   
+        
+        
+
+    }
+
+     /**
+     * Installs  CompressX
+     *
+     * @return array Empty array (no data returned).
+     */
+    public static function handle_compressx() {      
+
+        //COnfigure the plugin
+        if($_GET['action'] == 'configure') {
+
+            //Set standard WordPress options
+            update_option('compressx_auto_optimize',1);
+            update_option('compressx_quality',array("quality"=>"lossy_super"));
+            return 1;
+
+        } else if ($_GET['action'] == 'install') {
+            
+
+            include_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+            $plugin_file = 'compressx/compressx.php';
+
+            // Already active, nothing to do.
+            if ( is_plugin_active( $plugin_file ) ) {
+                return;
+            }
+
+            // Install if not present yet.
+            if ( ! file_exists( WP_PLUGIN_DIR . '/' . $plugin_file ) ) {
+
+                require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+                require_once ABSPATH . 'wp-admin/includes/misc.php';
+                require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+                $api = plugins_api(
+                    'plugin_information',
+                    array(
+                        'slug'   => 'compressx',
+                        'fields' => array(
+                            'sections' => false,
+                        ),
+                    )
+                );
+
+                if ( is_wp_error( $api ) ) {
+                    $message = $api->get_error_message();
+                    return new \WP_Error(
+                        'install_failed',
+                        $message,
+                        [ 'status' => 403 ]
+                    );   
+                }
+
+                $skin     = new \Automatic_Upgrader_Skin();
+                $upgrader = new \Plugin_Upgrader( $skin );
+                $result   = $upgrader->install( $api->download_link );
+
+                if ( is_wp_error( $result ) ) {
+                    $message = $result->get_error_message();
+                    return new \WP_Error(
+                        'install_failed',
+                        $message,
+                        [ 'status' => 403 ]
+                    );   
+                }
+
+            }        
+
+            return true;
+
+        }
+
+    }
+
+    
 
     /**
      * Clears the CSS cache directory.
