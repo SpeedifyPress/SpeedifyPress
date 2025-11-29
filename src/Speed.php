@@ -2000,9 +2000,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
         if ($replacements && is_array($replacements)) {
             foreach ($replacements as $rep) {
 
-                $find = $rep['find'];
-                $replacementText = $rep['replace'];
-                $scope = $rep['scope'];
+                $find = $rep['find'] ?? '';
+                $replacementText = $rep['replace'] ?? '';
+                $scope = $rep['scope'] ?? '';
 
                 //CSS selector find/replace
                 if($scope == "first element" || $scope == "all elements") {

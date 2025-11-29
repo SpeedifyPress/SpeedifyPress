@@ -17,6 +17,7 @@ use SPRESS\App\Config;
 
 use SPRESS\Dependencies\MatthiasMullie\Minify;
 use SPRESS\Dependencies\Wa72\Url\Url as WaUrl;
+use SPRESS\Dependencies\simplehtmldom\HtmlDocument;
 
 /**
  * This `Unused` class is responsible for finding the unused CSS in HTML content.
@@ -119,10 +120,7 @@ class Unused {
         self::$body_classes = isset($body_match[1]) ? preg_split('/\s+/', $body_match[1]) : [];
 
         //Create DOM object
-        libxml_use_internal_errors(true);
-        $dom = new \DOMDocument();
-        $dom->loadHTML($html);
-        libxml_clear_errors();
+        $dom = (new HtmlDocument(""))->load($html,true, false); 
 
         //Set selectors user can set as allowed
         self::$allow_selectors = $allow_selectors;
@@ -366,7 +364,7 @@ class Unused {
      * parsed CSS storage. If a URL is provided, it will also convert relative URLs within the parsed CSS.
      */
 
-    public static function parse_css($url = null, $css, $identifier = null) {   
+    public static function parse_css($url = null, $css = '', $identifier = null) {   
 
         //Subs for hard-to-handle at blocks
         $css = self::substitute_at_block_names($css);
@@ -497,36 +495,41 @@ class Unused {
     /**
      * Finds all used selectors in a given DOM.
      *
-     * @param \DOMDocument $dom The DOM to search through
+     * @param HtmlDocument $dom The DOM to search through
      *
      * @return void
      */
     protected static function find_used_selectors_in_dom($dom) {
-        
+
         $classes = self::$body_classes; // Start with body classes
-        foreach ($dom->getElementsByTagName('*') as $node) {
-            self::$used_markup['tags'][$node->tagName] = 1;
-    
-            if ($node->hasAttribute('class')) {
-                $ele_classes = preg_split('/\s+/', $node->getAttribute('class'));
+
+        foreach ($dom->find('*') as $node) {
+
+            $tag = strtolower($node->tag);
+            self::$used_markup['tags'][$tag] = 1;
+
+            $class_attr = isset($node->class) ? trim($node->class) : '';
+            if ($class_attr !== '') {
+                $ele_classes = preg_split('/\s+/', $class_attr);
                 array_push($classes, ...$ele_classes);
             }
-    
-            if ($node->hasAttribute('id')) {
-                self::$used_markup['ids'][$node->getAttribute('id')] = 1;
+
+            $id_attr = isset($node->id) ? $node->id : '';
+            if ($id_attr !== '') {
+                self::$used_markup['ids'][$id_attr] = 1;
             }
-    
-            if ($node->hasAttribute('style')) {
-                $style = $node->getAttribute('style');
-                self::find_used_fonts_keyframes_vars_in_html($style);
+
+            $style_attr = isset($node->attr['style']) ? $node->attr['style'] : '';
+            if ($style_attr !== '') {
+                self::find_used_fonts_keyframes_vars_in_html($style_attr);
             }
         }
-    
+
         $classes = array_filter(array_unique($classes));
         if ($classes) {
             self::$used_markup['classes'] = array_fill_keys($classes, 1);
         }
-    }
+    }    
 
     /**
      * Parses HTML content to extract and track used font-family and animation-name styles.

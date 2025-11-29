@@ -194,7 +194,7 @@ The Cloudflare cache works with a lazy preload. This means that when the cache i
 
 **Multiple Sites**
 
-This worker will work fine with multiple wordpress sites on the same domain (or subdomains). However, they must all have the same NONCE_SALT defined in wp-config.php. (This should match the this.csrf_salt value defined in the worker, which it should do automatically). To update the NONCE_SALT on your sites, you can manually copy and paste it into the wp-config.php file.
+This worker will work fine with multiple wordpress sites on the same domain (or subdomains).
 
 **Zstd Compression**
 
@@ -360,7 +360,14 @@ Recommended if you have icon fonts below the fold and they're causing render blo
 
 *Use system fonts on mobile*
 
-Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker.
+Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker. To overwrite the system fonts,
+                just replace the "--spdy-ui-font" for the selector in question. For example, this would replace H1 and H2 on mobile with Times New Roman:
+                
+                     @media (max-width: 800px) {
+                              h1, h2 {
+                                    --spdy-ui-font: "Times New Roman", serif !important;
+                              }
+                     }
 ## How to use the  Image Settings?
 
 *Preload Image*
@@ -376,6 +383,11 @@ Allows you to skip the lazyloading of certain images. This would normally be for
 *Force Lazyloading*
 
 Allows you to force the lazyloading of certain images. This would normally be for images that have been identified as an LCP image at desktop but are shown above the fold at mobile.
+
+*Image Optimisation*
+
+We hook into the CompressX plugin by [https://compressx.io/](https://compressx.io/) for image optimisation. We have no connection with them and they are not endorsed by us. 
+                We just really like their plugin! So we decided to make it extra easy to install and configure within SpeedifyPress. Just follow the Wizard and you're good to go.
 ## How to use the  Javascript Settings?
 
 **Defer JavaScript**
