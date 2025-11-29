@@ -424,16 +424,6 @@ class RestApi {
     }
 
      /**
-     * Configures  CompressX
-     *
-     */
-    public static function configure_compressx() {   
-        
-        
-
-    }
-
-     /**
      * Installs  CompressX
      *
      * @return array Empty array (no data returned).
