@@ -84,7 +84,7 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
    - [JavaScript to run on completion](#javascript-to-run-on-completion)
 ##  Cache Settings
 
-**Mode Selection**
+### Mode Selection
 
 *Choose the Cache Mode*
 
@@ -103,7 +103,7 @@ Here you can choose how the plugin should perform page preloading. This is when 
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
 
-**Cache Outputs**
+### Cache Outputs
 
 *Device Paths & Compression*
 
@@ -123,7 +123,7 @@ This BETA feature allows you to exclude certain areas from logged-in caching. Th
 - Skeleton. Area will be hidden with a skeleton while they are loaded in. Choose the skeleton type to use.
 - Delay JS Execution. Selecting this option will ensure that any JS applied to the replacement areas will run properly, as all JS will only run after the swap. Will only work is Delay JS is enabled for the page.
 
-**Filters**
+### Filters
 
 *Bypass When Cookies Present*
 
@@ -146,7 +146,7 @@ Specify a line separated list of querystrings that should be ignored for caching
       For example, to ensure that users arriving from a Klaviyo newsletter all get the cached content *nb_klid* is necessary here. An extensive default list comes with the plugin.
 ##  Cloudflare Settings
 
-**Getting Started**
+### Getting Started
 
 Your worker will need to be able to clear the Cloudflare cache. To do this, it needs to know your Zone ID and to have a Cloudflare API token with Cache Purge permissions.
 
@@ -194,7 +194,7 @@ Now click "Edit Code" and edit the worker code.
 - Replace the entire code in the left window with the worker script here
 - Click Deploy
 
-**Worker Route**
+### Worker Route
 
 Your Worker is now setup, but we need to tell Cloudflare where to find it.
 
@@ -209,7 +209,7 @@ Your Worker is now setup, but we need to tell Cloudflare where to find it.
 - Choose **Fail open (proceed)**
 - Click Add Route
 
-**Test The Worker**
+### Test The Worker
 
 Now it's time to test the worker is running OK
 
@@ -218,16 +218,16 @@ Now it's time to test the worker is running OK
 - When hitting a cachable page for the first time the *x-spdy-status* header should say SAVED (plus random number)
 - When revisiting the page, the *x-spdy-status* header should say HIT
 
-**Lazy Preload**
+### Lazy Preload
 
 The Cloudflare cache works with a lazy preload. This means that when the cache is cleared (manually, or after a page update), the next page load will load from the cache but update in the background. 
       This means users will never get the slower, uncached page BUT you may need to reload a page twice to see the latest version.
 
-**Multiple Sites**
+### Multiple Sites
 
 This worker will work fine with multiple wordpress sites on the same domain (or subdomains).
 
-**Zstd Compression**
+### Zstd Compression
 
 Zstd compression will get the best results in terms of TTFB. To enable go to Rules > Compressions Rules > Create  and Choose "Enable Zstandard (Zstd) Compression" for the default content types.
 ##  Code Insertion
@@ -245,7 +245,7 @@ Code added here will go at the end of the document <BODY>. Use this for any scri
 Any scripts added to either section will get delayed by JavaScript delay, unless you add them as an exception.
 ##  CSS Settings
 
-**Mode Selection**
+### Mode Selection
 
 *Choose the Unused CSS Mode*
 
@@ -267,7 +267,7 @@ Decide how your optimized CSS is loaded:
 - ⚡ **Inline CSS:** Inserts all styles at the top of the document, improving Google PageSpeed Insights scores.
 - 📁 **External CSS Files:** Loads individual CSS files, making navigation smoother by caching CSS across multiple pages.
 
-**Filters**
+### Filters
 
 *Force Include Selectors*
 
@@ -297,7 +297,7 @@ Exclude CSS processing based on cookie values.
 Generates optimized CSS at specific screen resolutions while using the same CSS for all resolutions.  
       Useful when page content significantly varies across different screen sizes.
 
-**Security Config**
+### Security Config
 
 *CSRF Expiry*
 
@@ -363,13 +363,13 @@ Choose how replacements are applied:
 - **Scope: all elements** - The find text is a CSS selector and will replace **all** matching elements.
 ##  Font Settings
 
-**Google options**
+### Google options
 
 *Locally host Google fonts*
 
 Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
 
-**Preload options**
+### Preload options
 
 *Preload fonts*
 
@@ -383,7 +383,7 @@ Recommended for every site. It's generally not necessary to preload these, as th
 
 Recommended for every site. Font files on mobile are generally too heavy and preloading them will prevent high pagespeed scores.
 
-**Advanced options**
+### Advanced options
 
 *Lazy load icon fonts*
 
@@ -421,7 +421,7 @@ We hook into the CompressX plugin by [https://compressx.io/](https://compressx.i
                 We just really like their plugin! So we decided to make it extra easy to install and configure within SpeedifyPress. Just follow the Wizard and you're good to go.
 ##  Javascript Settings
 
-**Defer JavaScript**
+### Defer JavaScript
 
 Ticking the Defer JavaScript textbox will add the *defer* attribute to the script tag. This will defer the loading of the JavaScript until after the DOM has finished parsing (but before the DOM content is ready).  
                 Try this one first and see what the effect is on page speed. ⚡
@@ -436,7 +436,7 @@ Enter any script name or partial script names here to have them excluded from de
 JavaScript will not be deferred on any URLs that match strings or regular expressions entered here.  
                 Useful for ensuring key functionality remains intact.
 
-**Delay JavaScript**
+### Delay JavaScript
 
 Ticking the Delay JavaScript textbox will delay the loading of JavaScript until either:
 
