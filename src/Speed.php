@@ -1171,7 +1171,7 @@ class Speed {
 
         //Mini worker to fetch token
         $mini_worker = '
-        var _spdyInflight=false,_spdyLast=0;
+        var _spdyInflight=false,_spdyLast=0,_spdyMinInterval=60000;
 
         var _w=new Worker(URL.createObjectURL(new Blob(["onmessage=e=>{var d=e.data||{},u=d.u,p=d.p;if(!u)return;fetch(u,{method:\'HEAD\',credentials:\'same-origin\',headers:{\'X-Page-URL\':p||\'\',Accept:\'application/json\'}}).then(r=>postMessage(r.headers.get(\'X-CSRF-Token\')||\'\')).catch(()=>postMessage(\'\'))}"],{type:"text/javascript"})));
         window.spdy_csrfToken=null;
@@ -1191,7 +1191,7 @@ class Speed {
         if (typeof path !== \'string\' || !path) path = \'_csrf\';
 
         var now = Date.now();
-        if (_spdyInflight || now - _spdyLast < 800) return;
+        if (_spdyInflight || now - _spdyLast < _spdyMinInterval) return
 
         _spdyInflight = true;
         _spdyLast = now;

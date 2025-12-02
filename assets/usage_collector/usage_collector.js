@@ -177,6 +177,7 @@ class CSSUsageCollector {
         const hasLcp = await this.waitForLcpOrTimeout(1000);
         if (!hasLcp) {
             if (this.debug) console.warn('No LCP entries found; continuing without LCP payload.');
+            console.log("CSS usage collector did not run due to missing LCP.");
             this.has_collected = true;            
             this.initialUpdateSent = true;   
             return;       
@@ -391,8 +392,7 @@ class CSSUsageCollector {
                     // `buffered: true` delivers any already-recorded LCP entries immediately
                     po.observe({ type: 'largest-contentful-paint', buffered: true });
                 } else {
-                    // LCP not supported → just time out
-                    // (you could feature-detect differently if you want)
+                    // LCP not supported just time out
                 }
             } catch {
             // ignore and let the timeout resolve false
