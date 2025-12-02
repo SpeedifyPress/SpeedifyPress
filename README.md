@@ -96,7 +96,7 @@ You are free to use, study, modify, and redistribute the source code under the t
 The code is GPL licensed. You are free to modify it as you like. However, we would like to be able to contact you with essential version and security information. We therefore lock
 plugin activaton behind a free subscription, requiring an email address. This gives you:
 
-- Access to all the plugin features except the Cloudflare integration
+- Access to all the plugin features except the Cloudflare integration (which isn't included in this repo)
 - A single site license
 
 Of course, you're free to modify the code if you'd prefer not to use a subscription.
