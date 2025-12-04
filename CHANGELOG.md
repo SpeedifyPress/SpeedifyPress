@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.77.6 - 2025-12-05
+- Don't preload data URIs
+
+### 0.77.5 - 2025-12-04
+- Rework of JS delay script
+
+### 0.77.4 - 2025-12-04
+- Tweak load order for captured events
+
+### 0.77.3 - 2025-12-04
+- Tighten up captured event firing with patched event listener
+
+### 0.77.2 - 2025-12-03
+- Fix double replay with document load
+
+### 0.77.1 - 2025-12-03
+- Only run triggers if not already run
+
+### 0.77.0 - 2025-12-03
+- Add configurable events and triggers
+
 ### 0.76.0 - 2025-12-02
 - Updates to Readme
 - Slimming package size
