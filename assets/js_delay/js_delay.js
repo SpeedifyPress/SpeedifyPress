@@ -2,6 +2,54 @@
  * JsDelayer class for managing script loading based on user interaction or timeout.
  */
 class JsDelayer {
+
+    static _addListenerPatched = false;
+    static captureEvents = ["readystatechange", "DOMContentLoaded", "load"];
+    static captured = {
+        readystatechange: [],
+        DOMContentLoaded: [],
+        load: []
+    };
+    static capturing = false;
+
+    static nativeAdd     = EventTarget.prototype.addEventListener;
+    static nativeWinAdd  = window.addEventListener;
+    static nativeDocAdd  = document.addEventListener;
+
+    static patchedAddEventListener(type, listener, options) {
+        if (
+            JsDelayer.capturing &&
+            JsDelayer.captureEvents.includes(type) &&
+            window.speed_js_vars &&
+            window.speed_js_vars.trigger_native_events === "true"
+        ) {
+            JsDelayer.captured[type].push({
+                target: this,
+                listener,
+                options
+            });
+            return;
+        }
+
+        if (this === window) {
+            return JsDelayer.nativeWinAdd.call(window, type, listener, options);
+        }
+
+        if (this === document) {
+            return JsDelayer.nativeDocAdd.call(document, type, listener, options);
+        }
+
+        return JsDelayer.nativeAdd.call(this, type, listener, options);
+    }
+
+    static ensurePatchedAddListener() {
+        if (JsDelayer._addListenerPatched) return;
+        JsDelayer._addListenerPatched = true;
+        EventTarget.prototype.addEventListener = JsDelayer.patchedAddEventListener;
+        window.addEventListener = JsDelayer.patchedAddEventListener;
+        document.addEventListener = JsDelayer.patchedAddEventListener;
+    }
+
     /**
      * Constructs a JsDelayer instance.
      * @param {string} load_first - Scripts to load first, separated by newline.
@@ -63,8 +111,13 @@ class JsDelayer {
         });
 
         //Track these events for replaying later
-        window.addEventListener("click", this.boundTrackUserInteractions, { passive: true });
-        window.addEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
+        if (window.speed_js_vars && window.speed_js_vars.trigger_replays === 'true') {
+            if (this.debug) {
+                console.log("Enabling replay tracking...");
+            }
+            window.addEventListener("click", this.boundTrackUserInteractions, { passive: true });
+            window.addEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
+        }
 
         // Set up timeout for delayed start
         setTimeout(this.bound_start, this.timeout);
@@ -118,6 +171,10 @@ class JsDelayer {
         if (typeof event == "undefined") {
             return;
         }
+
+        if (!window.speed_js_vars || window.speed_js_vars.trigger_replays !== 'true') {
+            return;
+        }        
 
         if (this.debug) {
             console.log("Tracking user interaction:", event);
@@ -204,9 +261,14 @@ class JsDelayer {
             if (script.tagName === 'SCRIPT') {
 
                 const isModule = (script.getAttribute('type') || '').toLowerCase() === 'module';
-
+                
                 const src = script.getAttribute("data-src");
                 if (!src || src === 'null' || src === 'undefined') return;
+
+                // No point preloading inline data: URIs
+                if (src.indexOf("data:") === 0) {
+                    return;
+                }                
 
                 const link = document.createElement("link");
 
@@ -307,6 +369,34 @@ class JsDelayer {
      */
     loadScriptsSequentially(scripts) {
 
+        // replay captured DOM ready/load listeners
+        const replayCapturedListeners = () => {
+            if (window.speed_js_vars && window.speed_js_vars.trigger_native_events === "true") {
+
+                JsDelayer.capturing = false;
+                JsDelayer.captureEvents.forEach((eventName) => {
+                    JsDelayer.captured[eventName].forEach(({ target, listener }) => {
+                        try {
+                            const ev = new Event(eventName, {
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            listener.call(target, ev);
+                            if (this.debug) {
+                                console.log("Triggered", eventName, "listener for", listener, "on", target);
+                            }
+                        } catch (err) {
+                            if (this.debug) {
+                                console.error("Error executing", eventName, "listener:", err);
+                            }
+                        }
+                    });
+                    JsDelayer.captured[eventName] = [];
+                });
+
+            }
+        }
+
         const processScript = (index) => {
             if (index >= scripts.length) {
                 //Dispatch event back to logged_in_exceptions worker
@@ -314,12 +404,21 @@ class JsDelayer {
                 if (this.debug) {
                     console.log("All scripts loaded. Triggering events and replaying saved events...");
                 }
+
+                // now all delayed scripts have run, replay
+                replayCapturedListeners();
+
                 this.triggerEvents().then(() => {                    
 
                     setTimeout(() => {
-                        window.removeEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
-                        window.removeEventListener("click", this.boundTrackUserInteractions, { passive: true });        
-                        this.replaySavedEvents();
+                        if (window.speed_js_vars && window.speed_js_vars.trigger_replays === 'true') {
+                            if (this.debug) {
+                                console.log("Replaying saved events...");
+                            }
+                            window.removeEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
+                            window.removeEventListener("click", this.boundTrackUserInteractions, { passive: true });        
+                            this.replaySavedEvents();
+                        }
                     },100);
                     //Run the oncompleted JS
                     if(this.callback && this.callback_run === false) {
@@ -358,9 +457,16 @@ class JsDelayer {
                 return;
             }
 
-            node.onload  = () => processScript(index + 1);
-            node.onerror = () => processScript(index + 1);
+            node.onload  = () => {
+                JsDelayer.capturing = false;
+                processScript(index + 1);
+            };
+            node.onerror = () => {
+                JsDelayer.capturing = false;
+                processScript(index + 1);
+            };
 
+            JsDelayer.capturing = true;
             node.src = src;
             node.removeAttribute('data-src');
         };
@@ -385,35 +491,20 @@ class JsDelayer {
 
             this.hasTriggeredEvents = true;
 
-            const events = ["ready", "DOMContentLoaded", "load"];
-            events.forEach((eventName) => {
-                const event = new Event(eventName);
-                if (this.debug) {
-                    console.log("Triggering event:", eventName);
-                }
-                window.dispatchEvent(event);
-            });
+            if (window.jQuery && typeof jQuery(document).get === "function" && window.speed_js_vars && window.speed_js_vars.trigger_jquery_events === 'true') {
 
-            if (window.jQuery && typeof jQuery(document).get === "function") {
-                const jqueryEvents = jQuery._data(jQuery(document).get(0), "events");
-
-                if (jqueryEvents && jqueryEvents.ready) {
-                    jqueryEvents.ready.forEach(({ handler }) => {
-                        if (this.debug) {
-                            console.log("Triggering jQuery ready handler:", handler);
-                        }
-                        handler(document);
+                const run = el => {
+                    const ev = jQuery._data(el, "events");
+                    ["ready", "load"].forEach(t => {
+                        ev && ev[t] && ev[t].forEach(({ handler }) => {
+                            if (this.debug) console.log("Triggering jQuery handler:", t, handler);
+                            handler(el);
+                        });
                     });
-                }
+                };
+                run(document);
+                run(window);
 
-                if (jqueryEvents && jqueryEvents.load) {
-                    jqueryEvents.load.forEach(({ handler }) => {
-                        if (this.debug) {
-                            console.log("Triggering jQuery load handler:", handler);
-                        }
-                        handler(document);
-                    });
-                }
             }
 
             resolve(); // Signal that triggerEvents has finished
@@ -432,42 +523,32 @@ class JsDelayer {
             console.log("Replaying mouseovers", this.savedMouseovers);
         }
 
-        this.savedClicks.forEach((clickEvent) => {
-            this.savedClicks.delete(clickEvent);
-            const target = clickEvent.target;
-            if (this.debug) {
-                console.log("Replaying click event for target:", target);
-            }
-            if (target) {
-                const newEvent = new MouseEvent("click", {
-                    view: clickEvent.view,
-                    bubbles: true,
-                    cancelable: true,
-                });
-                target.dispatchEvent(newEvent);
-            }
-        });
+        const replay = (events, type) => {
+            events.forEach((event) => {
+                events.delete(event);
+                const target = event.target;
+                if (this.debug) {
+                    console.log("Replaying " + type + " event for target:", target);
+                }
+                if (target) {
+                    const newEvent = new MouseEvent(type, {
+                        view: event.view,
+                        bubbles: true,
+                        cancelable: true,
+                    });
+                    target.dispatchEvent(newEvent);
+                }
+            });
+            events.clear();
+        };
 
-        this.savedMouseovers.forEach((mouseoverEvent) => {
-            this.savedMouseovers.delete(mouseoverEvent);
-            const target = mouseoverEvent.target;
-            if (this.debug) {
-                console.log("Replaying mouseover event for target:", target);
-            }
-            if (target) {
-                const newEvent = new MouseEvent("mouseover", {
-                    view: mouseoverEvent.view,
-                    bubbles: true,
-                    cancelable: true,
-                });
-                target.dispatchEvent(newEvent);
-            }
-        });
+        replay(this.savedClicks, "click");
+        replay(this.savedMouseovers, "mouseover");
 
-        this.savedClicks.clear();
-        this.savedMouseovers.clear();
     }
 }
+
+JsDelayer.ensurePatchedAddListener();
 
 (function(){
   const startDelayer = () => {

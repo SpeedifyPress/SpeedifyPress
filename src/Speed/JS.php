@@ -28,7 +28,10 @@ class JS {
     public static $delay_seconds;        
     public static $delay_callback;        
     public static $script_load_first;        
-    public static $script_load_last;    
+    public static $script_load_last;      
+    public static $trigger_native_events;   
+    public static $trigger_jquery_events;   
+    public static $trigger_replays;    
 
     public static $script_name = "speed-js";
 
@@ -44,7 +47,10 @@ class JS {
         self::$delay_exclude_urls = Config::get('speed_js','delay_exclude_urls');        
         self::$delay_seconds = Config::get('speed_js','delay_seconds');        
         self::$script_load_first = Config::get('speed_js','script_load_first');        
-        self::$script_load_last = Config::get('speed_js','script_load_last');        
+        self::$script_load_last = Config::get('speed_js','script_load_last');
+        self::$trigger_native_events = Config::get('speed_js','trigger_native_events');
+        self::$trigger_jquery_events = Config::get('speed_js','trigger_jquery_events');
+        self::$trigger_replays = Config::get('speed_js','trigger_replays');        
          
         if(self::run_js() == false) {
             return;
@@ -171,6 +177,8 @@ class JS {
         if (!$isExcluded && isset($script->src)) {
             $script->setAttribute('data-src', $script->src);
             $script->setAttribute('src', false);
+            $script->setAttribute('defer', false);
+            $script->setAttribute('async', false);                
         //Module preloads
         } elseif (!$isExcluded &&
             isset($script->href) &&
@@ -181,6 +189,8 @@ class JS {
                 $script->setAttribute('data-rel', $script->rel);
                 $script->setAttribute('href', false);        
                 $script->setAttribute('rel', false);                            
+                $script->setAttribute('defer', false);
+                $script->setAttribute('async', false);                    
             }
         //Inline JS
         } elseif (
@@ -239,7 +249,7 @@ class JS {
     
             $attributesString = implode(' ', $attributes);
             $script->outertext = sprintf(
-                '<script %s="data:text/javascript;base64,%s" defer %s></script>',
+                '<script %s="data:text/javascript;base64,%s" %s></script>',
                 $attribute,
                 $encodedContent,
                 $attributesString
@@ -360,6 +370,9 @@ class JS {
             'delay_callback' => self::$delay_callback,
             'script_load_first' => self::$script_load_first,
             'script_load_last' => self::$script_load_last,
+            'trigger_native_events' => self::$trigger_native_events,
+            'trigger_jquery_events' => self::$trigger_jquery_events,
+            'trigger_replays' => self::$trigger_replays,
        );
 
     }    

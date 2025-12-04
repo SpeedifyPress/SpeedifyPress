@@ -248,7 +248,22 @@ class Config {
 				'name'   => 'Delay Completed JavaScript',
 				'helper' => 'Enter JavaScript to run once all delayed scripts have been loaded',
 				'value' => '',
-			),																			
+			),	
+			'trigger_native_events' => array(
+				'name'   => 'Trigger Native Events',
+				'helper' => 'Trigger delayed onload events attached to <i>document</i> and <i>window</i>',
+				'value' => 'true',
+			),	
+			'trigger_jquery_events' => array(
+				'name'   => 'Trigger jQuery Events',
+				'helper' => 'Trigger jQuery <i>ready</i> and <i>load</i> handlers',
+				'value' => 'false',
+			),	
+			'trigger_replays' => array(
+				'name'   => 'Trigger Replays',
+				'helper' => 'If a user clicks or mouseovers before the JS is ready, replay the event once it is.',
+				'value' => 'true',
+			),																									
 		),					
 		'speed_code'  => array(
 			'skip_lazyload' => array(
