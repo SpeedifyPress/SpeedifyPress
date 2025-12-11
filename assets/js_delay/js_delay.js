@@ -17,18 +17,22 @@ class JsDelayer {
     static nativeDocAdd  = document.addEventListener;
 
     static patchedAddEventListener(type, listener, options) {
-        if (
-            JsDelayer.capturing &&
-            JsDelayer.captureEvents.includes(type) &&
-            window.speed_js_vars &&
-            window.speed_js_vars.trigger_native_events === "true"
-        ) {
-            JsDelayer.captured[type].push({
-                target: this,
-                listener,
-                options
-            });
-            return;
+        const cfg = window.speed_js_vars || {};
+        const tni = cfg.trigger_native_interception || {};
+        const isWin = this === window;
+        const isDoc = this === document;
+        let kind, key;
+
+        if (type === "DOMContentLoaded") kind = "dom";
+        else if (type === "load") kind = "load";
+        else if (type === "readystatechange") kind = "readystate";
+
+        if (kind && (isWin || isDoc) && JsDelayer.capturing) {
+            key = isWin ? "window" : "document";
+            if (tni[kind] && tni[kind][key] === "true") {
+                JsDelayer.captured[type].push({ target: this, listener, options });
+                return;
+            }
         }
 
         if (this === window) {
@@ -371,30 +375,32 @@ class JsDelayer {
 
         // replay captured DOM ready/load listeners
         const replayCapturedListeners = () => {
-            if (window.speed_js_vars && window.speed_js_vars.trigger_native_events === "true") {
 
-                JsDelayer.capturing = false;
-                JsDelayer.captureEvents.forEach((eventName) => {
-                    JsDelayer.captured[eventName].forEach(({ target, listener }) => {
-                        try {
-                            const ev = new Event(eventName, {
-                                bubbles: true,
-                                cancelable: true
-                            });
-                            listener.call(target, ev);
-                            if (this.debug) {
-                                console.log("Triggered", eventName, "listener for", listener, "on", target);
-                            }
-                        } catch (err) {
-                            if (this.debug) {
-                                console.error("Error executing", eventName, "listener:", err);
-                            }
+            JsDelayer.capturing = false;
+            JsDelayer.captureEvents.forEach((eventName) => {
+
+                const listeners = JsDelayer.captured[eventName];
+                if (!listeners || !listeners.length) return;
+
+                listeners.forEach(({ target, listener, options }) => {
+                    try {
+                        const ev = new Event(eventName, {
+                            bubbles: true,
+                            cancelable: true
+                        });
+                        listener.call(target, ev);
+                        if (this.debug) {
+                            console.log("Triggered", eventName, "listener for", listener, "on", target);
                         }
-                    });
-                    JsDelayer.captured[eventName] = [];
+                    } catch (err) {
+                        if (this.debug) {
+                            console.error("Error executing", eventName, "listener:", err);
+                        }
+                    }
                 });
 
-            }
+                JsDelayer.captured[eventName] = [];
+            });
         }
 
         const processScript = (index) => {
@@ -490,21 +496,53 @@ class JsDelayer {
             }
 
             this.hasTriggeredEvents = true;
+            const cfg = window.speed_js_vars || {};
 
-            if (window.jQuery && typeof jQuery(document).get === "function" && window.speed_js_vars && window.speed_js_vars.trigger_jquery_events === 'true') {
-
-                const run = el => {
-                    const ev = jQuery._data(el, "events");
-                    ["ready", "load"].forEach(t => {
-                        ev && ev[t] && ev[t].forEach(({ handler }) => {
-                            if (this.debug) console.log("Triggering jQuery handler:", t, handler);
-                            handler(el);
-                        });
+            // native broadcast
+            if (cfg.trigger_native_broadcast) {
+                const nb = cfg.trigger_native_broadcast;
+                const map = { dom: "DOMContentLoaded", load: "load", readystate: "readystatechange" };
+                const fire = (target, key) => {
+                    Object.keys(map).forEach(kind => {
+                        const col = nb[kind];
+                        if (col && col[key] === "true") {
+                            const evName = map[kind];
+                            const ev = new Event(evName);
+                            if (this.debug) {
+                                console.log("Triggering native event:", evName, "on", key);
+                            }
+                            target.dispatchEvent(ev);
+                        }
                     });
                 };
-                run(document);
-                run(window);
+                fire(window, "window");
+                fire(document, "document");
+            }
 
+            // jQuery broadcast
+            if (window.jQuery && typeof jQuery(document).get === "function" && cfg.trigger_jquery_broadcast) {
+                const jb = cfg.trigger_jquery_broadcast;
+                const run = (el, key) => {
+                    const ev = jQuery._data(el, "events");
+                    if (!ev) return;
+
+                    if (jb.dom && jb.dom[key] === "true" && ev.ready) {
+                        ev.ready.forEach(({ handler }) => {
+                            if (this.debug) console.log("Triggering jQuery handler: ready", handler, "on", key);
+                            handler(el);
+                        });
+                    }
+
+                    if (jb.load && jb.load[key] === "true" && ev.load) {
+                        ev.load.forEach(({ handler }) => {
+                            if (this.debug) console.log("Triggering jQuery handler: load", handler, "on", key);
+                            handler(el);
+                        });
+                    }
+                };
+
+               run(document, "document");
+               run(window, "window");
             }
 
             resolve(); // Signal that triggerEvents has finished
