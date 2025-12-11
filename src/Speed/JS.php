@@ -29,8 +29,9 @@ class JS {
     public static $delay_callback;        
     public static $script_load_first;        
     public static $script_load_last;      
-    public static $trigger_native_events;   
-    public static $trigger_jquery_events;   
+    public static $trigger_native_interception; 
+    public static $trigger_native_broadcast;   
+    public static $trigger_jquery_broadcast;   
     public static $trigger_replays;    
 
     public static $script_name = "speed-js";
@@ -48,8 +49,9 @@ class JS {
         self::$delay_seconds = Config::get('speed_js','delay_seconds');        
         self::$script_load_first = Config::get('speed_js','script_load_first');        
         self::$script_load_last = Config::get('speed_js','script_load_last');
-        self::$trigger_native_events = Config::get('speed_js','trigger_native_events');
-        self::$trigger_jquery_events = Config::get('speed_js','trigger_jquery_events');
+        self::$trigger_native_interception = Config::get('speed_js','trigger_native_interception');
+        self::$trigger_native_broadcast = Config::get('speed_js','trigger_native_broadcast');
+        self::$trigger_jquery_broadcast = Config::get('speed_js','trigger_jquery_broadcast');
         self::$trigger_replays = Config::get('speed_js','trigger_replays');        
          
         if(self::run_js() == false) {
@@ -370,8 +372,9 @@ class JS {
             'delay_callback' => self::$delay_callback,
             'script_load_first' => self::$script_load_first,
             'script_load_last' => self::$script_load_last,
-            'trigger_native_events' => self::$trigger_native_events,
-            'trigger_jquery_events' => self::$trigger_jquery_events,
+            'trigger_native_interception' => self::$trigger_native_interception,
+            'trigger_native_broadcast' => self::$trigger_native_broadcast,
+            'trigger_jquery_broadcast' => self::$trigger_jquery_broadcast,
             'trigger_replays' => self::$trigger_replays,
        );
 

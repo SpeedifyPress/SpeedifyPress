@@ -249,21 +249,26 @@ class Config {
 				'helper' => 'Enter JavaScript to run once all delayed scripts have been loaded',
 				'value' => '',
 			),	
-			'trigger_native_events' => array(
-				'name'   => 'Trigger Native Events',
-				'helper' => 'Trigger delayed onload events attached to <i>document</i> and <i>window</i>',
-				'value' => 'true',
-			),	
-			'trigger_jquery_events' => array(
+			'trigger_native_interception' => array(
+				'name'   => 'Trigger Native Interception',
+				'helper' => '',
+				'value' => array('dom'=>array('window'=>'false','document'=>'false'),'load'=>array('window'=>'true','document'=>'false'),'readystate'=>array('window'=>'false','document'=>'false')),
+			),					
+			'trigger_native_broadcast' => array(
+				'name'   => 'Trigger Native Broadcast',
+				'helper' => '',
+				'value' => array('dom'=>array('window'=>'true','document'=>'false'),'load'=>array('window'=>'false','document'=>'false'),'readystate'=>array('window'=>'true','document'=>'false')),
+			),																									
+			'trigger_jquery_broadcast' => array(
 				'name'   => 'Trigger jQuery Events',
-				'helper' => 'Trigger jQuery <i>ready</i> and <i>load</i> handlers',
-				'value' => 'false',
+				'helper' => '',
+				'value' => array('dom'=>array('window'=>'false','document'=>'true'),'load'=>array('window'=>'false','document'=>'true')),
 			),	
 			'trigger_replays' => array(
 				'name'   => 'Trigger Replays',
 				'helper' => 'If a user clicks or mouseovers before the JS is ready, replay the event once it is.',
 				'value' => 'true',
-			),																									
+			),				
 		),					
 		'speed_code'  => array(
 			'skip_lazyload' => array(
@@ -584,12 +589,25 @@ class Config {
             if ($key === '' || $key === null) {
                 continue;
             }
-            // dot notation: e.g. array_field.subkey
+            // dot notation: e.g. array_field.subkey or array_field.subkey.other
             if (strpos($key, '.') !== false) {
                 list($root, $sub) = explode('.', $key, 2);
                 // only group if the root key exists and its default value is array
                 if (isset($section_meta[$root]) && is_array($section_meta[$root]['value'])) {
-                    $normalized[$root][$sub] = $value;
+                    if (!isset($normalized[$root]) || !is_array($normalized[$root])) {
+                        $normalized[$root] = [];
+                    }
+                    $target =& $normalized[$root];
+                    $path = explode('.', $sub);
+                    $last = array_pop($path);
+                    foreach ($path as $segment) {
+                        if (!isset($target[$segment]) || !is_array($target[$segment])) {
+                            $target[$segment] = [];
+                        }
+                        $target =& $target[$segment];
+                    }
+                    $target[$last] = $value;
+                    unset($target);
                     continue;
                 }
             }
@@ -634,15 +652,20 @@ class Config {
                 $clean[$key] = (string)$raw_value;
                 continue;
             }			
-
-            // array field: sanitize each nested value
+            // array field: sanitize each nested value (support nested arrays)
             if (is_array($raw_value)) {
-                $sanitized = [];
-                foreach ($raw_value as $subkey => $subval) {
-                    // flatten: cast to string and sanitize textarea
-                    $sanitized[$subkey] = sanitize_textarea_field((string)$subval);
-                }
-                $clean[$key] = $sanitized;
+                $sanitize_deep = function ($value) use (&$sanitize_deep) {
+                    if (is_array($value)) {
+                        $out = [];
+                        foreach ($value as $k => $v) {
+                            $out[$k] = $sanitize_deep($v);
+                        }
+                        return $out;
+                    }
+                    return sanitize_textarea_field((string)$value);
+                };
+
+                $clean[$key] = $sanitize_deep($raw_value);
             }
             // scalar field: sanitize as textarea
             else {

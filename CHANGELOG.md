@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.78.3 - 2025-12-11
+- Restore replays trigger
+
+### 0.78.2 - 2025-12-11
+- Adjust default completion triggers
+- Fix checkbox booleans
+
+### 0.78.1 - 2025-12-11
+- Adjust default completion triggers
+
+### 0.78.0 - 2025-12-11
+- Full flexibility and backwards compat for completion triggers
+
 ### 0.77.6 - 2025-12-05
 - Don't preload data URIs
 
