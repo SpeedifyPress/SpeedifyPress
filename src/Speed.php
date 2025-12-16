@@ -688,7 +688,7 @@ class Speed {
 
             $element_to_find = $exception['find'];
             $skeleton = str_replace(" ","",$exception['skeleton']);
-            $custom_ident = md5($exception['custom_html']);
+            $custom_ident = md5((string) ($exception['custom_html'] ?? ''));
             $delay_js = $exception['delay_js'];
         
             //$html = self::add_class_if_exists($html,$exception,'logged_in_exception',$count);
@@ -2615,9 +2615,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
         }
     
         // Remove any ignored keys.
-        $ignore_keys = array_map('trim', explode("\n", Cache::$ignore_querystrings));
-        $query_strings = array_diff_key($query_array, array_flip($ignore_keys));
-    
+        $ignore_keys = array_filter(array_map('trim', explode("\n", (string) (Cache::$ignore_querystrings ?? ''))), 'strlen');
+        $query_strings = array_diff_key($query_array, array_flip($ignore_keys));    
+        
         // Build a directory-safe string from the remaining query parameters.
         $query_dir = "";
         if (!empty($query_strings)) {

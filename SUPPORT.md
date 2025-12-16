@@ -421,3 +421,13 @@ Enter any script name or partial script names here to push them to the end of th
 
 Enter JavaScript here that should be run after all the scripts have finished loading.  
                 Enter complete JavaScript with no script tags.
+
+*Completion Triggers*
+
+This allows advanced users to change how the delay script re-fires onload and onready events that may have been missed due to the delay.
+                Generally the default settings will be fire for most cases, especially when combined with custom executions to run on completion. Advanced users may wish to 
+                change the defaults.
+
+*Completion Events*
+
+If a users clicks or mouseovers before the JS has loaded to process that event, it will be lost unless this option is enabled.
