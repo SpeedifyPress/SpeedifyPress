@@ -88,7 +88,7 @@ Full documentation and support info is available [here](https://github.com/Speed
   
 ## 📝 License
 
-SpeedifyPress is licensed under the **GNU General Public License v2.0 or later (GPL)**.  
+SpeedifyPress is licensed under the **GNU General Public License v3.0 or later (GPL)**.  
 You are free to use, study, modify, and redistribute the source code under the terms of the GPL.
 
 ### Free Plan

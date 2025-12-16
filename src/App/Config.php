@@ -160,7 +160,7 @@ class Config {
 			'include_patterns' => array(
 				'name'   => 'Include Patterns',
 				'helper' => 'Selectors in CSS files that match these patterns will always be included. Some common examples have been included by default. Separate multiple with new lines',
-				'value' => "opened\n-open\nclosed\ntrigger\ntoggl\ndropdown\nslider\nswiper\nmenu-mobile\nmobile-menu\nselect2\nactive\nslick\npop-\ndrawer\nsidebar\nowl\nloading\nstars\nmodal\nwc-block\nwp-block-navigation\nshow-password-input\nscreen-reader-text\neasyzoom\nicon-fullscreen\naos\ntab\nemoji",
+				'value' => "opened\n-open\nclosed\ntrigger\ntoggl\ndropdown\nslider\nswiper\nmenu-mobile\nmobile-menu\nselect2\nactive\nslick\npop-\ndrawer\nsidebar\nowl\nloading\nstars\nmodal\nwc-block\nwp-block-navigation\nshow-password-input\nscreen-reader-text\neasyzoom\nicon-fullscreen\naos\ntab\nemoji\narrow",
 			),
 			'ignore_urls' => array(
 				'name'   => 'Ignore URLs',
@@ -298,7 +298,7 @@ class Config {
 			),
 			'lazyload_icon_fonts' => array(
 				'name'   => "Lazyload icon fonts",
-				'helper' => "Only load icon fonts upon user interaction with the page",
+				'helper' => "Only load icon fonts upon JavaScript load",
 				'value' => 'false',
 			),
 			'preload_fonts_desktop_only' => array(
