@@ -131,7 +131,7 @@ class License {
     public static function get_latest_version(){
 
         //Get current version with wp_remote_get
-        $version = wp_remote_get("https://speedifypress.com/license/version/");
+        $version = wp_remote_get("https://speedifypress.com/license/version/?nocache=".time());
 
         if (is_wp_error($version)) {
             return SPRESS_VER;
@@ -148,7 +148,9 @@ class License {
      */
     public static function get_download_link($for_worker=false) {
 
-        if(get_option('spress_namespace_INVOICE_NUMBER') === false || get_option('spress_namespace_INVOICE_NUMBER') === ''){ 
+        if(get_option('spress_namespace_INVOICE_NUMBER') === false 
+        || get_option('spress_namespace_INVOICE_NUMBER') === ''
+        || get_transient('spress_subscription_ends') === '0'){ 
             return false; 
         }
 
@@ -158,7 +160,7 @@ class License {
             $stem = 'https://speedifypress.com/license/download/?invoice=';
         }
 
-        return $stem . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null);;
+        return $stem . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null) . '&version=' . urlencode(SPRESS_VER);
 
     }
 
@@ -193,7 +195,7 @@ class License {
         }
 
         $host = $_SERVER['HTTP_HOST'] ?? '';
-        $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($host);
+        $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($host) . "&nocache=" . time();
 
         $response = wp_remote_get($check_url, ['timeout' => 10]);
 
@@ -252,6 +254,17 @@ class License {
 
                 update_option('spress_namespace_INVOICE_NUMBER', $number, false);
 
+                //Set the license status verb
+                $status_verb = "renews";
+                if($subscription->ends_at) {
+                    if(strtotime($subscription->ends_at) > time()) {
+                        $status_verb = 'expires';    
+                    } else {
+                        $status_verb = 'expired';    
+                    }                    
+                }
+                set_transient('spress_plan_status_verb', $status_verb, $ttl);
+
                 return true;
             }
         }
@@ -283,11 +296,16 @@ class License {
         $license_ends = get_transient('spress_subscription_ends');
         $license_status = 'inactive';
         $allowed_hosts = get_transient('spress_allowed_hosts');
+        $license_ends_days = "";
 
         // If we have a numeric timestamp that is still in the future, the license is active.
         if ($license_ends && is_numeric($license_ends) && $license_ends > time()) {
         
             $license_status = 'active';
+            $license_ends_days = round(($license_ends - time()) / 86400) . " days";
+            if($license_ends_days > 365) {
+                $license_ends_days = "lifetime";
+            }
 
         } elseif ($license_ends === "0") {
             $license_status = 'inactive';
@@ -300,9 +318,14 @@ class License {
             }
         }
 
+        //Whether license renews or ends
+        $license_status_verb = get_transient('spress_plan_status_verb') ?? ''; 
+
         return array(
             'license_status' => $license_status,
+            'license_ends_days'   => $license_ends_days,
             'allowed_hosts'  => $allowed_hosts,
+            'license_status_verb'   => $license_status_verb,
             'license_number'  => (get_option('spress_namespace_INVOICE_NUMBER') ? get_option('spress_namespace_INVOICE_NUMBER') : ''),
         );
     }

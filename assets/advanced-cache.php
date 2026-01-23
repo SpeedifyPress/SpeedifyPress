@@ -341,26 +341,7 @@ class AdvancedCache {
         $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
         if ($path === '/_csrf' || basename($path) === '_csrf') {
 
-            // Ensure a binding exists BEFORE generating the token
-            if (empty($_COOKIE['spdy_guest'])) {
-                Cache::generate_guest_cookie();
-            }            
-
-            $page_url = isset($_SERVER['HTTP_X_PAGE_URL']) ? $_SERVER['HTTP_X_PAGE_URL'] : SPEED::get_url();
-            $csrf_token = Speed::generate_csrf_token($page_url);
-
-            header('X-CSRF-Token: ' . $csrf_token);
-            header('X-Content-Type-Options: nosniff');
-            header_remove('ETag');
-            header_remove('Last-Modified');            
-            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
-            header('Pragma: no-cache');
-            header('Content-Type: text/plain; charset=utf-8');
-
-            // For HEAD, no body needed
-            http_response_code(204); // No Content
-
-            exit;
+            Speed::serve_csrf_token(array("X-CSRF-Source: advanced-cache"));
 
         }
 

@@ -8,31 +8,24 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
 
 - [ Cache Settings](#cache-settings)
    - [Mode Selection](#mode-selection)
-   - [Cache Outputs](#cache-outputs)
    - [Filters](#filters)
-- [ Cloudflare Settings](#cloudflare-settings)
-   - [Getting Started](#getting-started)
-   - [Worker Route](#worker-route)
-   - [Test The Worker](#test-the-worker)
-   - [Lazy Preload](#lazy-preload)
-   - [Multiple Sites](#multiple-sites)
-   - [Zstd Compression](#zstd-compression)
-- [ Code Insertion](#code-insertion)
+   - [Cache Outputs](#cache-outputs)
 - [ CSS Settings](#css-settings)
    - [Mode Selection](#mode-selection)
    - [Filters](#filters)
-   - [Security Config](#security-config)
-- [ CSS Stats](#css-stats)
-- [ External Scripts](#external-scripts)
-- [ Find Replace](#find-replace)
+- [ Javascript Settings](#javascript-settings)
+   - [Delay JavaScript](#delay-javascript)
+- [ Image Settings](#image-settings)
 - [ Font Settings](#font-settings)
    - [Google options](#google-options)
-   - [Preload options](#preload-options)
    - [Advanced options](#advanced-options)
-- [ Image Settings](#image-settings)
-- [ Javascript Settings](#javascript-settings)
-   - [Defer JavaScript](#defer-javascript)
-   - [Delay JavaScript](#delay-javascript)
+- [ External Scripts](#external-scripts)
+- [ Bloat Settings](#bloat-settings)
+   - [Core Frontend](#core-frontend)
+   - [Admin Interface](#admin-interface)
+   - [Media](#media)
+   - [Discussion](#discussion)
+   - [WooCommerce](#woocommerce)
 ##  Cache Settings
 
 ### Mode Selection
@@ -53,26 +46,6 @@ Here you can choose how the plugin should perform page preloading. This is when 
 *Choose the cache lifetime*
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
-
-### Cache Outputs
-
-*Device Paths & Compression*
-
-Allows you to create separate caches for:
-
-- Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
-- Cookies
-- Logged in users, by user role. Note that logged in users with the same role will see the same content, unless you use *Bypass URLs* to prevent that or exclude certain page areas from caching.
-
-Also allows you to force gzipped compressed output if this (or brotli) hasn't already been setup on the server.
-
-*Logged in users (BETA)*
-
-This BETA feature allows you to exclude certain areas from logged-in caching. The options work as follows:
-
-- Area. Use a CSS selector to define the area or areas of the page not to be cached
-- Skeleton. Area will be hidden with a skeleton while they are loaded in. Choose the skeleton type to use.
-- Delay JS Execution. Selecting this option will ensure that any JS applied to the replacement areas will run properly, as all JS will only run after the swap. Will only work is Delay JS is enabled for the page.
 
 ### Filters
 
@@ -95,105 +68,17 @@ Specify a line separated list of (partial) user agents for which no caching shou
 
 Specify a line separated list of querystrings that should be ignored for caching. 
       For example, to ensure that users arriving from a Klaviyo newsletter all get the cached content *nb_klid* is necessary here. An extensive default list comes with the plugin.
-##  Cloudflare Settings
 
-### Getting Started
+### Cache Outputs
 
-Your worker will need to be able to clear the Cloudflare cache. To do this, it needs to know your Zone ID and to have a Cloudflare API token with Cache Purge permissions.
+*Device Paths & Compression*
 
-*Get Your Zone ID and API Key*
+Allows you to create separate caches for:
 
-- Select the site you want to cache in the account home
-- Look in the right bar and make note of the **Zone ID**
-- Click 'Get your API token' just below that
-- Click 'Create Token' then 'Create Custom Token' > 'Get Started'
-- Add CF_API_TOKEN for the Token name
-- For Permissions, we only need to add one permission: Zone | Cache Purge | Purge
-- Leave the other options and Click 'Continue to Summary'
-- Click Create Token and **make note of the token**
+- Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
+- Cookies
 
-*Add Your Secrets*
-
-- Now click back on the Cloudflare logo and choose your account
-- Click 'Storage & Databases' > 'Secrets Store'
-- Click **Create Secret**
-- *Name:* ZONE_ID | *Value:* the Zone ID you've already made note of | *Permission scope:* Workers
-- Save
-- Click Create Secret
-- *Name:* CF_API_TOKEN | *Value:* the token you've already made note of | *Permission scope:* Workers
-- Click **Create Secret**
-
-*Add A Worker*
-
-Log into your Cloudflare account and click Compute (Workers) in the left bar
-
-- Click **Click Application**
-- Click **Start with Hello World**
-- Click **Deploy**
-
-*Bind the Secrets*
-
-- Click **Click +Binding**
-- Click **Click Secrets Store**
-- Click **Click Add Binding, Variable Name CF_API_TOKEN, choose CF_API_TOKEN as the secret name**
-- Click **Click Add Binding, Variable Name ZONE_ID, choose ZONE_ID as the secret name**
-
-*Edit The Worker*
-
-Now click "Edit Code" and edit the worker code.
-
-- Replace the entire code in the left window with the worker script here
-- Click Deploy
-
-### Worker Route
-
-Your Worker is now setup, but we need to tell Cloudflare where to find it.
-
-- Click on the worker name (on current screen or via Compute > Worker Name)
-- Click **Settings**
-- Click **+ Add**
-- Click **Route**
-- In the **Zone** dropdown choose your domain.
-- In the **Route** textbox write *domainName.com/** to serve the worker from all pages on the domain
-- Add another Route and in the **Route** textbox write **.domainName.com/** to serve the worker from all subdomains too
-- If you'd prefer to test first, choose a specific URL to test on, e.g *domainName.com/test-page*
-- Choose **Fail open (proceed)**
-- Click Add Route
-
-### Test The Worker
-
-Now it's time to test the worker is running OK
-
-- Go to your test page
-- Look at the document Response Headers in the console
-- When hitting a cachable page for the first time the *x-spdy-status* header should say SAVED (plus random number)
-- When revisiting the page, the *x-spdy-status* header should say HIT
-
-### Lazy Preload
-
-The Cloudflare cache works with a lazy preload. This means that when the cache is cleared (manually, or after a page update), the next page load will load from the cache but update in the background. 
-      This means users will never get the slower, uncached page BUT you may need to reload a page twice to see the latest version.
-
-### Multiple Sites
-
-This worker will work fine with multiple wordpress sites on the same domain (or subdomains).
-
-### Zstd Compression
-
-Zstd compression will get the best results in terms of TTFB. To enable go to Rules > Compressions Rules > Create  and Choose "Enable Zstandard (Zstd) Compression" for the default content types.
-##  Code Insertion
-
-**Code Insertion** provides a quick and easy way to insert code into the start of the document <HEAD> or the end of the document <BODY>
-
-*Head Code*
-
-Code added here will go at the start of the document <HEAD>. Use this for any stylesheets, scripts, meta tags, etc.
-
-*Body Code*
-
-Code added here will go at the end of the document <BODY>. Use this for any scripts you'd like to run here.
-
-Any scripts added to either section will get delayed by JavaScript delay, unless you add them as an exception.
+**Switch the Cache Path** will change the cache path from /wp-content/cache/ to /wp-content/upload. The is sometimes necessary for compatibility with other plugins and some hosts.
 ##  CSS Settings
 
 ### Mode Selection
@@ -231,7 +116,7 @@ Use this option to always include specific CSS selectors. If elements lose their
 - Add that class to the **Force Include Selectors** list.
 - ♻️ Clear the cache and check if the issue is resolved.
 
-*Force Include URLs*
+*Force Ignore URLs*
 
 Specify URLs where **no CSS optimization** should occur. Supports **full URLs** and **regular expressions**.
 
@@ -242,150 +127,7 @@ Exclude CSS processing based on cookie values.
 
 - 🔑 *wordpress_logged_in_* → Excludes logged-in users.
 - 🛒 *woocommerce_cart_hash* → Excludes users with an item in their cart.
-
-*Generation by Screen Resolution*
-
-Generates optimized CSS at specific screen resolutions while using the same CSS for all resolutions.  
-      Useful when page content significantly varies across different screen sizes.
-
-### Security Config
-
-*CSRF Expiry*
-
-This changes the expiry time for the **CSRF nonce**. You may need to change this if your host uses their own caching solution and you're not using Cloudflare. In this case, set the expiry value to the same as the host's cache expiry time.
-
-*Force Include Limit*
-
-The maximum number of CSS classes to force include that can be generated per page. This limit prevents file-stuffing attacks.
-##  CSS Stats
-
-**CSS Stats** provide valuable insights into how CSS is being generated across your site and which plugins contribute to it.
-
-- The **Unused** column shows the number of CSS files generated but **not used** on any page.
-- The **Used** column displays the CSS files that are actively in use.
-- Click on a row for a **detailed breakdown** of how CSS is applied across your site.
-
-*By Plugin Folder*
-
-View a breakdown of **CSS files generated per 📂 plugin folder**. This helps identify which plugins contribute the most to your site's styles.
-
-*By Path*
-
-Displays CSS caching stats **for each 🔍 page path**. This helps pinpoint where CSS is stored and how it's being utilized across different URLs.
-
-*By Post Types*
-
-Groups CSS stats by **📝 Post Type**, allowing you to analyze **which plugins affect different content types**.
-
-- If certain post types **only** fill the **Unused** column, they likely don’t need those styles—optimizing them can improve performance.
-##  External Scripts
-
-*Locally host gtag.js*
-
-If you are using the standard Google Analytics tag then this generally results in a performance hit. One way to improve things is to host the file locally. 
-                Ticking this option will download the remote file and setup a cron job to ensure it's always kept up to date. 
-                This is the recommended method for most sites using GA.
-
-*Preload gtag.js*
-
-Adds a preload in for the locally hosted gtag.js. You won't generally see a performance increase from this, but it can be worth testing.
-
-*Add scripts to Partytown*
-
-🎉 Partytown is an experimental feature that allows you load certain scripts via a web worker and therefore not in the main JavaScript thread. 
-                It was developed by [https://partytown.builder.io/](https://partytown.builder.io/). To add the locally hosted gtag here, just enter "local_tag" to the box. 
-                This will generally give a performance boost of a few points, but may affect the amount of sessions reported. It's therefore most suited to new sites.
-##  Find Replace
-
-**Find/Replace** is an advanced feature that allows you to directly **search and replace** text in the HTML of all pages on your site.
-
-*Add Row*
-
-Start by clicking **"Add Row"** and entering either the text to find and replace or the CSS selector for an element to find/replace. Advanced selectors are not supported.
-            **Important:** Regular expressions are **not supported**, and replacements are **case-sensitive**.
-
-*Choose Scope*
-
-Choose how replacements are applied:
-
-- **Scope: all text** - Apply the replacement **everywhere** on the page.
-- **Scope: first first** - Replace **only the first occurrence** of the text.
-- **Scope: first element** - The find text is a CSS selector and will replace just the **first** matching element.
-- **Scope: all elements** - The find text is a CSS selector and will replace **all** matching elements.
-##  Font Settings
-
-### Google options
-
-*Locally host Google fonts*
-
-Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
-
-### Preload options
-
-*Preload fonts*
-
-This is a recommended feature for every site. It will prevent the flash of unstyled fonts that can happen on page load.
-
-*Don't preload icon fonts*
-
-Recommended for every site. It's generally not necessary to preload these, as they don't flash and the preload can be render blocking.
-
-*Don't preload fonts on mobile*
-
-Recommended for every site. Font files on mobile are generally too heavy and preloading them will prevent high pagespeed scores.
-
-### Advanced options
-
-*Lazy load icon fonts*
-
-Recommended if you have icon fonts below the fold and they're causing render blocking. Will load in the icon fonts upon user interaction with the page.
-
-*Use system fonts on mobile*
-
-Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker. To overwrite the system fonts,
-                just replace the "--spdy-ui-font" for the selector in question. For example, this would replace H1 and H2 on mobile with Times New Roman:
-                
-                     @media (max-width: 800px) {
-                              h1, h2 {
-                                    --spdy-ui-font: "Times New Roman", serif !important;
-                              }
-                     }
-##  Image Settings
-
-*Preload Image*
-
-This is a recommended feature for every site. Adding an image here will activate image lazy loading and set a default image to be displayed before the real image is loaded. 
-                It's recommended that you choose a very lightweight SVG image here.
-
-*Skip Lazyloading*
-
-Allows you to skip the lazyloading of certain images. This would normally be for images that are shown above the fold. For example, you should skip lazyloading of your logo. 
-                Any images that are added here will be preloaded by default.
-
-*Force Lazyloading*
-
-Allows you to force the lazyloading of certain images. This would normally be for images that have been identified as an LCP image at desktop but are shown above the fold at mobile.
-
-*Image Optimisation*
-
-We hook into the CompressX plugin by [https://compressx.io/](https://compressx.io/) for image optimisation. We have no connection with them and they are not endorsed by us. 
-                We just really like their plugin! So we decided to make it extra easy to install and configure within SpeedifyPress. Just follow the Wizard and you're good to go.
 ##  Javascript Settings
-
-### Defer JavaScript
-
-Ticking the Defer JavaScript textbox will add the *defer* attribute to the script tag. This will defer the loading of the JavaScript until after the DOM has finished parsing (but before the DOM content is ready).  
-                Try this one first and see what the effect is on page speed. ⚡
-
-*Exclude scripts from defer*
-
-Enter any script name or partial script names here to have them excluded from deferring. It will match against the entire script block, including tags such as *rel* and the script contents.  
-                This can help prevent conflicts with essential scripts.
-
-*Exclude URLs from defer*
-
-JavaScript will not be deferred on any URLs that match strings or regular expressions entered here.  
-                Useful for ensuring key functionality remains intact.
 
 ### Delay JavaScript
 
@@ -431,3 +173,129 @@ This allows advanced users to change how the delay script re-fires onload and on
 *Completion Events*
 
 If a users clicks or mouseovers before the JS has loaded to process that event, it will be lost unless this option is enabled.
+##  Image Settings
+
+*Preload Image*
+
+This is a recommended feature for every site. Adding an image here will activate image lazy loading and set a default image to be displayed before the real image is loaded. 
+                It's recommended that you choose a very lightweight SVG image here.
+
+*Skip Lazyloading*
+
+Allows you to skip the lazyloading of certain images. This would normally be for images that are shown above the fold. For example, you should skip lazyloading of your logo. 
+                Any images that are added here will be preloaded by default.
+
+*Force Lazyloading*
+
+Allows you to force the lazyloading of certain images. This would normally be for images that have been identified as an LCP image at desktop but are shown above the fold at mobile.
+
+*Image Optimisation*
+
+We hook into the CompressX plugin by [https://compressx.io/](https://compressx.io/) for image optimisation. We have no connection with them and they are not endorsed by us. 
+                We just really like their plugin! So we decided to make it extra easy to install and configure within SpeedifyPress. Just follow the Wizard and you're good to go.
+##  Font Settings
+
+### Google options
+
+*Locally host Google fonts*
+
+Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
+
+### Advanced options
+
+*Lazy load icon fonts*
+
+Recommended if you have icon fonts below the fold and they're causing render blocking. Will load in the icon fonts upon user interaction with the page.
+
+*Use system fonts on mobile*
+
+Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker. To overwrite the system fonts,
+                just replace the "--spdy-ui-font" for the selector in question. For example, this would replace H1 and H2 on mobile with Times New Roman:
+                
+                     @media (max-width: 800px) {
+                              h1, h2 {
+                                    --spdy-ui-font: "Times New Roman", serif !important;
+                              }
+                     }
+
+*Preload fonts intelligently*
+
+The system will automatically detect fonts and preload them. However, it won't preload icons fonts and it won't preload fonts on mobile.
+##  External Scripts
+
+*Locally host gtag.js*
+
+If you are using the standard Google Analytics tag then this generally results in a performance hit. One way to improve things is to host the file locally. 
+                Ticking this option will download the remote file and setup a cron job to ensure it's always kept up to date. 
+                This is the recommended method for most sites using GA.
+
+*Preload gtag.js*
+
+Adds a preload in for the locally hosted gtag.js. You won't generally see a performance increase from this, but it can be worth testing.
+##  Bloat Settings
+
+### Core Frontend
+
+*Remove Emojis*
+
+Disables WordPress emoji support (scripts, styles and TinyMCE plugin) to reduce frontend payload.
+
+*Disable jQuery Migrate*
+
+Removes the jQuery Migrate compatibility layer on the frontend. Only enable if your theme and plugins do not rely on legacy jQuery APIs.
+
+*Disable RSS/Atom feeds*
+
+Disables core RSS/Atom endpoints and removes feed discovery links from the page head. Use this if you do not provide feeds to subscribers.
+
+*Disable oEmbed functionality*
+
+Removes oEmbed discovery and related endpoints. Plain URLs will no longer auto-convert into embeds unless you use embed blocks/shortcodes.
+
+*Limit Heartbeat API*
+
+Reduces background Heartbeat polling by increasing the interval to 60 seconds. This can reduce admin AJAX activity while keeping post locking and session checks working.
+
+### Admin Interface
+
+*Increase autosave interval*
+
+Increases the editor autosave interval to reduce database writes during editing. Useful on busy editorial sites.
+
+*Limit post revisions*
+
+Limits saved revisions to 3 per post to reduce database bloat in wp_posts and wp_postmeta.
+
+*Disable the block editor*
+
+Disables Gutenberg and forces the classic editor UI. Only enable if you are not using the block editor.
+
+### Media
+
+*Disable XML-RPC*
+
+Disables XML-RPC to reduce brute force and abuse surface. Do not enable if you rely on integrations that require XML-RPC (some Jetpack features and legacy remote publishing).
+
+*Disable attachment pages*
+
+Redirects attachment pages to the original file URL (or parent content) to avoid thin pages that add little value.
+
+*Disable core XML sitemaps*
+
+Disables WordPress core sitemaps at /wp-sitemap.xml. Enable this if an SEO plugin already provides sitemaps to avoid duplication.
+
+### Discussion
+
+*Disable comments sitewide*
+
+Disables commenting across the site and removes comment UI where possible. Use this if you do not accept comments.
+
+*Disable pingbacks/trackbacks*
+
+Disables pingbacks and trackbacks, removes related head links/headers, and reduces spam and attack surface.
+
+### WooCommerce
+
+*Disable WooCommerce cart fragments*
+
+Disables wc-cart-fragments to reduce sitewide JS and AJAX requests. Only enable if you do not need live cart count updates in the header.

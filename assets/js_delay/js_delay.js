@@ -23,6 +23,11 @@ class JsDelayer {
         const isDoc = this === document;
         let kind, key;
 
+        const validListener = typeof listener === "function" || (listener && typeof listener === "object" && typeof listener.handleEvent === "function");
+        if (!validListener) {
+            return;
+        }        
+
         if (type === "DOMContentLoaded") kind = "dom";
         else if (type === "load") kind = "load";
         else if (type === "readystatechange") kind = "readystate";
@@ -60,12 +65,18 @@ class JsDelayer {
      * @param {string} load_last - Scripts to load last, separated by newline.
      * @param {number} timeout - Timeout in seconds to wait before loading scripts.
      * @param {boolean} debug - Enable or disable debugging.
-     */
-    constructor(load_first = "", load_last = "", timeout = 3, callback = false, debug = false) {
+     * @param {Array|NodeList|null} source_nodes - Optional list of nodes to manage.
+     * @param {boolean} attach_listeners - Whether this instance attaches interaction + timeout listeners.
+     * @param {boolean} finalize - Whether to run post-load lifecycle (replays, rerun loader, events).  
+    */
+    constructor(load_first = "", load_last = "", timeout = 3, callback = false, debug = false, source_nodes = null, attach_listeners = true, finalize = true) {         
         this.loadFirst = new Set(this.parseList(load_first));
         this.loadLast = new Set(this.parseList(load_last));
         this.timeout = timeout * 1000;
         this.debug = debug;
+        this.sourceNodes = source_nodes;
+        this.attachListeners = attach_listeners;
+        this.finalize = finalize;        
         this.callback = callback;
         this.callback_run = false;
         this.hasTriggeredEvents = false;
@@ -76,7 +87,7 @@ class JsDelayer {
 
         this.interactionEvents = ["click","mouseover", "keydown", "touchstart", "touchmove", "wheel"];
 
-        this.init();
+        this.armStartTriggers();
     }
 
     /**
@@ -93,9 +104,9 @@ class JsDelayer {
     }
 
     /**
-     * Initializes the JsDelayer and sets up event listeners.
+     * Arms start conditions (interaction + timeout).
      */
-    init() {
+    armStartTriggers() {
 
         if (this.debug) {
             console.log("JsDelayer initialized.");
@@ -106,21 +117,32 @@ class JsDelayer {
 
         //Setup bound functions, necessary for adding and removing 
         //listeners
-        this.bound_start = this.startLoading.bind(this);
-        this.boundTrackUserInteractions = this.trackUserInteractions.bind(this);
+        this.bound_start = this.beginDeferredLoading.bind(this);
+        this.bound_restoreTemplates = () => {
+            this.ensureTemplatesRestored('.unused-invisible-interaction-only');
+            this.interactionEvents.forEach((event) => {
+                window.removeEventListener(event, this.bound_restoreTemplates);
+            });            
+        };        
+        this.boundTrackUserInteractions = this.captureUserInteraction.bind(this);
+ 
+        if (this.attachListeners) {        
 
-        //Add event listeners for our interaction events
-        this.interactionEvents.forEach((event) => {
-            window.addEventListener(event, this.bound_start, { passive: true });
-        });
+            //Add event listeners for our interaction events
+            this.interactionEvents.forEach((event) => {
+                window.addEventListener(event, this.bound_restoreTemplates, { passive: true, once: true });
+                window.addEventListener(event, this.bound_start, { passive: true, once: true });                
+            });
 
-        //Track these events for replaying later
-        if (window.speed_js_vars && window.speed_js_vars.trigger_replays === 'true') {
-            if (this.debug) {
-                console.log("Enabling replay tracking...");
+            //Track these events for replaying later
+            if (window.speed_js_vars && window.speed_js_vars.trigger_replays === 'true') {
+                if (this.debug) {
+                    console.log("Enabling replay tracking...");
+                }
+                window.addEventListener("click", this.boundTrackUserInteractions, { passive: true });
+                window.addEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
             }
-            window.addEventListener("click", this.boundTrackUserInteractions, { passive: true });
-            window.addEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
+
         }
 
         // Set up timeout for delayed start
@@ -132,9 +154,9 @@ class JsDelayer {
      * Ensure any delayed <template>-wrapped DOM has been restored
      * before we start executing deferred JS.
      */
-    ensureTemplatesRestored() {
+    ensureTemplatesRestored(selector='.unused-invisible') {
         // Only check when there are candidates that could still be templates
-        const needsRestore = !!document.querySelector('.unused-invisible > template');
+        const needsRestore = !!document.querySelector(selector + ' > template');
         if (!needsRestore) {
             return;
         }
@@ -146,12 +168,12 @@ class JsDelayer {
         try {
             if (typeof window.restoreTemplateContentAndImages === "function") {
                 // Prefer the existing helper if present
-                window.restoreTemplateContentAndImages();
+                window.restoreTemplateContentAndImages(selector);
                 return;
             }
 
             // Minimal inline fallback if helper is not available yet
-            document.querySelectorAll('.unused-invisible').forEach((element) => {
+            document.querySelectorAll(selector).forEach((element) => {
                 const firstChild = element.children[0];
                 if (firstChild && firstChild.tagName === 'TEMPLATE') {
                     element.style.contentVisibility = '';
@@ -171,7 +193,7 @@ class JsDelayer {
      * Tracks user interactions and saves click or mouseover events.
      * @param {Event} event - User interaction event.
      */
-    trackUserInteractions(event) {
+    captureUserInteraction(event) {
         if (typeof event == "undefined") {
             return;
         }
@@ -194,10 +216,10 @@ class JsDelayer {
     }
 
     /**
-     * Starts the script loading process and preloads scripts.
+     * Begins the deferred loading process (after interaction or timeout).
      * @param {Event} event - User interaction event.
      */
-    startLoading(event) {
+    beginDeferredLoading(event) {
 
         if (this._loading) return;     // prevent concurrent runs
 
@@ -228,20 +250,22 @@ class JsDelayer {
         
         this._loading = true; //prevent re-runs
 
-        this.interactionEvents.forEach((event) => {
-            window.removeEventListener(event, this.bound_start, { passive: true });
-        });
+        if (this.attachListeners) {
+            this.interactionEvents.forEach((event) => {
+                window.removeEventListener(event, this.bound_start);
+            });
+        }
 
-        this.preloadScripts();
-        this.loadScripts();
+        this.prewarmDeferredScripts();
+        this.executeDeferredScripts();
     }
 
     /**
-     * Preloads scripts by adding link elements to the document head.
+     *Prewarms deferred scripts by adding preload/modulepreload links.
      */
-    preloadScripts() {
+    prewarmDeferredScripts() {
 
-        const scripts = this.getScriptOrder();
+        const scripts = this.collectDeferredNodesOrdered();
         if(scripts.length == 0) return;
 
         scripts.forEach((script) => {
@@ -311,23 +335,25 @@ class JsDelayer {
     }
 
     /**
-     * Loads scripts in a specific order based on user configuration.
+     * Executes deferred scripts (in configured order)
      */
-    loadScripts() {
+    executeDeferredScripts() {
 
         // Only pass runnable <script> nodes to the final loader
-        const scriptsToLoad = this.getScriptOrder().filter((n) => n.tagName === 'SCRIPT');
+        const scriptsToLoad = this.collectDeferredNodesOrdered().filter((n) => n.tagName === 'SCRIPT');
         if(scriptsToLoad.length == 0) return;        
 
-        this.loadScriptsSequentially(scriptsToLoad);
+        this.runDeferredScriptQueue(scriptsToLoad);
     }
 
     /**
      * Determines the order of scripts to process based on `loadFirst` and `loadLast`.
      * @returns {Array} - Ordered list of script elements.
      */
-    getScriptOrder() {
-        const allScripts = [...document.querySelectorAll("script[data-src],link[data-rel='modulepreload']")];
+    collectDeferredNodesOrdered() {
+        const allScripts = this.sourceNodes
+            ? [...this.sourceNodes]
+            : [...document.querySelectorAll("script[data-src],link[data-rel='modulepreload']")];         
 
         const firstScripts = allScripts.filter((script) => {
             const dataSrc = script.getAttribute("data-src") || script.getAttribute("data-href");
@@ -366,55 +392,63 @@ class JsDelayer {
         return scriptsToLoad || 0;
     }
 
+    /**
+     * Replays captured DOM ready/load listeners registered while scripts were deferred.
+     */
+    replayDeferredDomEvents() {
+
+        JsDelayer.capturing = false;
+        JsDelayer.captureEvents.forEach((eventName) => {
+
+            const listeners = JsDelayer.captured[eventName];
+            if (!listeners || !listeners.length) return;
+
+            listeners.forEach(({ target, listener, options }) => {
+                try {
+                    const ev = new Event(eventName, {
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    listener.call(target, ev);
+                    if (this.debug) {
+                        console.log("Triggered", eventName, "listener for", listener, "on", target);
+                    }
+                } catch (err) {
+                    if (this.debug) {
+                        console.error("Error executing", eventName, "listener:", err);
+                    }
+                }
+            });
+
+            JsDelayer.captured[eventName] = [];
+        });
+    }
+
 
     /**
      * Loads scripts sequentially and triggers events after loading.
      * @param {Array} scripts - Array of script elements to load.
      */
-    loadScriptsSequentially(scripts) {
+    runDeferredScriptQueue(scripts) {
 
-        // replay captured DOM ready/load listeners
-        const replayCapturedListeners = () => {
-
-            JsDelayer.capturing = false;
-            JsDelayer.captureEvents.forEach((eventName) => {
-
-                const listeners = JsDelayer.captured[eventName];
-                if (!listeners || !listeners.length) return;
-
-                listeners.forEach(({ target, listener, options }) => {
-                    try {
-                        const ev = new Event(eventName, {
-                            bubbles: true,
-                            cancelable: true
-                        });
-                        listener.call(target, ev);
-                        if (this.debug) {
-                            console.log("Triggered", eventName, "listener for", listener, "on", target);
-                        }
-                    } catch (err) {
-                        if (this.debug) {
-                            console.error("Error executing", eventName, "listener:", err);
-                        }
-                    }
-                });
-
-                JsDelayer.captured[eventName] = [];
-            });
-        }
 
         const processScript = (index) => {
             if (index >= scripts.length) {
+
+                // scripts finished: let any captured DOM ready/load handlers run
+                this.replayDeferredDomEvents();
+
+                if (!this.finalize) {
+                    return;
+                }
+
                 //Dispatch event back to logged_in_exceptions worker
                 document.dispatchEvent(new Event('delayedJSLoaded'));
                 if (this.debug) {
                     console.log("All scripts loaded. Triggering events and replaying saved events...");
                 }
 
-                // now all delayed scripts have run, replay
-                replayCapturedListeners();
-
-                this.triggerEvents().then(() => {                    
+                this.broadcastDeferredEvents().then(() => {                 
 
                     setTimeout(() => {
                         if (window.speed_js_vars && window.speed_js_vars.trigger_replays === 'true') {
@@ -423,7 +457,7 @@ class JsDelayer {
                             }
                             window.removeEventListener("mouseover", this.boundTrackUserInteractions, { passive: true });
                             window.removeEventListener("click", this.boundTrackUserInteractions, { passive: true });        
-                            this.replaySavedEvents();
+                            this.replayUserInteractions();
                         }
                     },100);
                     //Run the oncompleted JS
@@ -435,7 +469,7 @@ class JsDelayer {
                         }
                     }
                     //Run again as it's possible new scripts have been added
-                    var num_scripts = this.getScriptOrder().length;
+                    var num_scripts = this.collectDeferredNodesOrdered().length;
                     if (this.debug) {
                         console.log("Rerunning script loader...",num_scripts);
                     }                
@@ -481,9 +515,9 @@ class JsDelayer {
     }
 
     /**
-     * Triggers custom events and jQuery events if jQuery is available.
+     * Broadcasts synthetic DOM/jQuery events after deferred scripts have executed.
      */
-    triggerEvents() {
+    broadcastDeferredEvents() {
 
         return new Promise((resolve) => {
 
@@ -554,7 +588,7 @@ class JsDelayer {
     /**
      * Replays saved user interaction events.
      */
-    replaySavedEvents() {
+    replayUserInteractions() {
 
         if (this.debug) {
             console.log("Replaying clicks", this.savedClicks);
@@ -589,20 +623,45 @@ class JsDelayer {
 JsDelayer.ensurePatchedAddListener();
 
 (function(){
+
+window.speed_js_vars = window.speed_js_vars || {};
+const loadFirst = (window.speed_js_vars.script_load_first  || '');
+const loadLast  = (window.speed_js_vars.script_load_last   || '');
+
+const allNodes = [...document.querySelectorAll("script[data-src],link[data-rel='modulepreload']")];
+const delayedNodes = [...document.querySelectorAll("script[data-src][data-delay],link[data-rel='modulepreload'][data-delay]")];
+const mainNodes = allNodes.filter((n) => !n.hasAttribute("data-delay"));
+
   const startDelayer = () => {
-    window.JsDelayer = new JsDelayer(
-      (window.speed_js_vars.script_load_first  || ''),
-      (window.speed_js_vars.script_load_last   || ''),
-      (window.speed_js_vars.delay_seconds      || 6),
-      (window.speed_js_vars.delay_callback     || false),
-      false
-    );
+    
+    //Main nodes
+    new JsDelayer(loadFirst,loadLast,(window.speed_js_vars.delay_seconds || 6),(window.speed_js_vars.delay_callback || false),false,mainNodes,true,true);
+
+    // Group scripts by absolute page-load delay
+    const groups = new Map();
+    delayedNodes.forEach((n) => {
+        const d = parseFloat(n.getAttribute("data-delay"));
+        if (!Number.isFinite(d) || d <= 0) return;
+        if (!groups.has(d)) groups.set(d, []);
+        groups.get(d).push(n);
+    });
+
+    // One instance per delay group: timeout-only start, load-only finalize
+    groups.forEach((scripts, delaySeconds) => {
+        new JsDelayer(loadFirst, loadLast, delaySeconds, false, false, scripts, false, false);
+    });
+
   };
 
+  //If we have logged in cached, then we must wait for
+  //that to complete
   if(document.querySelectorAll(".spress_do_delay_js").length > 0) {
-    // wait until your other script signals it’s done
-    window.speed_js_vars.delay_seconds = 0.1;
-    document.addEventListener('loggedInExceptionsDone', startDelayer, { once: true });
+    // wait until the other script signals it's done
+    // then fire on all nodes
+    document.addEventListener('loggedInExceptionsDone', function() {
+        new JsDelayer(loadFirst,loadLast,0.01,(window.speed_js_vars.delay_callback || false),false,allNodes,true,true);            
+    }, { once: true });
+    
   } else {
     // fire immediately
     if (document.prerendering === true) {

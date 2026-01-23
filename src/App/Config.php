@@ -86,7 +86,7 @@ class Config {
 			),	
 			'bypass_urls' => array(
 				'name'   => 'Bypass URLs',
-				'helper' => 'Enter full or partial URLs that will prevent caching if detected. Separate multiple with new lines.',
+				'helper' => 'Enter full or partial URLs that will prevent caching on that URL. Separate multiple with new lines.',
 				'value' => '',
 			),	
 			'ignore_querystrings' => array(
@@ -160,7 +160,7 @@ class Config {
 			'include_patterns' => array(
 				'name'   => 'Include Patterns',
 				'helper' => 'Selectors in CSS files that match these patterns will always be included. Some common examples have been included by default. Separate multiple with new lines',
-				'value' => "opened\n-open\nclosed\ntrigger\ntoggl\ndropdown\nslider\nswiper\nmenu-mobile\nmobile-menu\nselect2\nactive\nslick\npop-\ndrawer\nsidebar\nowl\nloading\nstars\nmodal\nwc-block\nwp-block-navigation\nshow-password-input\nscreen-reader-text\neasyzoom\nicon-fullscreen\naos\ntab\nemoji\narrow",
+				'value' => "opened\n-open\nclosed\ntrigger\ntoggl\ndropdown\nslider\nswiper\nmega-menu\nmenu-mobile\nmobile-menu\nselect2\nactive\nslick\npop-\ndrawer\nsidebar\nowl\nloading\nstars\nmodal\nwc-block\nwp-block-navigation\nshow-password-input\nscreen-reader-text\neasyzoom\nicon-fullscreen\naos\ntab\nemoji\narrow",
 			),
 			'ignore_urls' => array(
 				'name'   => 'Ignore URLs',
@@ -199,6 +199,11 @@ class Config {
 			)							
 		),		
 		'speed_js'  => array(
+			'force_js_inline' => array(
+				'name'   => 'Force JS Inline',
+				'helper' => 'Scripts matching these patterns will be inlined. Separate multiple with new lines',
+				'value' => '',
+			),
 			'defer_js' => array(
 				'name'   => 'Defer JS',
 				'helper' => 'Whether or not to defer JS',
@@ -211,12 +216,12 @@ class Config {
 			),	
 			'defer_exclude_urls' => array(
 				'name'   => 'Exclude URLs from defer',
-				'helper' => 'Do not defer URLs matching these patterns. Separate multiple with new lines',
+				'helper' => 'Do not defer on URLs matching these patterns. Separate multiple with new lines',
 				'value'  => '',
 			),						
 			'delay_js' => array(
 				'name'   => 'Delay JS',
-				'helper' => 'Delay JS execution by a certain amount of seconds',
+				'helper' => 'Delay JS execution by a certain amount of seconds. If logged in cache exclusion is enabled, JS will run immediately after excluded area(s) load in.',
 				'value'  => '6',
 			),												
 			'delay_exclude' => array(
@@ -226,12 +231,12 @@ class Config {
 			),	
 			'delay_exclude_urls' => array(
 				'name'   => 'Exclude URLs from delay',
-				'helper' => 'Do not delay URLs matching these patterns. Separate multiple with new lines',
+				'helper' => 'Do not delay on URLs matching these patterns. Separate multiple with new lines',
 				'value' =>  '',
 			),						
 			'delay_seconds' => array(
 				'name'   => 'Delay Seconds',
-				'helper' => 'Amounts of seconds to delay JS execution',
+				'helper' => 'Amounts of seconds to delay JS execution. Add data-delay attribute to scripts to override this value. E.g data-delay="2" for 2 seconds.',
 				'value' => '',
 			),	
 			'script_load_first' => array(
@@ -303,9 +308,14 @@ class Config {
 			),
 			'preload_fonts_desktop_only' => array(
 				'name'   => 'Preload Fonts only on Desktop',
-				'helper' => 'Will not preload fonts on mobile. Only works if page caching is enabled.',
+				'helper' => 'Will not preload fonts on mobile.',
 				'value' => 'false',
-			),	
+			),
+			'preload_fonts_intelligently' => array(
+				'name'   => 'Preload Fonts intelligently',
+				'helper' => 'Detect fonts and preload them (but not icon fonts, and not on mobile)',
+				'value' => 'false',
+			),				
 			'system_fonts' => array(
 				'name'   => 'Use system fonts',
 				'helper' => 'Use high-speed system fonts for mobile devices. Will automatically prevent preloading standard fonts on mobile devices.',
@@ -333,6 +343,83 @@ class Config {
 				'value' => '',
 			),						
 		),					
+		'bloat' => array(
+			//Core
+			'emojis' => array(
+				'name'   => 'Remove Emojis',
+				'helper' => 'Adds an extra JS file and inline CSS on every page. Rarely needed on modern sites.',
+				'value'  => 'false',
+			),
+			'jquery_migrate' => array(
+				'name'   => 'Disable jQuery Migrate',
+				'helper' => 'Legacy compatibility layer. Safe to remove if your theme/plugins do not rely on old jQuery APIs.',
+				'value'  => 'false',
+			),
+			'rss_feeds' => array(
+				'name'   => 'Disable RSS/Atom feeds',
+				'helper' => 'Unused on many sites and frequently hit by bots. Disable if you do not support feed subscribers.',
+				'value'  => 'false',
+			),
+			'oembed' => array(
+				'name'   => 'Disable oEmbed functionality',
+				'helper' => 'Removes oEmbed discovery and related endpoints. Rarely required unless you embed WP content cross-site.',
+				'value'  => 'false',
+			),
+			'heartbeat' => array(
+				'name'   => 'Limit Heartbeat API',
+				'helper' => 'Reduces frequent AJAX polling in admin (and sometimes frontend). Can improve backend responsiveness.',
+				'value'  => 'false',
+			),
+			//Admin Interface
+			'autosave' => array(
+				'name'   => 'Increase autosave interval',
+				'helper' => 'Fewer autosaves means less DB churn while editing, especially for long posts and busy editorial teams. Sets to 5 mins.',
+				'value'  => 'false',
+			),
+			'post_revisions' => array(
+				'name'   => 'Limit post revisions',
+				'helper' => 'Revisions can bloat wp_posts and wp_postmeta on busy sites. Limit to 3 revisions per post.',
+				'value'  => 'false',
+			),
+			'block_editor' => array(
+				'name'   => 'Disable the block editor',
+				'helper' => 'If you only use Classic Editor, disabling Gutenberg reduces editor assets and related complexity.',
+				'value'  => 'false',
+			),		
+			'xmlrpc' => array(
+				'name'   => 'Disable XML-RPC',
+				'helper' => 'Common brute-force and abuse target. Disable unless you explicitly need Jetpack or remote publishing features.',
+				'value'  => 'false',
+			),				
+			//Media
+			'attachment_pages' => array(
+				'name'   => 'Disable attachment pages',
+				'helper' => 'Often thin content and SEO dead weight. Redirect to the file or parent post instead.',
+				'value'  => 'false',
+			),		
+			'wp_sitemaps' => array(
+				'name'   => 'Disable core XML sitemaps',
+				'helper' => 'Redundant if an SEO plugin already provides sitemaps. Disable one to avoid duplication.',
+				'value'  => 'false',
+			),				
+			//Discussion	
+			'comments' => array(
+				'name'   => 'Disable comments sitewide',
+				'helper' => 'Eliminates spam surface and comment related queries/admin overhead if you do not use comments.',
+				'value'  => 'false',
+			),
+			'pingbacks_trackbacks' => array(
+				'name'   => 'Disable pingbacks/trackbacks',
+				'helper' => 'Rarely useful and commonly abused. Disabling reduces attack surface and spam.',
+				'value'  => 'false',
+			),
+			//WooCommerce
+			'woocommerce_cart_fragments' => array(
+				'name'   => 'Disable WooCommerce cart fragments',
+				'helper' => 'Adds JS and AJAX requests sitewide. Disable if you do not need live cart updates in the header.',
+				'value'  => 'false',
+			),
+		),
 		'external_scripts' => array(
 			'gfonts_locally' => array(
 				'name'   => 'Should google fonts be hosted locally?',
@@ -404,6 +491,15 @@ class Config {
 		if(strstr($current_url,"/wp-json/speedifypress/")){
 			return true;
 		}		
+
+		// Disable in WordPress Customizer (screen + preview)
+		if (
+			strstr($current_url, '/wp-admin/customize.php') ||
+			isset($_GET['customize_changeset_uuid']) ||
+			isset($_GET['customize_messenger_channel'])
+		) {
+			return false;
+		}
 
 		// Disable for builder querystrings
 		$builder_querystrings = array(
@@ -701,7 +797,23 @@ class Config {
 
 				if ( isset( $new_config[ $key_to_update ] ) ) {
 					
-					//Custom methods for updates gere
+					//Custom methods for updates here
+
+					//Shortcut for intelligent font loading
+					if($key_to_update == "preload_fonts_intelligently") {
+
+						if( $new_config[ $key_to_update ] === "true") {
+							$new_config['preload_fonts'] = "true";
+							$new_config['dont_preload_icon_fonts'] = "true";
+							$new_config['preload_fonts_desktop_only'] = "true";
+						} else {
+							$new_config['preload_fonts'] = "false";
+							$new_config['dont_preload_icon_fonts'] = "false";
+							$new_config['preload_fonts_desktop_only'] = "false";
+						}
+						
+					}
+
 					if($key_to_update == "gtag_locally") {
 
 						Speed::handle_gtag_update($new_config[ $key_to_update ]);

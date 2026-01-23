@@ -4,21 +4,17 @@
 
 SpeedifyPress is a performance optimization toolkit for WordPress, built for developers and agencies who need real-world speed and precision control. Combining advanced techniques with practical configurability, SpeedifyPress goes beyond typical plugins to deliver fast, scalable, and reliable results — all without compromising compatibility or flexibility. From smart unused CSS handling to Cloudflare-ready caching, it's your personal speed stack, engineered for you.
 
-<img src="https://speedifypress.com/wp-content/uploads/2025/12/speedify_screenshot_2-1.jpg" alt="SpeedifyPress Dashboard" />
+<img src="https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_2.jpg" alt="SpeedifyPress Dashboard" />
 
 # 🔑 Key Capabilities
+
+### Community Edition (this repository)
 
 - **Unused CSS Handling (Done Right)**  
   Smart removal of unused CSS with a custom approach that avoids common pitfalls of other solutions.
 
 - **Advanced Page Caching**  
-  Cache pages with full support for language/currency plugins, background processing, and seamless Cloudflare integration.
-
-- **Cache All of WooCommerce**  
-  Cache WooCommerce without worrying about nonces and hardcoded user info. Even works on the cart and checkout pages. 
-
-- **Cache Logged In Users**  
-  The cache works even for logged in users with dynamic information on the page. Yes, really. 
+  Cache pages with full support for language/currency plugins
 
 - **JavaScript Delay**  
   Delay JavaScript for better performance — with fine-tuned control for real-world use cases. You'll get this working for all sites. 
@@ -31,15 +27,28 @@ SpeedifyPress is a performance optimization toolkit for WordPress, built for dev
 
 - **HTML Lazyloading**  
   Defer rendering of below-the-fold HTML for a faster initial paint.
-
-- **HTML Find/Replace**  
-  Modify your site's HTML on-the-fly with advanced find/replace rules — ideal for agency or power users.
-
-- **Cloudflare Worker Script**  
-  Use a custom Cloudflare Worker for intelligent, edge-level caching — with an easy way to clear the cache.
-
+  
 - **Expert Font Loading**  
   Automatically preload the right fonts and fall back to fast system fonts on mobile where appropriate.
+
+- **Remove Bloar**  
+  Quick and easy removal of all of WordPress' mostly bloaty features
+
+### Pro Edition ([https://speedifypress.com/go-pro](https://speedifypress.com/go-pro))
+
+- **Cloudflare Integration**  
+  Use a custom Cloudflare Worker for intelligent, edge-level caching — with an easy way to clear the cache.
+
+- **Cache All of WooCommerce**  
+  Cache WooCommerce without worrying about nonces and hardcoded user info. Even works on the cart and checkout pages. 
+
+- **Cache Logged In Users**  
+  The cache works even for logged in users with dynamic information on the page. Yes, really. 
+
+- **HTML Find/Replace**  
+  Modify your site's HTML on-the-fly with advanced find/replace rules — ideal for agency or power users.  
+
+
 
 ## ⚡ Quick Start
 
@@ -67,22 +76,27 @@ Full documentation and support info is available [here](https://github.com/Speed
 
   <p>
     <a href='https://speedifypress.com/go-pro' target='_blank'>
-        <img src='https://speedifypress.com/wp-content/uploads/2025/12/speedify_screenshot_2.jpg' alt='SpeedifyPress Cache Settings' />    
+        <img src='https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_2.jpg' alt='SpeedifyPress Cache Settings' />    
     </a>
   </p>
   <p>
     <a href='https://speedifypress.com/go-pro' target='_blank'>
-        <img src='https://speedifypress.com/wp-content/uploads/2025/12/speedify_screenshot_3.jpg' alt='SpeedifyPress CSS Settings' />
+        <img src='https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_3.jpg' alt='SpeedifyPress CSS Settings' />
     </a>
   </p>
   <p>
     <a href='https://speedifypress.com/go-pro' target='_blank'>
-        <img src='https://speedifypress.com/wp-content/uploads/2025/12/speedify_screenshot_4.jpg' alt='SpeedifyPress JavaScript Settings' />
+        <img src='https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_4.jpg' alt='SpeedifyPress JavaScript Settings' />
     </a>
   </p>
   <p>
     <a href='https://speedifypress.com/go-pro' target='_blank'>    
-        <img src='https://speedifypress.com/wp-content/uploads/2025/12/speedify_screenshot_5.jpg' alt='SpeedifyPress Font Settings' />
+        <img src='https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_5.jpg' alt='SpeedifyPress Image Settings' />
+    </a>
+  </p>
+  <p>
+    <a href='https://speedifypress.com/go-pro' target='_blank'>    
+        <img src='https://speedifypress.com/wp-content/uploads/2026/01/speedifypress_screen_6.jpg' alt='SpeedifyPress Bloat Settings' />
     </a>
   </p>
   
@@ -91,21 +105,26 @@ Full documentation and support info is available [here](https://github.com/Speed
 SpeedifyPress is licensed under the **GNU General Public License v3.0 or later (GPL)**.  
 You are free to use, study, modify, and redistribute the source code under the terms of the GPL.
 
-### Free Plan
+### Community Edition
 
 The code is GPL licensed. You are free to modify it as you like. However, we would like to be able to contact you with essential version and security information. We therefore lock
 plugin activaton behind a free subscription, requiring an email address. This gives you:
 
-- Access to all the plugin features except the Cloudflare integration (which isn't included in this repo)
+- Access to all the plugin features except:
+  - The Cloudflare integration
+  - Logged in cache with area exclusions (cache every page, for everyone)
+  - WooCommerce caching (easily cache shop and product pages)
+  - Advanced HTML Find/Replace
+  - Code Insertion
 - A single site license
 
 Of course, you're free to modify the code if you'd prefer not to use a subscription.
 
-### Paid Plan
+### Pro Edition
 
 A paid subscription unlocks:
 
-- Access to all the plugin features including the Cloudflare integration
+- Access to all the plugin features including the Cloudflare integration and logged-in caching
 - An unlimited site license
 - Personal installation and configuration support  
 - Find out more at [https://speedifypress.com/go-pro](https://speedifypress.com/go-pro)

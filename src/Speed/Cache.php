@@ -382,8 +382,15 @@ class Cache {
         $html = self::save_cache($cache_file,$html);
         
         //$url has now been cached, update links index
-        //if this is a post or a page
-        if ( is_singular( array( 'post', 'page' ) ) ) {
+        //if this is a top of funnel page
+        if (
+            is_front_page()
+            || is_home()
+            || is_shop()
+            || is_singular( array( 'post', 'page', 'product' ) )
+            || is_category()
+            || is_product_category()
+        ) {
             self::write_cached_uri($url);    
         }
 

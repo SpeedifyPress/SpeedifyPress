@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.78.4
+Version: 0.80.02
 Text Domain: speedify-press
 Author URI: https://github.com/acid-drop
 */
@@ -46,6 +46,9 @@ $enabled = SPRESS\App\Config::check_enabled();
 if($enabled === false) {
 	return;
 }
+
+//Run the bloat functions
+SPRESS\Speed\Bloat::init();
 
 //Run the main plugin functions
 SPRESS\Speed::init();
