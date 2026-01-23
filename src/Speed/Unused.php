@@ -1424,7 +1424,7 @@ class Unused {
      * @return string|false The content at the URL, or false if it couldn't
      *     be fetched.
      */
-    protected static function fetch($url) {
+    public static function fetch($url,$extension='css') {
 
         self::debug("FETCH $url");
 
@@ -1432,9 +1432,9 @@ class Unused {
 
         self::debug("FILE $file");
 
-        if ($file && file_exists($file) && strtolower(pathinfo($file, PATHINFO_EXTENSION)) === 'css') {
+        if ($file && file_exists($file) && strtolower(pathinfo($file, PATHINFO_EXTENSION)) === $extension) {
             $css = file_get_contents($file);
-            if ($css !== false) self::$raw_css[$url] = $css;
+            if ($css !== false && $extension === 'css') self::$raw_css[$url] = $css;
             return $css;
         }
 
@@ -1455,7 +1455,9 @@ class Unused {
         }
 
         if ($css !== false && $css !== null) {
-            self::$raw_css[$url] = $css;
+            if($extension === 'css') {
+                self::$raw_css[$url] = $css;
+            }
             return $css;
         }
 

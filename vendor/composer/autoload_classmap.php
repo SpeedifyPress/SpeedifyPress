@@ -78,6 +78,7 @@ return array(
     'SPRESS\\Dependencies\\simplehtmldom\\HtmlWeb' => $baseDir . '/src/Dependencies/simplehtmldom/HtmlWeb.php',
     'SPRESS\\RestApi' => $baseDir . '/src/RestApi.php',
     'SPRESS\\Speed' => $baseDir . '/src/Speed.php',
+    'SPRESS\\Speed\\Bloat' => $baseDir . '/src/Speed/Bloat.php',
     'SPRESS\\Speed\\CSS' => $baseDir . '/src/Speed/CSS.php',
     'SPRESS\\Speed\\Cache' => $baseDir . '/src/Speed/Cache.php',
     'SPRESS\\Speed\\JS' => $baseDir . '/src/Speed/JS.php',

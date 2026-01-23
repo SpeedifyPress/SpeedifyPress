@@ -5,6 +5,7 @@ namespace SPRESS\Speed;
 use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Speed\CSS;
+use SPRESS\Speed\Unused;
 
 use SPRESS\Dependencies\simplehtmldom\HtmlDocument;
 use SPRESS\Dependencies\MatthiasMullie\Minify;
@@ -17,6 +18,8 @@ use SPRESS\Dependencies\MatthiasMullie\Minify;
  * @package SPRESS
  */
 class JS {
+
+    public static $force_js_inline;
 
     public static $defer_js;       
     public static $defer_exclude;
@@ -38,7 +41,8 @@ class JS {
 
 	public static function init() {
 
-        //Get configuration values
+        //Get configuration values        
+        self::$force_js_inline = Config::get('speed_js','force_js_inline');        
         self::$defer_js = Config::get('speed_js','defer_js');        
         self::$defer_exclude = Config::get('speed_js','defer_exclude');        
         self::$defer_exclude_urls = Config::get('speed_js','defer_exclude_urls');        
@@ -92,7 +96,15 @@ class JS {
         $start_time = microtime(true);
 
         // simple_html_dom.
-        $dom = (new HtmlDocument(""))->load($output,true, false);          
+        $dom = (new HtmlDocument(""))->load($output,true, false);   
+        
+        //Rewrite inline
+        if(self::$force_js_inline != "") {
+
+            $dom = self::rewrite_inline($dom, self::$force_js_inline);
+            
+        }
+            
 
         //Rewrite defer
         if(self::$defer_js == "true" && self::is_blocked_url('defer') === false) {
@@ -107,7 +119,7 @@ class JS {
             $dom = self::rewrite_delay($dom, self::$delay_exclude);
 
         } 
-    
+
         $html = $dom->outertext;
 
         $end_time = microtime(true);
@@ -125,6 +137,33 @@ class JS {
     
     public static function rewrite_delay($dom, $exclude_scripts) {
         return self::processScripts($dom, $exclude_scripts, [self::class, 'handleDelayScript']);
+    }
+
+    public static function rewrite_inline($dom, $inline_scripts) {
+        
+        $inline_scripts_array = array_filter(array_map('trim', explode("\n", $inline_scripts)));
+
+        $scripts = $dom->find('script');
+    
+        foreach ((array) $scripts AS $script) {
+            $isIncluded = self::isIncluded($script, $inline_scripts_array);
+            if($isIncluded) {
+                //We need to get the contents of the script using file_get_contents
+                $local_js = Unused::fetch($script->src,"js");
+                if($local_js) {
+                    //Minify
+                    $minifier = new Minify\JS($local_js);
+                    $local_js = $minifier->minify();
+                    $script->innertext = $local_js;
+                }
+                //Now we turn it into an inline script
+                $script->setAttribute('data-orig-src', basename($script->src));
+                unset($script->src);
+            }
+        }        
+
+        return $dom;
+
     }
     
     /**
@@ -217,6 +256,18 @@ class JS {
             }
         }
         return false;
+    }
+
+    /**
+     * Checks if a script is in the inclusion list.
+     * @param object $script - The script element.
+     * @param array $include_scripts_array - List of included scripts.
+     * @return bool - True if the script is included, false otherwise.
+     */
+    private static function isIncluded($script, $include_scripts_array) {
+        //isExcluded essentially works an an inIncluded too
+        //if you pass include scripts array to it
+        return self::isExcluded($script, $include_scripts_array);
     }
     
     /**

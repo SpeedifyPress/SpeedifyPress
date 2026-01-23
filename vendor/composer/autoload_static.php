@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4
+class ComposerStaticInit10635c2bd29a6ce227a8847cc4385a27
 {
     public static $prefixLengthsPsr4 = array (
         'S' => 
@@ -93,6 +93,7 @@ class ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4
         'SPRESS\\Dependencies\\simplehtmldom\\HtmlWeb' => __DIR__ . '/../..' . '/src/Dependencies/simplehtmldom/HtmlWeb.php',
         'SPRESS\\RestApi' => __DIR__ . '/../..' . '/src/RestApi.php',
         'SPRESS\\Speed' => __DIR__ . '/../..' . '/src/Speed.php',
+        'SPRESS\\Speed\\Bloat' => __DIR__ . '/../..' . '/src/Speed/Bloat.php',
         'SPRESS\\Speed\\CSS' => __DIR__ . '/../..' . '/src/Speed/CSS.php',
         'SPRESS\\Speed\\Cache' => __DIR__ . '/../..' . '/src/Speed/Cache.php',
         'SPRESS\\Speed\\JS' => __DIR__ . '/../..' . '/src/Speed/JS.php',
@@ -102,9 +103,9 @@ class ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitc2a65b1b31cf4cc48fb5d9cce87707b4::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit10635c2bd29a6ce227a8847cc4385a27::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit10635c2bd29a6ce227a8847cc4385a27::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit10635c2bd29a6ce227a8847cc4385a27::$classMap;
 
         }, null, ClassLoader::class);
     }

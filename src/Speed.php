@@ -52,6 +52,9 @@ class Speed {
      */
     public static function init() {
 
+        //Check for a REQUEST_URI request csrf token
+        self::serve_csrf_token();
+
         //Set the hostname
         self::$hostname = parse_url(site_url(), PHP_URL_HOST);
 
@@ -63,7 +66,6 @@ class Speed {
 
         // Initialize JS  speed optimizations
         JS::init();        
-
         
         // Start output buffering and process output
         // Hook to init to ensure it runs before other plugins
@@ -85,6 +87,53 @@ class Speed {
 
     }
 
+    /**
+     * Serves the CSRF token as a JSON response.
+     *
+     * This function is only invoked if the original URI is '/_csrf'. It generates
+     * a CSRF token using SPEED::generate_csrf_token() and serves it as a JSON
+     * response with Content-Type 'application/json' and Cache-Control 'no-store,
+     * no-cache, must-revalidate, max-age=0'. The response is also marked with
+     * the 'Pragma: no-cache' header.
+     *
+     * @param array $headers An array of extra headers to add to the response.
+     *
+     * @return void
+     */
+    public static function serve_csrf_token($headers=array()) {
+        
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
+        if ($path === '/_csrf' || basename($path) === '_csrf') {
+
+            // Ensure a binding exists BEFORE generating the token
+            if (empty($_COOKIE['spdy_guest'])) {
+                Cache::generate_guest_cookie();
+            }            
+
+            $page_url = isset($_SERVER['HTTP_X_PAGE_URL']) ? $_SERVER['HTTP_X_PAGE_URL'] : SPEED::get_url();
+            $csrf_token = Speed::generate_csrf_token($page_url);
+
+            header('X-CSRF-Token: ' . $csrf_token);
+            header('X-Content-Type-Options: nosniff');
+            header_remove('ETag');
+            header_remove('Last-Modified');            
+            header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+            header('Pragma: no-cache');
+            header('Content-Type: text/plain; charset=utf-8');
+
+            //Add extra headers from $headers
+            foreach($headers as $key=>$header) {
+                header($key.': '.$header);
+            }
+
+            // For HEAD, no body needed
+            http_response_code(204); // No Content
+
+            exit;
+
+        }
+
+    }
 
 
     /**
@@ -401,7 +450,7 @@ class Speed {
      * @return \simple_html_dom The modified DOM structure with the stand-in
      *                          script included.
      */
-    private static function add_template_js($dom) {
+    private static function add_template_image_restore_js($dom) {
         
         //Set file
         $template_js = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/restore_template_content.js');
@@ -427,79 +476,7 @@ class Speed {
         return $dom;
 
     }
-
-
-
-
-    /**
-     * Injects code into the head and body of the document that is intended to
-     * restore certain functionality related to WooCommerce. Specifically, this
-     * function injects code that handles the token injection for the
-     * WooCommerce REST API and nulls out the shopping cart on cached pages.
-     *
-     * @param \simple_html_dom $dom The DOM structure to modify.
-     * @return \simple_html_dom The modified DOM structure with the injected code.
-     */
-    private static function add_woo_injects($dom) {
-     
-        //Set token injection
-        $woo_rest_token_injection = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/woo_rest_token_injection.js');
-
-        //Minify it
-        $minifier = new Minify\JS($woo_rest_token_injection);
-        $woo_rest_token_injection = $minifier->minify();
-
-        $prefix = '';
-
-        if(Config::get('speed_cache', 'replace_woo_nonces') === 'true') {
-            $prefix .= 'window.spdy_replaceWooNonces = true;';
-        }
-
-        if(Config::get('speed_cache', 'replace_ajax_nonces') === 'true') {
-            $prefix .= 'window.spdy_replaceAjaxNonces = true;';
-        }
-
-        if($prefix !== '') {
-            $woo_rest_token_injection = $prefix . $woo_rest_token_injection;
-        }
-        
-
-        // Create a new script element
-        $scriptElement = $dom->createElement('script');
-        $scriptElement->setAttribute('rel', 'js-extra woo_rest_token_injection');
-        $scriptElement->innertext = $woo_rest_token_injection;
-
-        // Append the script element directly to the head
-        $headElement = $dom->find('head', 0);
-        if($headElement) {
-            $headElement->children(0)->outertext = $scriptElement->outertext . $headElement->children(0)->outertext;        
-        }
-
-        //Always exclude
-        JS::$delay_exclude .= "\n" . "woo_rest_token_injection";
-
-        //Set cart nulling
-        $woo_cart_nulling = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/woo_null_cached_page_cart.js');
-
-        //Minify it
-        $minifier = new Minify\JS($woo_cart_nulling);
-        $woo_cart_nulling = $minifier->minify();        
-
-        // Create a new script element
-        $scriptElement = $dom->createElement('script');
-        $scriptElement->setAttribute('rel', 'js-extra woo_cart_nulling');
-        $scriptElement->innertext = $woo_cart_nulling;
-
-        //Add before body end
-        $body = $dom->find('body', 0);
-        $body->appendChild($scriptElement);
-
-        //Always exclude
-        JS::$delay_exclude .= "\n" . "woo_cart_nulling";           
-
-        return $dom;
-
-    }      
+   
 
     /**
      * Embeds a minified jQuery stand-in script into the provided DOM structure.
@@ -537,331 +514,6 @@ class Speed {
         return $dom;
 
     }    
-
-    /**
-     * Modifies the content of elements with class="logged_in_exception" to avoid caching sensitive information.
-     *
-     * If the element has children, it will keep only the HTML of its children.
-     * If not, it will fill the text node with Xs of equal length to the original text.
-     *
-     * @param \simple_html_dom $dom The DOM structure to modify.
-     * @return \simple_html_dom The modified DOM structure with the sensitive information removed.
-     */
-    private static function add_logged_in_users_exceptions($dom) {
-
-        // Select every element with class="logged_in_exception"
-        foreach ($dom->find('.logged_in_exception') as $el) {
-
-            $children = $el->children();
-
-            //Custom script element
-            if($el->tag == 'script') {
-
-                if($el->hasClass('custom') && $el->hasAttribute('data-splog-cid')) {
-
-                    //This has custom content, get it
-                    $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
-                    foreach($exceptions as $count=>$exception) {
-                        if(md5($exception['custom_html']) == $el->getAttribute('data-splog-cid')) {
-                            $inner = $exception['custom_html'];
-                            break;
-                        }
-                    }                
-
-                } else { 
-
-                    $inner = '';
-
-                }
-
-                $el->outertext = str_replace($el->innertext, $inner, $el->outertext);  
-
-            
-            //Element with children
-            } else if (!empty($children)) {            
-
-                if($el->hasClass('block-3rows') ||
-                   $el->hasClass('block-2rows') ||
-                   $el->hasClass('block-1row')
-                ) {
-
-                    //Add the skeleton
-                    $num_rows = $el->hasClass('block-3rows') ? 3 : ($el->hasClass('block-2rows') ? 2 : 1);
-                    $inner = '<div role="status" class="skeleton-holder animate-pulse">';
-
-                                for($i=0; $i<$num_rows; $i++) {
-                                    $inner .= '<div class="row">
-                                        <div>
-                                            <div class="inner_row"></div>
-                                            <div class="under-row"></div>
-                                        </div>
-                                        <div class="right-row"></div>
-                                    </div>';
-                                }
-                            $inner .= '</div>';
-
-                } else if($el->hasClass('custom') && $el->hasAttribute('data-splog-cid')) {
-
-                    //This has custom content, get it
-                    $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
-                    foreach($exceptions as $count=>$exception) {
-                        if(md5($exception['custom_html']) == $el->getAttribute('data-splog-cid')) {
-                            $inner = $exception['custom_html'];
-                            break;
-                        }
-                    }
-
-
-                } else {
-
-
-                    // grab its inner HTML…
-                    $inner = $el->innertext;
-                    // mask every run of visible characters between tags, leave tags & whitespace alone
-                    $inner = preg_replace_callback(
-                        '/>([^<]+)</u',
-                        function($m) {
-                            // $m[1] is the text chunk; replace only non-whitespace with '-'
-                            return '>' . preg_replace('/\S/u','-',$m[1]) . '<';
-                        },
-                        $inner
-                    );      
-                
-
-                }
-
-                $el->outertext = str_replace($el->innertext, $inner, $el->outertext);  
-
-
-            } else {
-
-                //If it's an image
-                if($el->tag == 'img') {
-
-                    $el->setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==');
-                    $el->setAttribute('srcset', '');
-
-
-                } else {
-
-                    // No element‐children: get the original text length
-                    $originalText = $el->plaintext;
-                    $length       = mb_strlen($originalText);
-                    // Replace the text node with Xs of equal length
-                    if($length > 0) {
-                        $el->innertext = str_repeat('-', $length);
-                    }
-
-                }
-
-            }
-
-
-
-        }
-
-        // Return the updated HTML
-        return $dom;     
-
-    }
-
-    /**
-     * Adds the required code to the page to replace sensitive information with a shimmer effect, 
-     * as well as a worker script to update the page in real time when the user logs in or out.
-     * 
-     * @param string $html The HTML output.
-     * @return string The modified HTML output with the sensitive information removed.
-     */
-    private static function add_logged_in_users_exceptions_code_idents($dom) {
-
-        $exceptions = Config::get('speed_cache','cache_logged_in_users_exceptions');
-
-        if(!$exceptions) {
-            return $dom;
-        }
-
-        $used_skeletons = array();
-        $added_ident = false;
-   
-        //For each exception tag with a new CSS class 'logged_in_exception'
-        foreach($exceptions as $count=>$exception) {
-
-            $element_to_find = $exception['find'];
-            $skeleton = str_replace(" ","",$exception['skeleton']);
-            $custom_ident = md5((string) ($exception['custom_html'] ?? ''));
-            $delay_js = $exception['delay_js'];
-        
-            //$html = self::add_class_if_exists($html,$exception,'logged_in_exception',$count);
-            foreach ($dom->find($element_to_find) as $el) {
-                
-                //If element has an id, set that as the identifier
-                if($el->hasAttribute('id')) {
-                    $ident = $el->getAttribute('id');
-                } else {
-                    $ident = substr(md5(str_replace($el->innertext,"",$el->outertext)."-".$count),0,6);
-                }
-                $el->setAttribute('data-splog-uid', $ident);
-                $el->addClass('logged_in_exception');
-                $el->addClass($skeleton);
-                $el->setAttribute('data-splog-cid', $custom_ident);
-                if($delay_js === 'true') {
-                    $el->addClass('spress_do_delay_js');
-                }
-
-                $added_ident = true;
-
-            }
-
-            $used_skeletons[] = $skeleton;     
-
-        }     
-         
-        //If nothing added, return
-        if($added_ident == false) {
-            return $dom;
-        }
-        
-        //Set style
-        $head_code_style = '<style>';
-
-
-        if(in_array('block-3rows', $used_skeletons) ||
-        in_array('block-2rows', $used_skeletons) ||
-        in_array('block-1row', $used_skeletons)) {
-
-            $head_code_style .= '.skeleton-holder {
-                box-sizing: border-box;
-                margin-bottom: 16px;
-                padding: 24px;
-                border: 0.666667px solid rgb(229, 231, 235);
-                border-radius: 4px;
-                box-shadow: 0px 1px 3px 0px rgba(0, 0, 0, 0.1),
-                            0px 1px 2px -1px rgba(0, 0, 0, 0.1);
-            }
-
-            .skeleton-holder .row {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                padding: 16px 0;
-                margin-bottom: 20px;
-                border-bottom: 1px solid #e4e4e4;
-                box-sizing: border-box;
-            }
-
-            .skeleton-holder .row > div:first-child {
-                display: flex;
-                flex-direction: column;
-                align-items: flex-start;
-                width: 100%; /* critical for containment */
-            }
-
-            .skeleton-holder .row .inner_row,
-            .skeleton-holder .row .under-row,
-            .skeleton-holder .row .right-row {
-                box-sizing: border-box;
-                border: 0;
-                border-radius: 9999px;
-            }
-
-            .skeleton-holder .row .inner_row {
-                margin-bottom: 10px;
-                height: 10px;
-                width: 96px;
-                background-color: rgb(209, 213, 219);
-            }
-
-            .skeleton-holder .row .under-row {
-                height: 8px;
-                width: 128px;
-                background-color: rgb(229, 231, 235);
-            }
-
-            .skeleton-holder .row .right-row {
-                height: 10px;
-                width: 48px;
-                background-color: rgb(209, 213, 219);
-            }
-
-            .animate-pulse {
-                animation: pulse 2s cubic-bezier(.4,0,.6,1) infinite;
-            }
-
-            @keyframes pulse {
-                0%, 100% {
-                    opacity: 1;
-                }
-                50% {
-                    opacity: 0.4;
-                }
-            }';
-
-
-        } 
-                            
-        if(in_array('elementshimmer', $used_skeletons)) {
-            
-            $head_code_style .= '
-            .logged_in_exception.elementshimmer  {
-                position: relative !important;
-                overflow: hidden !important;
-                /* for text elements, hide the text */
-                color: transparent !important;
-                /*display:inline-flex !important;*/
-                filter: blur(2px);
-                transition: filter 0.5s ease;                
-            }
-
-            .logged_in_exception.elementshimmer::after {
-                content: "";
-                position: absolute;
-                top: 0; left: -150%;
-                width: 150%; height: 100%;
-                background: linear-gradient(
-                    90deg,
-                    rgba(255,255,255,0) 0%,
-                    rgba(255,255,255,0.6) 50%,
-                    rgba(255,255,255,0) 100%
-                );
-                animation: shimmer 1.5s infinite;
-            }
-
-            @keyframes shimmer {
-                0%   { transform: translateX(0); }
-                100% { transform: translateX(100%); }
-            }';
-        
-        }
-
-        $head_code_style .= '
-        </style>';
-
-        $minifier = new Minify\CSS($head_code_style);
-        $head_code_style = $minifier->minify();        
-
-        //Set worker code
-        $worker_code = file_get_contents(SPRESS_PLUGIN_DIR . '/assets/logged_in_cache_worker.js');
-        
-        //Minify it
-        $minifier = new Minify\JS($worker_code);
-        $worker_code = $minifier->minify();        
-
-        // Create a new script element
-        $scriptElement = $dom->createElement('script');
-        $scriptElement->setAttribute('rel', 'js-extra speed-js spress_logged_in_cache_worker');
-        $scriptElement->innertext = $worker_code;
-
-        //Add as first child of head
-        //Along with style code
-        $headElement = $dom->find('head', 0); 
-        if($headElement) {
-            $headElement->children(0)->outertext = $scriptElement->outertext . $head_code_style . $headElement->children(0)->outertext;                              
-        }  
-
-        return $dom;
-        
-    }
-
 
     private static function add_gtag($dom) {
 
@@ -1241,51 +893,6 @@ class Speed {
 
     }
 
-    private static function add_partytown($dom) {
-
-        $party_conf = Config::get('speed_css', 'include_partytown');
-
-        if($party_conf) {
-
-            $include_partytown = array_filter(explode("\n", $party_conf));
-
-            // Find all <script> tags in the DOM
-            $scripts = $dom->find('script');
-
-            // Iterate over each <script> tag
-            foreach ((array)$scripts as $script) {
-                // Initialize a flag to mark if any pattern matches
-                $patternFound = false;
-
-                // Check each pattern in the include_partytown array
-                foreach ($include_partytown as $pattern) {
-                    // Check if the script has a 'src' attribute and search within it
-                    if (isset($script->src) && strpos($script->src, $pattern) !== false) {
-                        $patternFound = true;
-                        break; // Exit loop if a match is found in the 'src'
-                    }
-                    
-                    // Check inline content if no match found in 'src'
-                    if (strpos($script->innertext, $pattern) !== false) {
-                        $patternFound = true;
-                        break; // Exit loop if a match is found in inline content
-                    }
-                }
-
-                // If a pattern was found change type
-                if ($patternFound) {
-                    $script->setAttribute('type', 'text/partytown');
-                    $script->setAttribute('defer', 'defer');
-                }
-            }
-
-        }
-
-
-        return $dom;
-
-    }
-
 
     /**
      * Adds a minified Intersection Observer script to the provided DOM structure.
@@ -1476,11 +1083,11 @@ class Speed {
             //add jquery standing
             $dom = self::add_jquery_standin($dom);
 
-            //add template restore JS
+            //add template and image restore JS
             //if delay JS is active 
             //(otherwise it'll hide elements JS relies on)
-            if(Config::get('speed_js','delay_js') === "true") {
-                $dom = self::add_template_js($dom);                
+            if(Config::get('speed_js','delay_js') === "true" || Config::get('speed_code','preload_image') != "") {
+                $dom = self::add_template_image_restore_js($dom);                
             }            
 
             //Force system fonts for mobile
@@ -1502,11 +1109,17 @@ class Speed {
                 $dom = self::add_gtag($dom);
             }     
 
-            //add invisible elements
+            //add invisible elements and ensure their onload restoration
             //if delay JS is active 
             //(otherwise it'll hide elements JS relies on)
-            if(Config::get('speed_js','delay_js') === "true") {
-                $dom = self::add_invisible_elements($dom);  
+            if(Config::get('speed_js','delay_js') === "true" || Config::get('speed_code','preload_image') != "") {
+                
+                //Don't add them in if we have non-delayed scripts that might need that HTML immediately
+                if(trim(Config::get('speed_js','delay_exclude')) == "js-extra" || Config::get('speed_js','delay_exclude') == "") {
+                    $dom = self::add_invisible_elements($dom);  
+                }
+                
+                //Ensure onload restore of content and images
                 $dom = self::set_onload($dom);            
             }
             
@@ -1614,51 +1227,6 @@ HTML " . number_format($elapsed_time,2) . "-->";
         }
 
         return $dom;
-
-    }
-
-    /**
-     * Adds custom code to the <head> and <body> sections of the HTML output.
-     *
-     * This function takes the HTML output as a simple_html_dom object and adds
-     * custom code to the <head> and <body> sections based on the configuration
-     * settings. The custom code is retrieved from the configuration settings
-     * as 'head_code' and 'body_code'.
-     *
-     * @param simple_html_dom $dom The HTML output as a simple_html_dom object.
-     * @return simple_html_dom The modified HTML output with the custom code added.
-     */
-    public static function code_insertions($dom) {
-
-        //Get replacements
-        $head_code = Config::get('speed_insertion', 'head_code');
-        $body_code = Config::get('speed_insertion', 'body_code');
-
-        //Process replacements
-        if($head_code) {
-
-            $headElement = $dom->find('head', 0);
-            if($headElement) {
-                $headElement->children(0)->outertext = $head_code . $headElement->children(0)->outertext;        
-            }                  
-            
-        }            
-
-        if($body_code) {
-
-            //Add before body end
-            $body = $dom->find('body', 0);
-            $scriptElement = $dom->createElement('template');
-            $scriptElement->outertext = $body_code;
-            $body->appendChild($scriptElement);                
-            
-        }            
-
-
-
-
-        return $dom;
-
 
     }
 
@@ -1910,172 +1478,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
 
         return $dom;
 
-    }
-
-    /**
-     * Perform find-and-replace operations on the HTML output.
-     *
-     * @param string $html The HTML output.
-     * @param bool $strip_markers Whether to strip find-and-replace markers.
-     * @return string The modified HTML output.
-     *
-     * The replace operations are defined in the configuration under the key
-     * "speed_find_replace". The operations are performed in the order they
-     * appear in the configuration.
-     *
-     * Each operation is defined as an associative array with the following
-     * keys:
-     *
-     * - find: The string to search for.
-     * - replace: The string to replace with.
-     * - scope: The scope of the replacement. If set to "", the replacement
-     *   is performed on the entire string. If set to "first", the replacement
-     *   is only performed on the first occurrence of the string.
-     */
-    private static function find_replace($html) {
-
-        //Get replacements
-        $replacements = Config::get('speed_replace', 'speed_find_replace');
-
-        //See if we have any element scopes
-        $hasElementScopes = false;
-        if ($replacements && is_array($replacements)) {
-            foreach ($replacements as $rep) {
-                $scope = $rep['scope'];
-                if($scope == "first element" || $scope == "all elements") {
-                    $hasElementScopes = true;
-                }
-            }
-        }
-
-        //If we have element scopes, use simple_html_dom
-        if($hasElementScopes) {
-
-            // simple_html_dom.
-            $dom = (new HtmlDocument(""))->load($html,true, false);     
-
-            //Process replacements
-            foreach ($replacements as $rep) {
-
-                $find = $rep['find'];
-                $replacementText = $rep['replace'];
-                $scope = $rep['scope'];                
-
-                if($scope == "first element" || $scope == "all elements") {
-
-                    $ruleId = substr(md5((string)$find . '||' . (string)$replacementText), 0, 12);
-                
-                    foreach ($dom->find($find) as $el) {
-
-                        // Skip if this element was already processed by this exact rule
-                        if ($el->getAttribute('data-replaced') === $ruleId) {
-                            continue;
-                        }                 
-                        
-                        $outertext = $replacementText;
-                        $outertext = preg_replace(
-                            '/^<([a-z0-9-]+)(\s|>)/i',
-                            '<$1 data-replaced="'.$ruleId.'"$2',
-                            $outertext,
-                            1
-                        );                        
-                        
-                        $el->outertext = $outertext;
-                        if($scope == "first element") {
-                            break;
-                        }
-
-                    }
-
-                }
-
-
-            }
-
-            $html = $dom->outertext;
-
-        }
-
-
-        if ($replacements && is_array($replacements)) {
-            foreach ($replacements as $rep) {
-
-                $find = $rep['find'] ?? '';
-                $replacementText = $rep['replace'] ?? '';
-                $scope = $rep['scope'] ?? '';
-
-                //CSS selector find/replace
-                if($scope == "first element" || $scope == "all elements") {
-
-
-                    continue;
-                    
-                    
-                } else {
-
-                    //Simple text find replace
-
-                    // Ensure we have a string 
-                    if (!is_string($html)) {
-                        $html = (string) $html;
-                    }
-
-                    // Ignore empty find needles to avoid runaway replacements.
-                    if ($find === '' || $find === null) {
-                        continue;
-                    }
-
-                    // Prepare the marked replacement text using raw markers.
-                    $markedReplacement = '@@@replaced@@@' . $replacementText . '@@@/replaced@@@';
-
-                    // Build a pattern that captures protected regions (already replaced).
-                    $pattern = '/((?:@@@replaced@@@).*?(?:@@@\/replaced@@@))/s';
-
-                    // Split the HTML into segments that are either within markers or not.
-                    $parts = preg_split($pattern, (string) $html, -1, PREG_SPLIT_DELIM_CAPTURE);
-
-                    // If regex fails for any reason, safely fall back to a direct replace path.
-                    if ($parts === false) {
-                        if ($scope === "" || $scope === "all" || $scope === "all text") {
-                            $html = str_replace($find, $markedReplacement, $html);
-                        } elseif ($scope === "first text" || $scope === "first") {
-                            $html = preg_replace('@' . preg_quote($find, '@') . '@', $markedReplacement, $html, 1);
-                        }
-                        continue;
-                    }
-
-                    // Process only segments not already within markers.
-                    foreach ($parts as $index => $segment) {
-                        // Segment is considered protected if it's exactly a marker block.
-                        $isMarked = (bool) preg_match('/^@@@replaced@@@.*?@@@\/replaced@@@$/s', $segment);
-
-                        if (!$isMarked) {
-                            if ($scope === "" || $scope === "all" || $scope === "all text") {
-                                $parts[$index] = str_replace($find, $markedReplacement, $segment);
-                            } elseif ($scope === "first text" || $scope === "first") {
-                                $parts[$index] = preg_replace(
-                                    '@' . preg_quote($find, '@') . '@',
-                                    $markedReplacement,
-                                    $segment,
-                                    1
-                                );
-                            } else {
-                                // Unknown "text" scope → default to "all".
-                                $parts[$index] = str_replace($find, $markedReplacement, $segment);
-                            }
-                        }
-                    }
-
-                    // Reassemble the HTML.
-                    $html = implode('', $parts);
-
-
-                }
-            }
-        }
-        return $html;
-    }
-    
+    }    
 
     /**
      * Refreshes the simple_html_dom object
@@ -2966,5 +2369,56 @@ HTML " . number_format($elapsed_time,2) . "-->";
         ];
     }
 
+    ////////////////////////////
+    /**
+     * PRO methods
+     * See Speed/Pro
+     */
+    ////////////////////////////
+
+    /**
+     * Calls a method on the Pro class if it exists, otherwise returns 
+     * the given fallback value.
+     *
+     * @param string $method The name of the method to call.
+     * @param array $args The arguments to pass to the method.
+     * @param mixed $fallback The value to return if the method does not exist.
+     * @return mixed The result of calling the method, or the fallback value.
+     */
+    private static function call_pro(string $method, array $args, $fallback) {
+
+        $pro_class = \SPRESS\Speed\Pro::class;
+
+        // is_callable covers both "class exists" and "method exists"
+        if (is_callable([$pro_class, $method])) {
+            return $pro_class::$method(...$args);
+        }
+
+        return $fallback;
+    }    
+
+    private static function find_replace($html) {
+        return self::call_pro(__FUNCTION__, [$html], $html);
+    }
+
+    private static function add_woo_injects($dom) {
+        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    }
+
+    private static function add_logged_in_users_exceptions($dom) {
+        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    }
+
+    private static function add_logged_in_users_exceptions_code_idents($dom) {
+        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    }
+
+    private static function add_partytown($dom) {
+        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    }    
+
+    public static function code_insertions($dom) {
+        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    }    
 
 }

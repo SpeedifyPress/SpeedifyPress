@@ -239,7 +239,9 @@ class CSS {
             //Add invisible elements
             //if delay JS is active 
             //(otherwise it'll hide elements JS relies on)
-            if(Config::get('speed_js','delay_js') === "true") {
+            if(Config::get('speed_js','delay_js') === "true"
+            && (trim(Config::get('speed_js','delay_exclude')) == "js-extra" || Config::get('speed_js','delay_exclude') == "")
+            ) {
                 $dom = (new HtmlDocument(""))->load($output,true, false);   
                 $dom = Speed::add_invisible_elements($dom);  
                 $output = $dom->outertext;
@@ -669,12 +671,13 @@ class CSS {
                                     $blank_dataurl = 'data:font/woff2;base64,' . base64_encode(file_get_contents($blank_path));
 
                                     $families_js = "['" . implode("','", $families) . "']";
+                                    //Script to load in the dummy font
                                     $dummy_script = "<script rel='js-extra'>(function(){var families={$families_js};var src='{$blank_dataurl}';var desc={unicodeRange:'U+E000-F8FF',style:'normal',weight:'400'};function add(n){try{new FontFace(n,'url('+src+') format(\"woff2\")',desc).load().then(function(f){document.fonts.add(f)}).catch(function(){})}catch(e){}}function afterIdle(cb){if('requestIdleCallback'in window){requestIdleCallback(cb,{timeout:1000})}else{setTimeout(cb,0)}}requestAnimationFrame(function(){afterIdle(function(){families.forEach(add)})})})();</script>";
 
                                     $injections['head'][] = $dummy_script;
                             
                                     // Defer real inline icons
-                                    $injections['body'][] = "<span class='unused-invisible'><template data-spress-fonts='{$marker}' data-deferred='1'>" . "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style></template></span>";                                    
+                                    $injections['body'][] = "<span class='unused-invisible-interaction-only'><template data-spress-fonts='{$marker}' data-deferred='1'>" . "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style></template></span>";                                    
                                     
                                 } else {
 

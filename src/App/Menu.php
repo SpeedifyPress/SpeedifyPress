@@ -564,11 +564,14 @@ class Menu {
         $rest_url =  esc_url_raw( rest_url() );
 
         //Create a nonce for REST requests. The nonce will be verified in Auth::admin_permission_callback.
-        $rest_nonce = wp_create_nonce( 'wp_rest' );        
+        $rest_nonce = wp_create_nonce( 'wp_rest' );       
+        
+        //Is Woo installed?
+        $has_woo = (class_exists('WooCommerce') ? 'true' : 'false');
 
         // Output the necessary data for the frontend into a JavaScript object.
         // The restNonce property contains the nonce for authenticated REST API requests.
-        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url',resturl:'$rest_url',restNonce:'$rest_nonce'}</script>";        
+        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url',resturl:'$rest_url',restNonce:'$rest_nonce','has_woo':'$has_woo'}</script>";        
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';
