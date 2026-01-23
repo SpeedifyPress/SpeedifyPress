@@ -5,16 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 0.80.2 - 2025-01-23
+### 0.80.2 - 2026-01-23
 - Fix template/content loading order
 
-### 0.80.1 - 2025-01-22
+### 0.80.1 - 2026-01-22
 - Make font lazy load interaction only
 - Fix undelayed JS loading before template restore
 - License tweaks
 - Disable plugin in customizer
 
-### 0.80.0 - 2025-01-17
+### 0.80.0 - 2026-01-17
 - Add Bloat remover
 - Create community/pro editions
 - Update Cloudflare worker
@@ -24,13 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add Bloat Removal
 - Fix non serving of CSRF if cache not enabled
 
-### 0.78.7 - 2025-01-10
+### 0.78.7 - 2026-01-10
 - Minimize sidebar width
 
-### 0.78.6 - 2025-01-10
+### 0.78.6 - 2026-01-10
 - Allow CSRF to be served from main plugin
 
-### 0.78.5 - 2025-01-08
+### 0.78.5 - 2026-01-08
 - Allow individual scripts to have diff delay times
 
 ### 0.78.4 - 2025-12-16
