@@ -386,12 +386,13 @@ class Cache {
         if (
             is_front_page()
             || is_home()
-            || is_shop()
-            || is_singular( array( 'post', 'page', 'product' ) )
             || is_category()
-            || is_product_category()
+            || is_singular( array( 'post', 'page', 'product' ) )
+            || ( function_exists( 'is_shop' ) && is_shop() )
+            || ( function_exists( 'is_product_category' ) && is_product_category() )
+            || is_tax( 'product_cat' )
         ) {
-            self::write_cached_uri($url);    
+            self::write_cached_uri( $url );
         }
 
         return $html;
