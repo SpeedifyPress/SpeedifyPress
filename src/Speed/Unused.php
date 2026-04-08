@@ -2,6 +2,10 @@
 
 namespace SPRESS\Speed;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\Dependencies\Sabberworm\CSS\CSSList\AtRuleBlockList;
 use SPRESS\Dependencies\Sabberworm\CSS\CSSList\CSSList;
 use SPRESS\Dependencies\Sabberworm\CSS\CSSList\CSSBlockList;
@@ -14,6 +18,7 @@ use SPRESS\Dependencies\Sabberworm\CSS\RuleSet\DeclarationBlock;
 use SPRESS\Dependencies\Sabberworm\CSS\Value\URL;
 
 use SPRESS\App\Config;
+use SPRESS\Speed;
 
 use SPRESS\Dependencies\MatthiasMullie\Minify;
 use SPRESS\Dependencies\Wa72\Url\Url as WaUrl;
@@ -73,16 +78,9 @@ class Unused {
 
     protected static function debug($msg) {
         if (!self::$debug_enabled) return;
-        $ts = date('Y-m-d H:i:s');
+        $ts = gmdate('Y-m-d H:i:s');
         $line = "[$ts] $msg\n";
-        // Use FILE_APPEND and flock to avoid interleaving in concurrent runs.
-        $fh = @fopen(self::$debug_file, 'ab');
-        if ($fh) {
-            @flock($fh, LOCK_EX);
-            @fwrite($fh, $line);
-            @flock($fh, LOCK_UN);
-            @fclose($fh);
-        }
+        @file_put_contents(self::$debug_file, $line, FILE_APPEND | LOCK_EX);
     }    
 
     /**
@@ -181,8 +179,8 @@ class Unused {
         }
 
         //Debug used markup
-        self::debug("MARKUP " . print_r(self::$used_markup, true));
-        self::debug("VARS " . print_r(self::$css_variables, true));
+        self::debug("MARKUP " . wp_json_encode(self::$used_markup));
+        self::debug("VARS " . wp_json_encode(self::$css_variables));
 
         //Form return array
         return array("CSS"=>self::$stylesheets_css, 
@@ -555,12 +553,12 @@ class Unused {
         if (preg_match_all('/font-family\s*:\s*([^;]+);?/', $html, $matches)) {
             foreach ($matches[1] as $font) {
 
-                self::debug("FONT FINDER FONT IS " . print_r($font,true));
+                self::debug("FONT FINDER FONT IS " . wp_json_encode($font));
 
                 //  If it's using var(--some-var, optional-fallback), resolve:
                 if (preg_match('/var\(\s*(--[A-Za-z0-9_-]+)(?:\s*,\s*[^)]+)?\)/', $font, $m)) {
 
-                    self::debug("FONT FINDER " . print_r($m,true));
+                    self::debug("FONT FINDER " . wp_json_encode($m));
 
                     $var_name = $m[1];                    
                     if (isset(self::$css_variables[$var_name])) {
@@ -840,7 +838,7 @@ class Unused {
             if (!($value instanceof URL)) continue;
             $url = $value->getURL()->getString();
             if (preg_match('/^(https?|data):/', $url)) continue;
-            $parsed = parse_url($url);
+            $parsed = wp_parse_url($url);
             if (!empty($parsed['host']) || empty($parsed['path']) || $parsed['path'][0] === '/') continue;
             $value->getURL()->setString($base_url . $url);
         }
@@ -1438,12 +1436,21 @@ class Unused {
             return $css;
         }
 
-        //File wasn't available locally, get remote
+        //File wasn't available locally, get remote (same-origin only)
         //Could apply to PHP generated stylesheets
+        $site_host = wp_parse_url(site_url(), PHP_URL_HOST);
+        if (!Speed::is_same_origin_url($url, $site_host)) {
+            return false;
+        }
+
+        //Ensure URL is absolute and on this host
+        $url = Speed::make_absolute_host_url($url, $site_host);
+
         $resp = wp_remote_get($url, [
             'timeout'      => 12,
             'redirection'  => 3,
             'headers'      => ['Accept' => 'text/css,*/*;q=0.1'],
+            // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
             'sslverify'    => apply_filters('https_local_ssl_verify', true),
         ]);
 
@@ -1510,7 +1517,15 @@ class Unused {
         $site_url = site_url();
         if (strpos($url, $site_url) === 0) {
             $path = str_replace($site_url, ABSPATH, $url);
-            return realpath(parse_url($path, PHP_URL_PATH));
+            $resolved = realpath(wp_parse_url($path, PHP_URL_PATH));
+            if (!$resolved) {
+                return false;
+            }
+            $base = realpath(ABSPATH);
+            if (!$base || strpos($resolved, $base) !== 0) {
+                return false;
+            }
+            return $resolved;
         }
         return false;
     }

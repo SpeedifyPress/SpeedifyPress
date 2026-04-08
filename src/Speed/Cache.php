@@ -2,6 +2,10 @@
 
 namespace SPRESS\Speed;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Dependencies\Wa72\Url\Url;
@@ -190,9 +194,13 @@ class Cache {
 
     protected static function validate_spdy_csrf() {
 
-        $host    = (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
-        $origin  = $_SERVER['HTTP_ORIGIN'] ?? '';
-        $referer = $_SERVER['HTTP_REFERER'] ?? '';
+        $http_host_raw = Speed::server_var('HTTP_HOST', '');
+        $origin_raw = Speed::server_var('HTTP_ORIGIN', '');
+        $referer_raw = Speed::server_var('HTTP_REFERER', '');
+
+        $host = ( is_ssl() ? 'https://' : 'http://' ) . sanitize_text_field( $http_host_raw );
+        $origin  = $origin_raw ? esc_url_raw( $origin_raw ) : '';
+        $referer = $referer_raw ? esc_url_raw( $referer_raw ) : '';
 
         if($origin && stripos($origin, $host) !== 0) {
             return new \WP_Error('spdy_csrf_origin', 'Invalid origin', array('status' => 403));
@@ -202,7 +210,7 @@ class Cache {
             return new \WP_Error('spdy_csrf_referer', 'Invalid referer', array('status' => 403));
         }
 
-        $token = $_SERVER['HTTP_X_SPDY_CSRF'] ?? '';
+        $token = isset( $_SERVER['HTTP_X_SPDY_CSRF'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_SPDY_CSRF'] ) ) : '';
         if($token === '') {
             return new \WP_Error('spdy_csrf_missing', 'CSRF token missing', array('status' => 403));
         }
@@ -251,12 +259,13 @@ class Cache {
         }
 
         // 3) Our guest cookie
-        if (empty($_COOKIE['spdy_guest'])) {
+        $guest_cookie = isset($_COOKIE['spdy_guest']) ? Speed::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
+        if ( $guest_cookie === '' ) {
             //Cookies must have been deleted, regen
             self::generate_guest_cookie();            
+            $guest_cookie = isset($_COOKIE['spdy_guest']) ? Speed::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
         }
-        
-        return hash('sha256', 'sg:'.$_COOKIE['spdy_guest']);
+        return hash('sha256', 'sg:' . $guest_cookie);
 
 
     }
@@ -327,8 +336,8 @@ class Cache {
 
         // Check bypass rules (cookies, URLs, user agents).
         if (!self::is_url_cacheable($url)) {
-            global $bypass_reason;
-            return $html . "\n<!-- Cache skipped BYPASS $bypass_reason -->";;
+            global $spress_bypass_reason;
+            return $html . "\n<!-- Cache skipped BYPASS $spress_bypass_reason -->";;
         }
 
         // If the user is logged in but caching for logged-in users is not enabled, skip caching.
@@ -517,10 +526,10 @@ class Cache {
      */
     public static function is_url_cacheable($url) {
 
-        global $bypass_reason;
+        global $spress_bypass_reason;
 
         //Get URL path from $url
-        $path = parse_url($url, PHP_URL_PATH);
+        $path = wp_parse_url($url, PHP_URL_PATH);
 
         // Check if any cookie matches the bypass rules.
         if (!empty(self::$bypass_cookies) && !empty($_COOKIE)) {
@@ -528,7 +537,7 @@ class Cache {
             foreach ($bypass_cookies as $cookie_bypass) {
                 foreach ((array)$_COOKIE as $cookie_name => $cookie_value) {
                     if (stripos($cookie_name, $cookie_bypass) !== false) {
-                        $bypass_reason = 'Cookie: ' . $cookie_name;
+                        $spress_bypass_reason = 'Cookie: ' . $cookie_name;
                         return false;
                     }
                 }
@@ -542,12 +551,12 @@ class Cache {
 
                 if($bypass_url === "/") {
                     if($path === "/") {
-                        $bypass_reason = 'Bypass URL: ' . $bypass_url;
+                        $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
                         return false;        
                     }                    
                 } else {
                     if (stripos($url, $bypass_url) !== false) {
-                        $bypass_reason = 'Bypass URL: ' . $bypass_url;
+                        $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
                         return false;
                     }                    
                 }   
@@ -555,11 +564,12 @@ class Cache {
         }
 
         // Check if the HTTP user agent matches any bypass rules.
-        if (!empty(self::$bypass_useragents) && isset($_SERVER['HTTP_USER_AGENT'])) {
+        $http_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : '';
+        if (!empty(self::$bypass_useragents) && $http_user_agent !== '') {
             $bypass_useragents = array_filter(array_map('trim', explode("\n", self::$bypass_useragents)));
             foreach ($bypass_useragents as $bypass_ua) {
-                if (stripos($_SERVER['HTTP_USER_AGENT'], $bypass_ua) !== false) {
-                    $bypass_reason = 'Bypass User Agent: ' . $_SERVER['HTTP_USER_AGENT'];
+                if (stripos($http_user_agent, $bypass_ua) !== false) {
+                    $spress_bypass_reason = 'Bypass User Agent: ' . $http_user_agent;
                     return false;
                 }
             }
@@ -569,69 +579,70 @@ class Cache {
         $disallowed_extensions = ['.txt', '.xml', '.php'];
         foreach ($disallowed_extensions as $ext) {
             if (substr($url, -strlen($ext)) === $ext) {
-                $bypass_reason = "Disallowed extension";
+                $spress_bypass_reason = "Disallowed extension";
                 return false;
             }
         }        
 
         //Check if we have the nocache querystring
         if (stripos($url, 'nocache') !== false) {
-            $bypass_reason = 'Nocache querystring';
+            $spress_bypass_reason = 'Nocache querystring';
             return false;
         }
 
         //Don't cache AJAX request
-        if(isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
-            $bypass_reason = 'AJAX request';
+        $requested_with = isset( $_SERVER['HTTP_X_REQUESTED_WITH'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REQUESTED_WITH'] ) ) : '';
+        if($requested_with !== '' && strtolower($requested_with) == 'xmlhttprequest') {
+            $spress_bypass_reason = 'AJAX request';
             return false;
         }        
 
         // Skip AJAX requests.
         if (defined('DOING_AJAX') && DOING_AJAX) {
-            $bypass_reason = 'AJAX request';
+            $spress_bypass_reason = 'AJAX request';
             return false;
         }        
 
         // Process only GET and HEAD requests.
         if ( !isset($_SERVER['REQUEST_METHOD']) || !in_array($_SERVER['REQUEST_METHOD'], ['GET','HEAD']) ) {
-            $bypass_reason = 'Not a GET or HEAD request';
+            $spress_bypass_reason = 'Not a GET or HEAD request';
             return false;
         }
 
         // Check for a 200 response code, if available.
         if ( function_exists('http_response_code') && http_response_code() !== 200 ) {
-            $bypass_reason = 'HTTP response code: ' . http_response_code();
+            $spress_bypass_reason = 'HTTP response code: ' . http_response_code();
             return false;
         }        
 
         // Disallow caching for REST API requests (wp-json).
         $request_uri = Speed::get_url();
         if (stripos($request_uri, '/wp-json') !== false) {
-            $bypass_reason = 'REST API request';
+            $spress_bypass_reason = 'REST API request';
             return false;
         }            
 
         // Do not serve cache during cron.
         if (defined('DOING_CRON') && DOING_CRON) {
-            $bypass_reason = 'Cron';
+            $spress_bypass_reason = 'Cron';
             return false;
         }
 
         // Exit for AMP pages.
-        if (stripos($request_uri, '/amp') !== false || isset($_GET['amp'])) {
-            $bypass_reason = 'AMP page';
+        if (stripos($request_uri, '/amp') !== false || Speed::request_has_query_arg('amp')) {
+            $spress_bypass_reason = 'AMP page';
             return false;
         }
 
         // Skip admin pages (if is_admin() is available).
         if (function_exists('is_admin') && is_admin()) {
-            $bypass_reason = 'ADMIN page';
+            $spress_bypass_reason = 'ADMIN page';
             return false;
         }
 
         // Skip password-protected posts.
         if (function_exists('post_password_required') && post_password_required()) {
-            $bypass_reason = 'Password protected';
+            $spress_bypass_reason = 'Password protected';
             return false;
         }
 
@@ -644,7 +655,7 @@ class Cache {
         $end_time = microtime(true);
         $elapsed_time = isset(Speed::$start_time) ? $end_time - Speed::$start_time : 0;
 
-        $formatted_time = date('D, d M Y H:i:s');
+        $formatted_time = gmdate('D, d M Y H:i:s');
         if($msg) {
             $html .= "<!-- " . $msg . " -->";        
         } else {
@@ -656,7 +667,7 @@ class Cache {
         // Ensure the cache directory exists.
         $dir = dirname($cache_file);
         if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+            wp_mkdir_p($dir);
         }
 
         //if .gz get base
@@ -693,7 +704,8 @@ class Cache {
         if ($zlib_enabled) {
             return false;
         }
-        return !empty($_SERVER['HTTP_ACCEPT_ENCODING']) && strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false;
+        $accept_encoding = isset( $_SERVER['HTTP_ACCEPT_ENCODING'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_ACCEPT_ENCODING'] ) ) : '';
+        return !empty($accept_encoding) && strpos($accept_encoding, 'gzip') !== false;
     }
 
     /**
@@ -711,7 +723,7 @@ class Cache {
     public static function is_url_logged_in_cacheable($url) {
 
         //Get URL path from $url
-        $path = parse_url($url, PHP_URL_PATH);
+        $path = wp_parse_url($url, PHP_URL_PATH);
         
         // Check if the URI contains any force URL strings.
         if (!empty(self::$cache_logged_in_users_exclusively_on)) {
@@ -802,13 +814,15 @@ class Cache {
 
         // Append logged-in user role if enabled and available.
         if ($cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
-            $filename .= '-' . preg_replace('/[^A-Za-z0-9_\-]/', '', $_COOKIE['speedify_press_logged_in_roles']);
+            $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
+            $filename .= '-' . preg_replace('/[^A-Za-z0-9_\-]/', '', $roles_cookie);
         }
 
         // Append mobile suffix if separate mobile caching is enabled.
         if (!empty($cache_mobile_separately) && $cache_mobile_separately === 'true') {
-            if (isset($_SERVER['HTTP_USER_AGENT']) &&
-                preg_match('/Mobile|Android|Silk\/|Kindle|BlackBerry|Opera (Mini|Mobi)/', $_SERVER['HTTP_USER_AGENT'])) {
+            $http_user_agent = Speed::server_var('HTTP_USER_AGENT', '');
+            if ($http_user_agent !== '' &&
+                preg_match('/Mobile|Android|Silk\/|Kindle|BlackBerry|Opera (Mini|Mobi)/', $http_user_agent)) {
                 $filename .= '-mobile';
             }
         }
@@ -818,8 +832,9 @@ class Cache {
 
         // Check if gzip is accepted (and if zlib.output_compression is off).
         $zlib_enabled = filter_var(ini_get('zlib.output_compression'), FILTER_VALIDATE_BOOLEAN);
-        if (!$zlib_enabled && isset($_SERVER['HTTP_ACCEPT_ENCODING']) &&
-            strpos($_SERVER['HTTP_ACCEPT_ENCODING'], 'gzip') !== false
+        $accept_encoding = Speed::server_var('HTTP_ACCEPT_ENCODING', '');
+        if (!$zlib_enabled && $accept_encoding !== '' &&
+            strpos($accept_encoding, 'gzip') !== false
             && $extension == "gz"
             ) {
             $filename .= '.gz';
@@ -843,7 +858,8 @@ class Cache {
 
         // Append logged-in user role if enabled and available.
         if (self::$cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
-            $filename = preg_replace('/[^A-Za-z0-9_\-]/', '', $_COOKIE['speedify_press_logged_in_roles']) . "-" . $filename;
+            $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
+            $filename = preg_replace('/[^A-Za-z0-9_\-]/', '', $roles_cookie) . "-" . $filename;
         }
 
         return $filename;
@@ -1103,9 +1119,9 @@ class Cache {
             }
 
             //Clear integrated caches
-            if( empty( $GLOBALS['_my_cache_purging'] ) ) {
+            if( empty( $GLOBALS['spress_cache_purging'] ) ) {
 
-                $GLOBALS['_my_cache_purging'] = true; //prevent loop
+                $GLOBALS['spress_cache_purging'] = true; //prevent loop
                 if($post_id) {
                     Speed::$done_purge[$post_id] = true; //prevent internal CSS purging if triggered
                 }
@@ -1139,11 +1155,12 @@ class Cache {
                 if ( $post_id ) {
                     
                     $post_object = get_post( (int) $post_id );
+                    // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
                     do_action( 'transition_post_status', 'publish', 'publish', $post_object );
                     
                 }   
                 
-                unset( $GLOBALS['_my_cache_purging'] );
+                unset( $GLOBALS['spress_cache_purging'] );
 
             }
 
@@ -1287,7 +1304,7 @@ class Cache {
         // Remove advanced-cache.php from wp-content.
         $advanced_cache_path = WP_CONTENT_DIR . '/advanced-cache.php';
         if (file_exists($advanced_cache_path)) {
-            unlink($advanced_cache_path);
+            wp_delete_file($advanced_cache_path);
         }
         // Remove our WP_CACHE definition from wp-config.php.
         return self::remove_wp_config_cache_constant();

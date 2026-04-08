@@ -5,6 +5,87 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.81.0 - 2026-04-08
+This release is a major packaging, build, compliance, and edition-separation update.
+
+#### Added
+- Added a full `admin_app/` source workspace (Vue + Vite + Tailwind + docs/components) so human-readable admin source is now included in-repo and buildable.
+- Added `admin_app/vite.config.js` with community build constants and aliasing (`@pro-admin-items` -> `proAdminItems.stub.js`) to keep non-pro builds build-safe.
+- Added `admin_app/update_release.php` release tooling to generate release metadata/docs from source and changelog.
+- Added root `composer.json` and `patches.lock.json` to make dependency patching reproducible for non-pro distributions.
+- Added `vendor/patches/*` patch set for WP.org lint/compliance compatibility:
+  - Sabberworm escaping/type fixes.
+  - MatthiasMullie Minify escaping + alt-function handling.
+  - simplehtmldom compliance/direct-access guards.
+  - Wa72 URL parse compatibility patch.
+- Added `readme.wordpressorg.txt` with WP.org-specific plugin metadata, FAQ, changelog placeholder, and feature framing.
+- Added `src/App/LicenseIntegration.php` as the licensing integration boundary (hooks/routes/plugin API/update rows moved behind an integration class).
+- Added bootstrap-safe request helpers in `Speed`:
+  - `sanitize_bootstrap_text()`
+  - `sanitize_bootstrap_url()`
+  - `server_var()`
+  - `safe_parse_url()`
+  - `delete_file_compat()`
+  - `get_query_args()`
+  - `request_has_query_arg()`
+  - `get_current_host()`
+  - `is_same_origin_url()`
+  - `make_absolute_host_url()`
+- Added extension hook dispatch model in `Speed`:
+  - `call_extension()` + `__callStatic()` fallback, replacing hard-coded Pro-method wrappers.
+- Added direct-access guards (`if ( ! defined('ABSPATH') ) exit;`) across additional plugin runtime classes.
+  - `/check_license` registration moved behind `LicenseIntegration::register_rest_routes()`.
+  - `check_license()` now delegates to `LicenseIntegration` when available.
+  - Plugin-enable flow validates licensing via integration module when present.
+- Hardened public CSS update endpoint:
+  - Added strict Origin/Referer validation.
+  - Added same-origin validation for submitted URL.
+  - Added early skip response when URL lookup already processed.
+  - Improved client IP sanitization for rate limiting.
+- Updated `handle_compressx()` to use `WP_REST_Request` params instead of raw `$_GET`.
+- Updated cache/bootstrap flow to use sanitized server/request accessors and compatibility helpers in advanced cache context.
+- Updated config update flow for `preload_fonts_intelligently` so dependent keys are expanded before save loop (fixes shortcut persistence timing issue).
+- Updated path/file operations toward WP-compatible functions where applicable (`wp_mkdir_p`, `wp_delete_file`, filesystem-backed directory removal helper).
+- Updated plugin header/release metadata:
+  - `speedify_press.php` version moved to `0.80.07` in staged set.
+- Updated cache bypass globals and naming for safer namespace isolation (e.g. `spress_bypass_reason`, `spress_cache_purging`, `spress_start_time`).
+- Updated many URL parsing calls to `wp_parse_url` (or compatibility wrapper in early bootstrap paths).
+- Updated timestamp/log usage in multiple paths to GMT (`gmdate`) consistency.
+- Updated `unused` CSS pipeline remote fetch behavior to enforce same-origin safety and tighter local path resolution.
+
+#### Removed
+- Removed logged-in cache worker and Woo nonce helper assets from package.
+- Removed config entries tied to removed pro-only cache nonce replacement paths.
+- Removed large simplehtmldom bundled non-runtime docs/examples/manual content from shipped tree.
+- Removed legacy output-buffer debug error-handler override in `Speed` callback path.
+
+#### Fixed
+- Fixed trailing slash handling regression in sanitized URI normalization.
+- Fixed multiple escaped-output and type issues that triggered WP.org lint errors in dependency code paths.
+- Fixed dashboard/community/wordpress.org license-mode rendering and fallback behavior via integration-aware data flow.
+- Fixed advanced-cache response output handling to avoid unsafe direct output warnings while preserving raw cache body/gzip responses.
+
+#### Security / Compliance
+- Tightened request sanitization throughout cache/bootstrap paths (`$_SERVER`, cookies, headers, query parsing).
+- Added same-origin protection in endpoints that accept URL input.
+- Added direct file access protection in additional dependency/runtime files.
+- Introduced maintained patch pipeline so dependency compliance edits are reapplied consistently on rebuild.
+- Continued replacement of raw superglobal access patterns with validated/sanitized wrappers for WP.org review readiness.
+
+#### Developer / Build Notes
+- Non-pro build now depends on included `admin_app` source and local Vite build pipeline.
+- Dependency compliance changes are now tracked in `vendor/patches/*` + `patches.lock.json`, not as ad-hoc manual edits.
+- Licensing concerns are now encapsulated in `LicenseIntegration` + `LicenseService`, reducing edition-specific scatter in core runtime.
+
+### 0.80.6 - 2026-01-28
+- Strip collector + Turnstile scripts and hints on processed pages
+
+### 0.80.5 - 2026-01-27
+- Add Turnstile protection for public CSS update endpoint with admin UI + docs
+- Enforce same-origin, Origin+Referer checks, and skip redundant update_css processing
+- Harden CSRF token header handling for advanced cache context
+- Tighten URL fetch safety in Unused CSS pipeline
+
 ### 0.80.4 - 2026-01-25
 - Fix bug in calling is_shop
 
@@ -490,4 +571,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 0.01.0
 - Initial commit
-

@@ -1,0 +1,168 @@
+diff --git a/HtmlDocument.php b/HtmlDocument.php
+index b20dc92..d98098b 100644
+--- a/HtmlDocument.php
++++ b/HtmlDocument.php
+@@ -1,5 +1,9 @@
+ <?php namespace simplehtmldom;
+ 
++if ( ! \defined('ABSPATH') ) {
++	exit;
++}
++
+ /**
+  * Website: http://sourceforge.net/projects/simplehtmldom/
+  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
+@@ -106,7 +110,7 @@ class HtmlDocument
+ 			case 'clear': return; /* no-op */
+ 			default:
+ 				trigger_error(
+-					'Call to undefined method ' . __CLASS__ . '::' . $func . '()',
++					\esc_html('Call to undefined method ' . __CLASS__ . '::' . $func . '()'),
+ 					E_USER_ERROR
+ 				);
+ 		}
+diff --git a/HtmlNode.php b/HtmlNode.php
+index 7bf0ec3..da5cfdd 100644
+--- a/HtmlNode.php
++++ b/HtmlNode.php
+@@ -1,5 +1,9 @@
+ <?php namespace simplehtmldom;
+ 
++if ( ! \defined('ABSPATH') ) {
++	exit;
++}
++
+ /**
+  * Website: http://sourceforge.net/projects/simplehtmldom/
+  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
+@@ -74,7 +78,7 @@ class HtmlNode
+ 				$actual_function = 'previousSibling'; break;
+ 			default:
+ 				trigger_error(
+-					'Call to undefined method ' . __CLASS__ . '::' . $func . '()',
++					\esc_html('Call to undefined method ' . __CLASS__ . '::' . $func . '()'),
+ 					E_USER_ERROR
+ 				);
+ 		}
+@@ -140,17 +144,17 @@ class HtmlNode
+ 	/** @codeCoverageIgnore */
+ 	function dump($show_attr = true, $depth = 0)
+ 	{
+-		echo str_repeat("\t", $depth) . $this->tag;
++		echo \esc_html(str_repeat("\t", $depth) . $this->tag);
+ 
+ 		if ($show_attr && count($this->attr) > 0) {
+-			echo '(';
++			echo \esc_html('(');
+ 			foreach ($this->attr as $k => $v) {
+-				echo "[$k]=>\"$v\", ";
++				echo \esc_html("[$k]=>\"$v\", ");
+ 			}
+-			echo ')';
++			echo \esc_html(')');
+ 		}
+ 
+-		echo "\n";
++		echo \esc_html("\n");
+ 
+ 		if ($this->nodes) {
+ 			foreach ($this->nodes as $node) {
+@@ -205,7 +209,7 @@ class HtmlNode
+ 		$string .= "\n";
+ 
+ 		if ($echo) {
+-			echo $string;
++			echo \esc_html($string);
+ 			return;
+ 		} else {
+ 			return $string;
+diff --git a/HtmlWeb.php b/HtmlWeb.php
+index 90cfbf8..9a7c270 100644
+--- a/HtmlWeb.php
++++ b/HtmlWeb.php
+@@ -1,5 +1,9 @@
+ <?php namespace simplehtmldom;
+ 
++if ( ! \defined('ABSPATH') ) {
++	exit;
++}
++
+ /**
+  * Website: http://sourceforge.net/projects/simplehtmldom/
+  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
+@@ -37,7 +41,10 @@ class HtmlWeb {
+ 			return null;
+ 		}
+ 
+-		if($scheme = parse_url($url, PHP_URL_SCHEME)) {
++		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url
++		$parsed = parse_url($url);
++		if(isset($parsed['scheme'])) {
++			$scheme = $parsed['scheme'];
+ 			switch(strtolower($scheme)) {
+ 				case 'http':
+ 				case 'https': break;
+@@ -49,6 +55,7 @@ class HtmlWeb {
+ 			} elseif(ini_get('allow_url_fopen')) {
+ 				return $this->load_fopen($url);
+ 			} else {
++				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+ 				error_log(__FUNCTION__ . ' requires either the cURL extension or allow_url_fopen=On in php.ini');
+ 			}
+ 		}
+@@ -61,6 +68,7 @@ class HtmlWeb {
+ 	 */
+ 	private function load_curl($url)
+ 	{
++		// phpcs:disable WordPress.WP.AlternativeFunctions.curl_curl_init,WordPress.WP.AlternativeFunctions.curl_curl_setopt,WordPress.WP.AlternativeFunctions.curl_curl_exec,WordPress.WP.AlternativeFunctions.curl_curl_getinfo,WordPress.WP.AlternativeFunctions.curl_curl_close
+ 		$ch = curl_init();
+ 
+ 		curl_setopt($ch, CURLOPT_URL, $url);
+@@ -85,6 +93,7 @@ class HtmlWeb {
+ 		}
+ 
+ 		curl_close($ch);
++		// phpcs:enable
+ 
+		if(strlen($doc) > MAX_FILE_SIZE) {
+			return null;
+diff --git a/Debug.php b/Debug.php
+index 5bb0fc8..dbe2220 100644
+--- a/Debug.php
++++ b/Debug.php
+@@ -1,5 +1,7 @@
+ <?php namespace simplehtmldom;
+ 
++// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_error_log,WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace
++
+ /**
+  * Implements functions for debugging purposes. Debugging can be enabled and
+  * disabled on demand. Debug messages are send to error_log by default but it
+diff --git a/constants.php b/constants.php
+index 693984a..307495a 100644
+--- a/constants.php
++++ b/constants.php
+@@ -1,5 +1,9 @@
+ <?php namespace simplehtmldom;
+ 
++if ( ! \defined('ABSPATH') ) {
++	exit;
++}
++
+ /**
+  * Website: http://sourceforge.net/projects/simplehtmldom/
+  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
+diff --git a/simple_html_dom.php b/simple_html_dom.php
+index 876c284..c49008e 100644
+--- a/simple_html_dom.php
++++ b/simple_html_dom.php
+@@ -1,5 +1,9 @@
+ <?php
+ 
++if ( ! \defined('ABSPATH') ) {
++	exit;
++}
++
+ /**
+  * Website: http://sourceforge.net/projects/simplehtmldom/
+  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)

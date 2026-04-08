@@ -1,5 +1,9 @@
 <?php namespace SPRESS\Dependencies\simplehtmldom;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Website: http://sourceforge.net/projects/simplehtmldom/
  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
@@ -37,7 +41,10 @@ class HtmlWeb {
 			return null;
 		}
 
-		if($scheme = parse_url($url, PHP_URL_SCHEME)) {
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url
+		$parsed = parse_url($url);
+		if(isset($parsed['scheme'])) {
+			$scheme = $parsed['scheme'];
 			switch(strtolower($scheme)) {
 				case 'http':
 				case 'https': break;
@@ -49,6 +56,7 @@ class HtmlWeb {
 			} elseif(ini_get('allow_url_fopen')) {
 				return $this->load_fopen($url);
 			} else {
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 				error_log(__FUNCTION__ . ' requires either the cURL extension or allow_url_fopen=On in php.ini');
 			}
 		}
@@ -61,6 +69,7 @@ class HtmlWeb {
 	 */
 	private function load_curl($url)
 	{
+		// phpcs:disable WordPress.WP.AlternativeFunctions.curl_curl_init,WordPress.WP.AlternativeFunctions.curl_curl_setopt,WordPress.WP.AlternativeFunctions.curl_curl_exec,WordPress.WP.AlternativeFunctions.curl_curl_getinfo,WordPress.WP.AlternativeFunctions.curl_curl_close
 		$ch = curl_init();
 
 		curl_setopt($ch, CURLOPT_URL, $url);
@@ -85,6 +94,7 @@ class HtmlWeb {
 		}
 
 		curl_close($ch);
+		// phpcs:enable
 
 		if(strlen($doc) > MAX_FILE_SIZE) {
 			return null;

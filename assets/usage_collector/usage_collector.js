@@ -250,7 +250,7 @@ class CSSUsageCollector {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ compressedData: base64CompressedData }), // Wrap in an object if needed
+                    body: JSON.stringify({ compressedData: base64CompressedData }),
                 });
 
                 // Flag first update sent 

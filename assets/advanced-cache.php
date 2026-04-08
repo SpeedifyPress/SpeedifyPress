@@ -66,12 +66,12 @@ if ( ! defined( 'SPRESS_PRELOAD_FONTS_DESKTOP_ONLY' ) ) {
 }
 
 //Require our SPRESS classes
-$file = __DIR__ . "/plugins/" . SPRESS_DIR_NAME . "/vendor/autoload.php";
-if (!file_exists($file)) {
+$spress_file = __DIR__ . "/plugins/" . SPRESS_DIR_NAME . "/vendor/autoload.php";
+if (!file_exists($spress_file)) {
     return;
 }
 
-require_once $file;
+require_once $spress_file;
 
 /**
  * Class AdvancedCache
@@ -102,7 +102,8 @@ class AdvancedCache {
         self::$cache_mobile_separately    = SPRESS_CACHE_MOBILE_SEPARATELY;
         self::$ignore_querystrings        = SPRESS_IGNORE_QUERYSTRINGS;
         self::$cache_lifetime             = intval(SPRESS_CACHE_LIFETIME);
-        self::$original_uri               = Speed::get_sanitized_uri($_SERVER['REQUEST_URI']);
+        $request_uri_raw                  = Speed::server_var('REQUEST_URI', '/');
+        self::$original_uri               = Speed::get_sanitized_uri($request_uri_raw);
         self::$plugin_mode                = SPRESS_PLUGIN_MODE;
         self::$disable_urls               = SPRESS_DISABLE_URLS;
         self::$preload_fonts_desktop_only = SPRESS_PRELOAD_FONTS_DESKTOP_ONLY;
@@ -138,8 +139,8 @@ class AdvancedCache {
             return true;
         }
 
-        // Check for a cache bust parameter 
-        if ( isset($_GET['speedify_cache_bust']) ) {
+        // Check for a cache bust parameter.
+        if ( Speed::request_has_query_arg('speedify_cache_bust') ) {
             return true;
         }
         // Check for a 200 response code, if available.
@@ -152,7 +153,7 @@ class AdvancedCache {
         }
         // Disallow caching for specific files/directories.
         $disallowed = ['wp-cron.php', 'xmlrpc.php', 'wp-login.php', 'wp-admin'];
-        $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+        $request_uri = Speed::server_var('REQUEST_URI', '');
         foreach ($disallowed as $file) {
             if (stripos($request_uri, $file) !== false) {
                 return true;
@@ -163,7 +164,7 @@ class AdvancedCache {
             return true;
         }        
         // Additionally, disallow if the URL path ends with disallowed extensions.
-        $path = parse_url($request_uri, PHP_URL_PATH);
+        $path = Speed::safe_parse_url($request_uri, PHP_URL_PATH);
         if ($path) {
             $exts = ['.ico', '.txt', '.xml', '.xsl'];
             foreach ($exts as $ext) {
@@ -177,7 +178,7 @@ class AdvancedCache {
             return true;
         }
         // Exit for AMP pages.
-        if (stripos($request_uri, '/amp') !== false || isset($_GET['amp'])) {
+        if (stripos($request_uri, '/amp') !== false || Speed::request_has_query_arg('amp')) {
             return true;
         }
         // If caching for logged-in users is disabled, exit if any cookie key starts with "wordpress_logged_in".
@@ -226,9 +227,9 @@ class AdvancedCache {
 
             // If the file is expired, delete it and its gzipped version.
             if (self::is_cache_expired($cache_file)) {
-                unlink($cache_file);
+                Speed::delete_file_compat($cache_file);
                 if (file_exists($cache_file . '.gz')) {
-                    unlink($cache_file . '.gz');
+                    Speed::delete_file_compat($cache_file . '.gz');
                 }
                 return; //just proceed to standard content
             }
@@ -243,7 +244,7 @@ class AdvancedCache {
                 $cache_file_base = dirname($cache_file);
                 $check_file = $cache_file_base . "/update_required";
                 if (file_exists($check_file)) {
-                    unlink($check_file);
+                    Speed::delete_file_compat($check_file);
                     $cacheable = false;
                 }
 
@@ -263,15 +264,16 @@ class AdvancedCache {
                     header('Expires: 0');
                 }
 
-                $host = isset($_SERVER['HTTP_HOST']) ? preg_replace('/[^A-Za-z0-9\.\-]/', '', $_SERVER['HTTP_HOST']) : '';
+                $host = preg_replace('/[^A-Za-z0-9\.\-]/', '', Speed::server_var('HTTP_HOST', ''));
                 header("Cache-Tag: $host"); 
             }
 
 
             if (isset($_SERVER['HTTP_IF_MODIFIED_SINCE'])) {
-                $if_modified_since = strtotime($_SERVER['HTTP_IF_MODIFIED_SINCE']);
+                $if_modified_since = strtotime(Speed::server_var('HTTP_IF_MODIFIED_SINCE', ''));
                 if ($if_modified_since >= $last_modified) {
-                    header($_SERVER['SERVER_PROTOCOL'] . ' 304 Not Modified', true, 304);
+                    $server_protocol = Speed::server_var('SERVER_PROTOCOL', 'HTTP/1.1');
+                    header($server_protocol . ' 304 Not Modified', true, 304);
                     exit;
                 }
             }
@@ -290,7 +292,7 @@ class AdvancedCache {
             // Check if we need to strip font preload sections.
             $shouldStrip = false;
             if (self::$preload_fonts_desktop_only === 'true') {
-                $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
+                $user_agent = Speed::server_var('HTTP_USER_AGENT', '');
                 if (preg_match('/Mobile|Android|Silk\/|Kindle|BlackBerry|Opera (Mini|Mobi)/i', $user_agent)) {
                     $shouldStrip = true;
                 }
@@ -300,7 +302,7 @@ class AdvancedCache {
                 $content = preg_replace('/<!--\s*FontPreload\s*-->.*?<!--\s*\/FontPreload\s*-->/is', '', $content);
             }
 
-            $elapsed_time = number_format(microtime(true) - $GLOBALS['start_time'],10);
+            $elapsed_time = isset( $GLOBALS['spress_start_time'] ) ? number_format( microtime(true) - $GLOBALS['spress_start_time'], 10 ) : '0.0000000000';
             //$content .= "<!--E: $elapsed_time -->\n";
 
             // Set basic headers.
@@ -309,17 +311,17 @@ class AdvancedCache {
 
             // If originally gzipped
             if (SPRESS_FORCE_GZIPPED_OUTPUT === 'true') {
-                ini_set('zlib.output_compression', '0');
                 $gz = gzencode($content, 6, ZLIB_ENCODING_GZIP);
                 header('Content-Encoding: gzip');
                 header('Content-Length: ' . strlen($gz)); 
                 header('Vary: Accept-Encoding');
                 header('x-spdy-gz: 1'); 
-                echo $gz;
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Raw gzip response body
+                exit($gz);
             } else {
-                echo $content;
+                // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Raw cached HTML response body.
+                exit($content);
             }
-            exit;
 
         }
     }    
@@ -338,7 +340,8 @@ class AdvancedCache {
      */
     public static function serve_csrf_token() {
 
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
+        $request_uri = Speed::server_var('REQUEST_URI', '/');
+        $path = Speed::safe_parse_url($request_uri, PHP_URL_PATH);        
         if ($path === '/_csrf' || basename($path) === '_csrf') {
 
             Speed::serve_csrf_token(array("X-CSRF-Source: advanced-cache"));
@@ -358,7 +361,7 @@ class AdvancedCache {
         //Token endpoint
         self::serve_csrf_token();        
 
-        $GLOBALS['start_time'] = microtime(true);
+        $GLOBALS['spress_start_time'] = microtime(true);
 
         self::init();
         if (self::should_exit()) {
@@ -369,7 +372,7 @@ class AdvancedCache {
         $full_url  = Speed::get_clean_url(null,self::$ignore_querystrings);
 
         //Not running Speed::init, so set hostname here
-        Speed::$hostname = parse_url($full_url, PHP_URL_HOST);
+        Speed::$hostname = Speed::safe_parse_url($full_url, PHP_URL_HOST);
 
         //Get the cache file
         $file_type = "";

@@ -1,5 +1,9 @@
 <?php
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 if ( ! function_exists( 'check_ajax_referer' ) ) :
 
     /**
@@ -18,24 +22,26 @@ if ( ! function_exists( 'check_ajax_referer' ) ) :
      * @return int 1 if the nonce is valid and verified, -1 if not.
      */
     function check_ajax_referer( $action = -1, $query_arg = false, $die = true ) {
+        // phpcs:disable WordPress.Security.NonceVerification.Recommended
         if ( -1 === $action && isset( $_REQUEST['action'] ) ) {
-            $action = $_REQUEST['action'];
+            $action = sanitize_text_field( wp_unslash( $_REQUEST['action'] ) );
         }
 
         $nonce = '';
         if ( $query_arg && isset( $_REQUEST[ $query_arg ] ) ) {
-            $nonce = $_REQUEST[ $query_arg ];
+            $nonce = sanitize_text_field( wp_unslash( $_REQUEST[ $query_arg ] ) );
         } elseif ( isset( $_REQUEST['_ajax_nonce'] ) ) {
-            $nonce = $_REQUEST['_ajax_nonce'];
+            $nonce = sanitize_text_field( wp_unslash( $_REQUEST['_ajax_nonce'] ) );
         } elseif ( isset( $_REQUEST['_wpnonce'] ) ) {
-            $nonce = $_REQUEST['_wpnonce'];
+            $nonce = sanitize_text_field( wp_unslash( $_REQUEST['_wpnonce'] ) );
         }
+        // phpcs:enable
 
         $result = wp_verify_nonce( $nonce, $action );
 
         // Fallback to SPDY CSRF header when legacy nonce is missing or invalid
         if ( false === $result && \SPRESS\App\Config::get( 'speed_cache', 'replace_ajax_nonces' ) === 'true' ) {
-            $token = $_SERVER['HTTP_X_SPDY_CSRF'] ?? '';
+            $token = isset( $_SERVER['HTTP_X_SPDY_CSRF'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_SPDY_CSRF'] ) ) : '';
             if ( $token !== '' ) {
                 $decoded = \SPRESS\Speed::decode_csrf_token( $token, 'long' );
                 if ( empty( $decoded['fail_message'] ) ) {
@@ -53,6 +59,7 @@ if ( ! function_exists( 'check_ajax_referer' ) ) :
             }
         }
 
+        // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
         do_action( 'check_ajax_referer', $action, $result );
 
         return $result;

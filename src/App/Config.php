@@ -101,24 +101,9 @@ class Config {
 			),
 			'separate_cookie_cache' => array(
 				'name'   => 'Separate Cache for Cookies',
-				'helper' => 'Enter cookie names that will create a separate cache for if detected. Separate multiple with new lines.',
+				'helper' => 'Enter cookie names that will create a separate cache for if detected. Separate multiple with new lines. If cookies being present adds extra CSS, add those classes to CSS > Force Include Selectors.',
 				'value' => '',
 			),
-			'cache_logged_in_users' => array(
-				'name'   => 'Cache Logged in Users',
-				'helper' => 'Should logged in users be cached? N.B Should be used in conjunction with exclude URLs to prevent caching user specific content',
-				'value' => 'false',
-			),	
-			'cache_logged_in_users_exceptions' => array(
-				'name'   => 'Page Areas exempt from logged-in caching',
-				'helper' => 'Specify CSS selectors that should not be cached for logged in users. Separate multiple with new lines.',
-				'value' => '',
-			),	
-			'cache_logged_in_users_exclusively_on' => array(
-				'name'   => 'URLs to cache logged in users exclusively on',
-				'helper' => 'Enter URLs here to only cache logged in users on those URLs. Regex compatible. Separate multiple with new lines.',
-				'value' => '',
-			),							
 			'cache_mobile_separately' => array(
 				'name'   => 'Cache Mobile Devices Separately',
 				'helper' => 'Should mobile devices be cached separately?',
@@ -139,17 +124,7 @@ class Config {
 				'helper' => 'If the server or CDN isn\'t handling compression, set output to be gzipped',
 				'value' => 'false',
 			),	
-			'replace_woo_nonces' => array(
-				'name'   => 'Replace Woo nonces',
-				'helper' => 'Allows much easier caching of WooCommerce pages',
-				'value' => 'false',
-			),	
-			'replace_ajax_nonces' => array(
-				'name'   => 'Replace AJAX nonces',
-				'helper' => 'Allows much easier caching of pages that use AJAX',
-				'value' => 'false',
-			),																					
-		),			
+		),
 		'speed_css'  => array(
 			'css_mode' => array(
 				'name'   => 'Unused CSS mode (enable, stats, disabled)',
@@ -172,11 +147,6 @@ class Config {
 				'helper' => 'Enter cookies that should be ignored for both CSS collection and rewrite. Regex compatible. Separate multiple with new lines',
 				'value'  => 'wordpress_logged_in',
 			),
-			'include_partytown' => array(
-				'name'   => 'Load with Partytown',
-				'helper' => 'Enter strings that match a script filename or contents. Separate multiple with new lines',
-				'value' => '',
-			),					
 			'inclusion_mode' => array(
 				'name'   => 'Inclusion Mode',
 				'helper' => 'Selects the method used to include the CSS on the page',
@@ -197,7 +167,7 @@ class Config {
 				'helper' => 'Limit the number of auto-generated classes to be force included',
 				'value' => '50',
 			)							
-		),		
+			),		
 		'speed_js'  => array(
 			'force_js_inline' => array(
 				'name'   => 'Force JS Inline',
@@ -449,6 +419,10 @@ class Config {
 		),						
 	);
 
+	protected static function get_initial_config() {
+		return self::$initial_config;
+	}
+
 	/**
 	 * Initializes the configuration class.
 	 *
@@ -463,9 +437,11 @@ class Config {
 		//Set initial cache cookies
 		self::$initial_config['speed_cache']['separate_cookie_cache']['value'] = implode("\n", self::$separate_cache_cookies);
 
+		$initial_config = self::get_initial_config();
+
 		// Get the saved configuration from the database
 		self::$config = (array)get_option( 'spress_namespace_CONFIG', array() );
-		self::$config = self::array_merge_recursive_unique( self::$initial_config, self::$config );
+		self::$config = self::array_merge_recursive_unique( $initial_config, self::$config );
 
 		// Example of how to update one of the default configs
 		/*$docs = self::$initial_config['icon_font_names'];
@@ -485,21 +461,22 @@ class Config {
 	 */
 	public static function check_enabled() {
 
-		$current_url = Speed::get_sanitized_uri($_SERVER['REQUEST_URI']);
+				$current_url_raw = Speed::server_var('REQUEST_URI', '/');
+				$current_url = Speed::get_sanitized_uri( sanitize_text_field( $current_url_raw ) );
 
 		//Still allow speedifypress backend admin
 		if(strstr($current_url,"/wp-json/speedifypress/")){
 			return true;
 		}		
 
-		// Disable in WordPress Customizer (screen + preview)
-		if (
-			strstr($current_url, '/wp-admin/customize.php') ||
-			isset($_GET['customize_changeset_uuid']) ||
-			isset($_GET['customize_messenger_channel'])
-		) {
-			return false;
-		}
+			// Disable in WordPress Customizer (screen + preview)
+			if (
+				strstr($current_url, '/wp-admin/customize.php') ||
+				Speed::request_has_query_arg('customize_changeset_uuid') ||
+				Speed::request_has_query_arg('customize_messenger_channel')
+			) {
+				return false;
+			}
 
 		// Disable for builder querystrings
 		$builder_querystrings = array(
@@ -513,15 +490,15 @@ class Config {
 		'vcv-',         // Visual Composer Website Builder (vcv-action, vcv-source-id)
 		);
 
-		// Loop through each builder keyword
-		foreach ($builder_querystrings as $builder_querystring) {
-			foreach ($_GET as $key => $value) {
-				// Check if the query string key contains the builder keyword
-				if (strpos($key, $builder_querystring) !== false) {
-					return false;
+			// Loop through each builder keyword
+			$query_keys = array_keys(Speed::get_query_args());
+			foreach ($builder_querystrings as $builder_querystring) {
+				foreach ($query_keys as $key) {
+					if (strpos($key, $builder_querystring) !== false) {
+						return false;
+					}
 				}
 			}
-		}
 
 		//get mode
 		$mode = self::get('plugin','plugin_mode');
@@ -784,104 +761,107 @@ class Config {
 
 		$update_advanced_cache = false;
 
-		if ( isset( $new_config['config_key'] ) ) {
+			if ( isset( $new_config['config_key'] ) ) {
 
-			$config_key = $new_config['config_key'];
+				$config_key = $new_config['config_key'];
 
-			//Get the array frame
-			$frame = self::$config[ $config_key ];
-		
+				//Get the array frame
+				$frame = self::$config[ $config_key ];
 
-			//Run through the frame and find matching keys
-			foreach ( $frame as $key_to_update=> $value ) {
+				// Expand intelligent font shortcut before iterating keys so
+				// dependent values are persisted in this same update pass.
+				if ($config_key === 'speed_code' && isset($new_config['preload_fonts_intelligently'])) {
+					if ($new_config['preload_fonts_intelligently'] === "true") {
+						$new_config['preload_fonts'] = "true";
+						$new_config['dont_preload_icon_fonts'] = "true";
+						$new_config['preload_fonts_desktop_only'] = "true";
+					} else {
+						$new_config['preload_fonts'] = "false";
+						$new_config['dont_preload_icon_fonts'] = "false";
+						$new_config['preload_fonts_desktop_only'] = "false";
+					}
+				}
+			
 
-				if ( isset( $new_config[ $key_to_update ] ) ) {
-					
-					//Custom methods for updates here
+				//Run through the frame and find matching keys
+				foreach ( $frame as $key_to_update=> $value ) {
 
-					//Shortcut for intelligent font loading
-					if($key_to_update == "preload_fonts_intelligently") {
+					if ( isset( $new_config[ $key_to_update ] ) ) {
+						
+						//Custom methods for updates here
+						if($key_to_update == "gtag_locally") {
 
-						if( $new_config[ $key_to_update ] === "true") {
-							$new_config['preload_fonts'] = "true";
-							$new_config['dont_preload_icon_fonts'] = "true";
-							$new_config['preload_fonts_desktop_only'] = "true";
-						} else {
-							$new_config['preload_fonts'] = "false";
-							$new_config['dont_preload_icon_fonts'] = "false";
-							$new_config['preload_fonts_desktop_only'] = "false";
+							Speed::handle_gtag_update($new_config[ $key_to_update ]);
+
+						}
+
+						//If this is a data image, save to cache
+						if($key_to_update == "preload_image") {
+
+							//Save to file
+							if($new_config[ $key_to_update ]) {
+
+								$file = Speed::save_data_image( $new_config[ $key_to_update ], Speed::get_pre_cache_path() . "/preload_image/" );
+								$url = str_replace(WP_CONTENT_DIR,content_url(),$file);
+								$new_config[ $key_to_update ] = $url;
+
+								echo esc_url( $url );
+								
+							}
+						}
+
+						//If disabling page cache, purge it
+						if($key_to_update == "cache_mode" && $new_config[ $key_to_update ] == "disabled") {
+							Speed\Cache::clear_cache();
+						}
+
+						//If disabling CSS cache or switching to preview only, purge it
+						if($key_to_update == "speed_css" && ($new_config[ $key_to_update ] == "disabled" || $new_config[ $key_to_update ] == "preview")) {
+							Speed\CSS::clear_cache();
+						}					
+						
+						//Save to advanced cache
+						if($key_to_update == "separate_cookie_cache" ||
+						$key_to_update == "force_gzipped_output" ||
+						$key_to_update == "csrf_expiry_seconds" ||
+						$key_to_update == "cache_path_uploads" ||
+						$key_to_update == "cache_logged_in_users" ||
+						$key_to_update == "cache_mobile_separately" ||	
+						$key_to_update == "ignore_querystrings" ||	
+						$key_to_update == "cache_lifetime" ||	
+						$key_to_update == "plugin_mode" ||	
+						$key_to_update == "disable_urls" ||	
+						$key_to_update == "preload_fonts_desktop_only") {
+							$update_advanced_cache = true;
 						}
 						
+						//Save frame
+						$frame[ $key_to_update ]['value'] = $new_config[ $key_to_update ];
+
+					} else {
+
+						//For the tables, if there is no key it means everything has been deleted
+						if(
+						($key_to_update == "speed_find_replace")
+						|| 
+						(isset($new_config['cache_logged_in_users']) && $key_to_update == "cache_logged_in_users_exceptions")
+						) {
+							$frame[ $key_to_update ]['value'] = "";	
+						}				
+
+
 					}
-
-					if($key_to_update == "gtag_locally") {
-
-						Speed::handle_gtag_update($new_config[ $key_to_update ]);
-
-					}
-
-					//If this is a data image, save to cache
-					if($key_to_update == "preload_image") {
-
-						//Save to file
-						if($new_config[ $key_to_update ]) {
-
-							$file = Speed::save_data_image( $new_config[ $key_to_update ], Speed::get_pre_cache_path() . "/preload_image/" );
-							$url = str_replace(WP_CONTENT_DIR,content_url(),$file);
-							$new_config[ $key_to_update ] = $url;
-
-							echo $url;
-							
-						}
-					}
-
-					//If disabling page cache, purge it
-					if($key_to_update == "cache_mode" && $new_config[ $key_to_update ] == "disabled") {
-						Speed\Cache::clear_cache();
-					}
-					
-					//Save to advanced cache
-					if($key_to_update == "separate_cookie_cache" ||
-					$key_to_update == "force_gzipped_output" ||
-					$key_to_update == "csrf_expiry_seconds" ||
-					$key_to_update == "cache_path_uploads" ||
-					$key_to_update == "cache_logged_in_users" ||
-					$key_to_update == "cache_mobile_separately" ||	
-					$key_to_update == "ignore_querystrings" ||	
-					$key_to_update == "cache_lifetime" ||	
-					$key_to_update == "plugin_mode" ||	
-					$key_to_update == "disable_urls" ||	
-					$key_to_update == "preload_fonts_desktop_only") {
-						$update_advanced_cache = true;
-					}
-					
-					//Save frame
-					$frame[ $key_to_update ]['value'] = $new_config[ $key_to_update ];
-
-				} else {
-
-					//For the tables, if there is no key it means everything has been deleted
-					if(
-					($key_to_update == "speed_find_replace")
-					|| 
-					(isset($new_config['cache_logged_in_users']) && $key_to_update == "cache_logged_in_users_exceptions")
-					) {
-						$frame[ $key_to_update ]['value'] = "";	
-					}				
-
 
 				}
 
-			}
+				//Update the config
+				self::$config[ $config_key ] = $frame;
 
-			//Update the config
-			self::$config[ $config_key ] = $frame;
-
-			//Update the advanced cache for certain variables
-			if($update_advanced_cache) {
-				Speed\Cache::init();
-				Speed\Cache::write_advanced_cache();
-			}
+				//Update the advanced cache for certain variables
+				if($update_advanced_cache) {
+					Speed\Cache::init();
+					Speed\Cache::write_advanced_cache();
+				}
 
 		}
 

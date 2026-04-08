@@ -2,6 +2,10 @@
 
 namespace SPRESS\Speed;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Speed\Cache;
@@ -48,12 +52,6 @@ class CSS {
             }
             
         }
-
-        $include_partytown = trim(Config::get('speed_css', 'include_partytown'));
-        if($include_partytown) {
-            add_action( 'wp_enqueue_scripts', array(__CLASS__,'public_enqueue_partytown') );    
-        }
-        
         // Purge cache on updating post
         // Make sure the function name doesn't include purge|cache|clear 
         // to avoid loop
@@ -145,7 +143,7 @@ class CSS {
         $lookup_file = $cache_dir . "lookup.json";
 
         // Create the cache directory if it does not exist
-        !is_dir($cache_dir) && mkdir($cache_dir, 0755, true);        
+        !is_dir($cache_dir) && wp_mkdir_p($cache_dir);        
 
         //Run through the array
         foreach((array)$unused['CSS'] AS $url=>$csstxt) {
@@ -396,6 +394,18 @@ class CSS {
         // read font bundle filenames
         $fonts_icon_file  = isset($data_object->fonts_icon_file) ? trim($data_object->fonts_icon_file) : '';
         $fonts_text_file  = isset($data_object->fonts_text_file) ? trim($data_object->fonts_text_file) : '';
+
+        // Strip only our collector + Turnstile scripts once CSS has been processed
+        $output = preg_replace(
+            '#<script[^>]+id=[\'"]' . self::$script_name . '-collector-js' . '[\'"][^>]*>\\s*</script>#i',
+            '',
+            $output
+        );
+        $output = preg_replace(
+            '#<script[^>]+id=[\'"]spress-turnstile-js[\'"][^>]*>\\s*</script>#i',
+            '',
+            $output
+        );
         
         if(is_object($lookup)) {
             
@@ -603,7 +613,7 @@ class CSS {
              ($lcp_image && Config::get('speed_code', 'preload_image') == '') //if we're using a preload image we'll preload it there instead
             ) { 
                 // Get current host (or empty string if not set)
-                $current_host = isset( $_SERVER['HTTP_HOST'] ) ? $_SERVER['HTTP_HOST'] : '';
+                $current_host = isset( $_SERVER['HTTP_HOST'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ) ) : '';
             
                 // Only preload if:
                 // 1) URL is relative (no "://"), OR
@@ -695,10 +705,12 @@ class CSS {
                         } else {
                             if ($b['marker'] === 'icons') {
                                 // Defer icons: preload-as-style, then flip rel on load; include <noscript> fallback.
+                                // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
                                 $injections['head'][] =
                                     "<link rel='preload' as='style' href='{$href}' crossorigin='anonymous' data-spress-processed='true' data-spress-fonts='" . $marker . "' onload=\"this.onload=null;this.rel='stylesheet'\">";
                             } else {
                                 // Text/body fonts: normal stylesheet (non-deferred)
+                                // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
                                 $injections['head'][] = "<link rel='stylesheet' href='{$href}' crossorigin='anonymous'  data-spress-processed='true' data-spress-fonts='{$marker}'{$media_attr}>";
                             }
                         }
@@ -999,10 +1011,9 @@ class CSS {
     public static function public_enqueue_css() {
 
         // Enqueue our js script.
-        wp_enqueue_script( self::$script_name, SPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), SPRESS_VER, true );
-
+        wp_enqueue_script( self::$script_name . '-collector', SPRESS_PLUGIN_URL . 'assets/usage_collector/usage_collector.min.js', array( 'jquery' ), SPRESS_VER, true );
 		wp_localize_script(
-			self::$script_name,
+			self::$script_name . '-collector',
 			'speed_css_vars',
 			self::get_css_vars_array()
 		);      
@@ -1027,6 +1038,16 @@ class CSS {
         $ignore_cookies = self::getConfigArray('ignore_cookies');    
         $generation_res = Config::get('speed_css', 'generation_res');
         $force_includes = self::get_update_force_includes(array(), Speed::get_url(), false);
+        $current_url = Speed::get_url();
+        $lookup_file = self::get_lookup_file($current_url);
+        $has_lookup = $lookup_file && file_exists($lookup_file);
+        $turnstile_data = array(
+            'turnstile_site_key' => null,
+            'turnstile_enabled' => 'false',
+        );
+        if ( class_exists( '\SPRESS\App\CloudflareModule' ) ) {
+            $turnstile_data = \SPRESS\App\CloudflareModule::get_frontend_data( $has_lookup );
+        }
 
         return array(
             'include_patterns' => $include_pattern,
@@ -1034,54 +1055,11 @@ class CSS {
             'ignore_cookies' => $ignore_cookies,
             'generation_res' => $generation_res,
             'force_includes' => $force_includes,
-            'resturl' => esc_url_raw(rest_url())
+            'resturl' => esc_url_raw(rest_url()),
         );
 
 
     }
-
-    /**
-     * Enqueues the partytown script if required by the plugin configuration.
-     *
-     * This function is hooked into the 'wp_enqueue_scripts' action and is 
-     * responsible for enqueuing the partytown script and localizing the script
-     * with the cache directory.
-     *
-     * @return void
-     */
-    public static function public_enqueue_partytown() {
-
-        $plugin_dir_relative = str_replace(content_url(), '', SPRESS_PLUGIN_URL);
-        $party_path = '/wp-content' . $plugin_dir_relative . 'assets/partytown/';
-
-        ?>
-        <script rel="js-extra">
-            window.partytown = {"lib":"<?php echo $party_path; ?>",
-                                "forward":["dataLayer.push"],
-                                "resolveSendBeaconRequestParameters": function (url) {
-                                                                        return url.hostname.includes('analytics.google') ||
-                                                                            url.hostname.includes('google-analytics')
-                                                                            ? { keepalive: false }
-                                                                            : {};
-                                                                    }
-                                };
-        </script>
-        <?php        
-
-        wp_enqueue_script(
-            'partytown js-extra',
-            SPRESS_PLUGIN_URL . 'assets/partytown/partytown.min.js',
-            array(),
-            SPRESS_VER,
-            false
-        );  
-        
-
-
-
-    }
-
-
     public static function update_config_to_cache($new_config) {
 
         Cache::update_config_to_cache(self::get_css_vars_array(),$new_config,"speed_css_vars");        
@@ -1617,7 +1595,7 @@ class CSS {
      */
     public static function get_plugin_from_url($url) {
         
-        $parsedUrl = parse_url($url);
+        $parsedUrl = wp_parse_url($url);
         $path = $parsedUrl['path'];
         $pathParts = explode('/', $path);
 
@@ -1651,7 +1629,7 @@ class CSS {
         $dir = Speed::get_root_cache_path();
 
         // Create the cache directory if it does not exist
-        !is_dir($dir) && mkdir($dir, 0755, true);  
+        !is_dir($dir) && wp_mkdir_p($dir);  
 
         //Get the number of CSS files in this dir (not subfolders)
         $cssFiles = glob($dir . '/*.css');
@@ -1715,8 +1693,9 @@ class CSS {
      */
     public static function do_post_updated( $post_id ) {
 
-        if(!empty($_SERVER['REQUEST_URI']) && 
-        !preg_match("@update_css|wp-cron|wp-json@",$_SERVER['REQUEST_URI'])
+        $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+        if(!empty($request_uri) && 
+        !preg_match("@update_css|wp-cron|wp-json@",$request_uri)
         && is_user_logged_in() && current_user_can('edit_posts')) {
 
             $post = get_post($post_id);
