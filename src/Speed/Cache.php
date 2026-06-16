@@ -528,109 +528,26 @@ class Cache {
 
         global $spress_bypass_reason;
 
-        //Get URL path from $url
-        $path = wp_parse_url($url, PHP_URL_PATH);
-
-        // Check if any cookie matches the bypass rules.
-        if (!empty(self::$bypass_cookies) && !empty($_COOKIE)) {
-            $bypass_cookies = array_filter(array_map('trim', explode("\n", self::$bypass_cookies)));
-            foreach ($bypass_cookies as $cookie_bypass) {
-                foreach ((array)$_COOKIE as $cookie_name => $cookie_value) {
-                    if (stripos($cookie_name, $cookie_bypass) !== false) {
-                        $spress_bypass_reason = 'Cookie: ' . $cookie_name;
-                        return false;
-                    }
-                }
-            }
-        }
-
         // Check if the URI contains any bypass URL strings.
         if (!empty(self::$bypass_urls)) {
             $bypass_urls = array_filter(array_map('trim', explode("\n", self::$bypass_urls)));
             foreach ($bypass_urls as $bypass_url) {
-
-                if($bypass_url === "/") {
-                    if($path === "/") {
-                        $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
-                        return false;        
-                    }                    
-                } else {
-                    if (stripos($url, $bypass_url) !== false) {
-                        $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
-                        return false;
-                    }                    
-                }   
-            }
-        }
-
-        // Check if the HTTP user agent matches any bypass rules.
-        $http_user_agent = isset( $_SERVER['HTTP_USER_AGENT'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) ) : '';
-        if (!empty(self::$bypass_useragents) && $http_user_agent !== '') {
-            $bypass_useragents = array_filter(array_map('trim', explode("\n", self::$bypass_useragents)));
-            foreach ($bypass_useragents as $bypass_ua) {
-                if (stripos($http_user_agent, $bypass_ua) !== false) {
-                    $spress_bypass_reason = 'Bypass User Agent: ' . $http_user_agent;
+                if($bypass_url === "/" && wp_parse_url($url, PHP_URL_PATH) === "/") {
+                    $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
+                    return false;
+                } elseif ($bypass_url !== "/" && stripos($url, $bypass_url) !== false) {
+                    $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
                     return false;
                 }
             }
         }
 
-        // Skip if the URL has disallowed extensions (e.g. .txt, .xml, or .php).
-        $disallowed_extensions = ['.txt', '.xml', '.php'];
-        foreach ($disallowed_extensions as $ext) {
-            if (substr($url, -strlen($ext)) === $ext) {
-                $spress_bypass_reason = "Disallowed extension";
-                return false;
-            }
-        }        
-
-        //Check if we have the nocache querystring
-        if (stripos($url, 'nocache') !== false) {
-            $spress_bypass_reason = 'Nocache querystring';
-            return false;
-        }
-
-        //Don't cache AJAX request
-        $requested_with = isset( $_SERVER['HTTP_X_REQUESTED_WITH'] ) ? sanitize_text_field( wp_unslash( $_SERVER['HTTP_X_REQUESTED_WITH'] ) ) : '';
-        if($requested_with !== '' && strtolower($requested_with) == 'xmlhttprequest') {
-            $spress_bypass_reason = 'AJAX request';
-            return false;
-        }        
-
-        // Skip AJAX requests.
-        if (defined('DOING_AJAX') && DOING_AJAX) {
-            $spress_bypass_reason = 'AJAX request';
-            return false;
-        }        
-
-        // Process only GET and HEAD requests.
-        if ( !isset($_SERVER['REQUEST_METHOD']) || !in_array($_SERVER['REQUEST_METHOD'], ['GET','HEAD']) ) {
-            $spress_bypass_reason = 'Not a GET or HEAD request';
-            return false;
-        }
-
-        // Check for a 200 response code, if available.
-        if ( function_exists('http_response_code') && http_response_code() !== 200 ) {
-            $spress_bypass_reason = 'HTTP response code: ' . http_response_code();
-            return false;
-        }        
-
-        // Disallow caching for REST API requests (wp-json).
         $request_uri = Speed::get_url();
-        if (stripos($request_uri, '/wp-json') !== false) {
-            $spress_bypass_reason = 'REST API request';
-            return false;
-        }            
+        $script_name = Speed::server_var('SCRIPT_NAME', '');
 
-        // Do not serve cache during cron.
-        if (defined('DOING_CRON') && DOING_CRON) {
-            $spress_bypass_reason = 'Cron';
-            return false;
-        }
-
-        // Exit for AMP pages.
-        if (stripos($request_uri, '/amp') !== false || Speed::request_has_query_arg('amp')) {
-            $spress_bypass_reason = 'AMP page';
+        $request_bypass_reason = Speed::request_should_bypass_cache($request_uri, $script_name, self::$cache_logged_in_users, self::$bypass_cookies, self::$bypass_useragents);
+        if ($request_bypass_reason !== false) {
+            $spress_bypass_reason = $request_bypass_reason;
             return false;
         }
 

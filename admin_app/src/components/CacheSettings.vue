@@ -708,6 +708,14 @@ function createButtonState() {
   return { spinner: false, text: false, success: false, failure: false };
 }
 
+function getCacheValue(key, fallback = '') {
+  return window?.spress_namespace?.config?.speed_cache?.[key]?.value ?? fallback;
+}
+
+function getCacheHelper(key, fallback = '') {
+  return window?.spress_namespace?.config?.speed_cache?.[key]?.helper ?? fallback;
+}
+
 export default {
   data() {
     return {
@@ -726,38 +734,38 @@ export default {
       },
       findReplaceData: null,
       skeletonsAvailable: null,      
-      cache_mode: (window.spress_namespace.config.speed_cache.cache_mode.value),
-      page_preload_mode: (window.spress_namespace.config.speed_cache.page_preload_mode.value),
-      bypass_urls: (window.spress_namespace.config.speed_cache.bypass_urls.value),
-      bypass_urls_helper: (window.spress_namespace.config.speed_cache.bypass_urls.helper),      
-      bypass_cookies: (window.spress_namespace.config.speed_cache.bypass_cookies.value),
-      bypass_cookies_helper: (window.spress_namespace.config.speed_cache.bypass_cookies.helper),      
-      separate_cookie_cache: (window.spress_namespace.config.speed_cache.separate_cookie_cache.value),
-      separate_cookie_cache_helper: (window.spress_namespace.config.speed_cache.separate_cookie_cache.helper),      
-      ignore_querystrings: (window.spress_namespace.config.speed_cache.ignore_querystrings.value),
-      ignore_querystrings_helper: (window.spress_namespace.config.speed_cache.ignore_querystrings.helper),      
-      bypass_useragents: (window.spress_namespace.config.speed_cache.bypass_useragents.value),
-      bypass_useragents_helper: (window.spress_namespace.config.speed_cache.bypass_useragents.helper),      
-      cache_mobile_separately: (window.spress_namespace.config.speed_cache.cache_mobile_separately.value),   
-      force_gzipped_output: (window.spress_namespace.config.speed_cache.force_gzipped_output.value),
-      force_gzipped_output_helper: (window.spress_namespace.config.speed_cache.force_gzipped_output.helper),   
-      cache_path_uploads: (window.spress_namespace.config.speed_cache.cache_path_uploads.value),
-      cache_path_uploads_helper: (window.spress_namespace.config.speed_cache.cache_path_uploads.helper),   
-      cache_logged_in_users: (window.spress_namespace.config.speed_cache.cache_logged_in_users.value),  
-      cache_logged_in_users_exceptions: (window.spress_namespace.config.speed_cache.cache_logged_in_users_exceptions.value),
-      cache_logged_in_users_exceptions_helper: (window.spress_namespace.config.speed_cache.cache_logged_in_users_exceptions.helper),
-      cache_logged_in_users_exclusively_on: (window.spress_namespace.config.speed_cache.cache_logged_in_users_exclusively_on.value),
-      cache_logged_in_users_exclusively_on_helper: (window.spress_namespace.config.speed_cache.cache_logged_in_users_exclusively_on.helper),      
-      cache_lifetime: (window.spress_namespace.config.speed_cache.cache_lifetime.value),      
-      replace_woo_nonces: (window.spress_namespace.config.speed_cache.replace_woo_nonces.value),
-      replace_woo_nonces_helper: (window.spress_namespace.config.speed_cache.replace_woo_nonces.helper),
-      replace_ajax_nonces: (window.spress_namespace.config.speed_cache.replace_ajax_nonces.value),
-      replace_ajax_nonces_helper: (window.spress_namespace.config.speed_cache.replace_ajax_nonces.helper),
+      cache_mode: getCacheValue('cache_mode', 'disabled'),
+      page_preload_mode: getCacheValue('page_preload_mode', 'intelligent'),
+      bypass_urls: getCacheValue('bypass_urls', ''),
+      bypass_urls_helper: getCacheHelper('bypass_urls', ''),
+      bypass_cookies: getCacheValue('bypass_cookies', ''),
+      bypass_cookies_helper: getCacheHelper('bypass_cookies', ''),
+      separate_cookie_cache: getCacheValue('separate_cookie_cache', ''),
+      separate_cookie_cache_helper: getCacheHelper('separate_cookie_cache', ''),
+      ignore_querystrings: getCacheValue('ignore_querystrings', ''),
+      ignore_querystrings_helper: getCacheHelper('ignore_querystrings', ''),
+      bypass_useragents: getCacheValue('bypass_useragents', ''),
+      bypass_useragents_helper: getCacheHelper('bypass_useragents', ''),
+      cache_mobile_separately: getCacheValue('cache_mobile_separately', 'false'),
+      force_gzipped_output: getCacheValue('force_gzipped_output', 'false'),
+      force_gzipped_output_helper: getCacheHelper('force_gzipped_output', ''),
+      cache_path_uploads: getCacheValue('cache_path_uploads', 'false'),
+      cache_path_uploads_helper: getCacheHelper('cache_path_uploads', ''),
+      cache_logged_in_users: getCacheValue('cache_logged_in_users', 'false'),
+      cache_logged_in_users_exceptions: getCacheValue('cache_logged_in_users_exceptions', []),
+      cache_logged_in_users_exceptions_helper: getCacheHelper('cache_logged_in_users_exceptions', ''),
+      cache_logged_in_users_exclusively_on: getCacheValue('cache_logged_in_users_exclusively_on', ''),
+      cache_logged_in_users_exclusively_on_helper: getCacheHelper('cache_logged_in_users_exclusively_on', ''),
+      cache_lifetime: getCacheValue('cache_lifetime', '4'),
+      replace_woo_nonces: getCacheValue('replace_woo_nonces', 'false'),
+      replace_woo_nonces_helper: getCacheHelper('replace_woo_nonces', ''),
+      replace_ajax_nonces: getCacheValue('replace_ajax_nonces', 'false'),
+      replace_ajax_nonces_helper: getCacheHelper('replace_ajax_nonces', ''),
       jars: { desktop: {}, mobile: {} },            
     };
   },
   mounted() {    
-    this.findReplaceData = (window.spress_namespace.config.speed_cache.cache_logged_in_users_exceptions.value) || [];
+    this.findReplaceData = getCacheValue('cache_logged_in_users_exceptions', []) || [];
     this.skeletonsAvailable = ['element shimmer','block - 1 row','block - 2 rows','block - 3 rows'];
   },
   beforeDestroy() {
@@ -867,7 +875,9 @@ export default {
       //and update global JS
       if(Object.keys(checkboxHolder).length > 0) {
         for (let key in checkboxHolder) {
-          window.spress_namespace.config.speed_cache[key].value = checkboxHolder[key];
+          if(typeof window?.spress_namespace?.config?.speed_cache?.[key] != 'undefined') {
+            window.spress_namespace.config.speed_cache[key].value = checkboxHolder[key];
+          }
         }
       }
 

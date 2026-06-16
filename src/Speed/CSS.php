@@ -135,6 +135,7 @@ class CSS {
 
         //A lookup of old to new filesname
         $lookup = array();
+        $lookup_meta = array();
 
         //Get cache directory for the URL
         $cache_dir =  Speed::get_cache_dir_from_url($source_url);
@@ -165,7 +166,14 @@ class CSS {
 
             //Create lookup
             $lookup[$original_filename] = $new_filename;
-            
+
+            // Track inline reduction metadata from optimizer output.
+            if (strpos($url, 'id-') === 0
+                && isset($unused['inline_reduction'][$url])
+                && is_array($unused['inline_reduction'][$url])
+            ) {
+                $lookup_meta[$url] = $unused['inline_reduction'][$url];
+            }
 
         }
         
@@ -179,6 +187,10 @@ class CSS {
 
             // Ensure lookup key exists and is an array
             $current_lookup = isset($data['lookup']) && is_array($data['lookup']) ? $data['lookup'] : [];
+            $current_lookup_meta = isset($data['lookup_meta']) && is_array($data['lookup_meta']) ? $data['lookup_meta'] : [];
+        }
+        if (!isset($current_lookup_meta) || !is_array($current_lookup_meta)) {
+            $current_lookup_meta = [];
         }
 
         // Split outputs 
@@ -193,10 +205,12 @@ class CSS {
 
         //Merge
         $merged_lookup = array_merge($current_lookup,$lookup);
+        $merged_lookup_meta = array_merge($current_lookup_meta, $lookup_meta);
 
         //Create the data array to save
         $data = array(
             'lookup' => $merged_lookup,
+            'lookup_meta' => $merged_lookup_meta,
             'source_url' => $source_url,
             'post_id' => $post_id,
             'post_types' => $post_types,
@@ -391,6 +405,7 @@ class CSS {
         //Check if we have a lookup file
         $data_object = json_decode((string)file_get_contents($lookup_file));
         $lookup = $data_object->lookup;
+        $lookup_meta = isset($data_object->lookup_meta) && is_object($data_object->lookup_meta) ? $data_object->lookup_meta : (object) array();
         // read font bundle filenames
         $fonts_icon_file  = isset($data_object->fonts_icon_file) ? trim($data_object->fonts_icon_file) : '';
         $fonts_text_file  = isset($data_object->fonts_text_file) ? trim($data_object->fonts_text_file) : '';
@@ -465,6 +480,12 @@ class CSS {
                                     $newInlineCSS = "@media {$media_attr} {" . $newInlineCSS . "}";
                                 }
                                 $attrs = "rel='spress-inlined-".$sheet_url."' data-spcid='".$sheet_url ."'";
+                                if (isset($lookup_meta->$sheet_url)
+                                    && isset($lookup_meta->$sheet_url->inline_reduction_rounded)
+                                ) {
+                                    $reduction_rounded = (int) $lookup_meta->$sheet_url->inline_reduction_rounded;
+                                    $attrs .= " data-spred='" . $reduction_rounded . "'";
+                                }
                                 if (!empty($title_attr)) {
                                     $attrs .= " data-original-title='" . htmlspecialchars($title_attr, ENT_QUOTES) . "'";
                                 }
@@ -1102,9 +1123,23 @@ class CSS {
         $link_pattern = '/<link[^>]*\srel=[\'"]stylesheet[\'"][^>]*\shref=[\'"]([^\'"]+)[\'"][^>]*>/i';
         preg_match_all($link_pattern, $html, $link_matches);
         
-        // Pattern for inline <style> tags.
-        $style_pattern = '/<style[^>]*>(.*?)<\/style>/is';
+        // Pattern for inline <style> tags (full-tag match only; no inner capture needed).
+        $style_pattern = '/<style\b[^>]*>.*?<\/style>/is';
         preg_match_all($style_pattern, $html, $style_matches);
+        $style_tags = $style_matches[0] ?? [];
+
+        // Fast sanity check: if open-tag count doesn't match parsed style blocks,
+        // retry style extraction via DOM to recover edge-case markup.
+        $style_open_count = substr_count(strtolower((string) $html), '<style');
+        if ($style_open_count !== count($style_tags)) {
+            $dom = (new HtmlDocument(''))->load($html, true, false);
+            if ($dom) {
+                $style_tags = [];
+                foreach ((array) $dom->find('style') as $style_node) {
+                    $style_tags[] = $style_node->outertext;
+                }
+            }
+        }
         
         $tags = [];
         $urls = [];
@@ -1118,13 +1153,20 @@ class CSS {
         }
         
         // Add inline stylesheets.
-        if (isset($style_matches[0])) {
-            foreach ($style_matches[0] as $i => $tag) {
+        if (!empty($style_tags)) {
+            foreach ($style_tags as $i => $tag) {
                 $tags[] = $tag;
-                //Get content ID
-                preg_match("@data-spcid=\"(.*?)\"@",$tag,$matches);
-                $spcid = $matches[1] ?? '';
-                $urls[] = "id-".$spcid; // Use the content as the key
+                // Get content ID (accept single or double quotes).
+                preg_match('/data-spcid=(["\'])(.*?)\1/i', $tag, $matches);
+                $spcid = trim((string) ($matches[2] ?? ''));
+                if ($spcid === '') {
+                    $inline_key = 'id-';
+                } elseif (strpos($spcid, 'id-') === 0) {
+                    $inline_key = $spcid;
+                } else {
+                    $inline_key = 'id-' . $spcid;
+                }
+                $urls[] = $inline_key; // Preserve original broad style matching behavior.
             }
         }
         

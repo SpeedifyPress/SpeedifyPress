@@ -130,64 +130,12 @@ class AdvancedCache {
                 }
             }    
         }
-        // Exit if WP-CLI is running.
-        if ( defined('WP_CLI') && WP_CLI ) {
-            return true;
-        }
-        // Process only GET and HEAD requests.
-        if ( !isset($_SERVER['REQUEST_METHOD']) || !in_array($_SERVER['REQUEST_METHOD'], ['GET','HEAD']) ) {
-            return true;
-        }
-
-        // Check for a cache bust parameter.
-        if ( Speed::request_has_query_arg('speedify_cache_bust') ) {
-            return true;
-        }
-        // Check for a 200 response code, if available.
-        if ( function_exists('http_response_code') && http_response_code() !== 200 ) {
-            return true;
-        }
-        // Exit if REST or XMLRPC requests are defined.
-        if ((defined('REST_REQUEST') && REST_REQUEST) || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST)) {
-            return true;
-        }
-        // Disallow caching for specific files/directories.
-        $disallowed = ['wp-cron.php', 'xmlrpc.php', 'wp-login.php', 'wp-admin'];
         $request_uri = Speed::server_var('REQUEST_URI', '');
-        foreach ($disallowed as $file) {
-            if (stripos($request_uri, $file) !== false) {
-                return true;
-            }
-        }
-        // Disallow caching for REST API requests (wp-json).
-        if (stripos($request_uri, '/wp-json') !== false) {
+        $script_name = Speed::server_var('SCRIPT_NAME', '');
+
+        $bypass_reason = Speed::request_should_bypass_cache($request_uri, $script_name, self::$cache_logged_in_users, '', '');
+        if ($bypass_reason !== false) {
             return true;
-        }        
-        // Additionally, disallow if the URL path ends with disallowed extensions.
-        $path = Speed::safe_parse_url($request_uri, PHP_URL_PATH);
-        if ($path) {
-            $exts = ['.ico', '.txt', '.xml', '.xsl'];
-            foreach ($exts as $ext) {
-                if (substr($path, -strlen($ext)) === $ext) {
-                    return true;
-                }
-            }
-        }
-        // Do not serve cache during cron.
-        if (defined('DOING_CRON') && DOING_CRON) {
-            return true;
-        }
-        // Exit for AMP pages.
-        if (stripos($request_uri, '/amp') !== false || Speed::request_has_query_arg('amp')) {
-            return true;
-        }
-        // If caching for logged-in users is disabled, exit if any cookie key starts with "wordpress_logged_in".
-        if (self::$cache_logged_in_users !== 'true') {
-            foreach ($_COOKIE as $key => $value) {
-                if (strpos($key, 'wordpress_logged_in') === 0) {
-                    return true;
-                }
-            }
         }
         return false;
     }
@@ -344,7 +292,7 @@ class AdvancedCache {
         $path = Speed::safe_parse_url($request_uri, PHP_URL_PATH);        
         if ($path === '/_csrf' || basename($path) === '_csrf') {
 
-            Speed::serve_csrf_token(array("X-CSRF-Source: advanced-cache"));
+            Speed::serve_csrf_token(array("X-CSRF-Source" => "advanced-cache"));
 
         }
 

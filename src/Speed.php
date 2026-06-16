@@ -186,6 +186,144 @@ class Speed {
     }
 
     /**
+     * Detect whether the current request is actually cron transport.
+     *
+     * Some plugins define DOING_CRON during normal front-end renders. Treat the
+     * flag as valid only when the request itself looks like wp-cron transport.
+     *
+     * @param string $request_uri Optional request URI override.
+     * @param string $script_name Optional script name override.
+     * @return bool
+     */
+    public static function is_cron_request($request_uri = '', $script_name = '') {
+        if ( ! (defined('DOING_CRON') && DOING_CRON) ) {
+            return false;
+        }
+
+        $request_uri = $request_uri !== '' ? $request_uri : self::server_var('REQUEST_URI', '');
+        $script_name = $script_name !== '' ? $script_name : self::server_var('SCRIPT_NAME', '');
+
+        return (stripos($request_uri, 'wp-cron.php') !== false)
+            || (stripos($script_name, 'wp-cron.php') !== false);
+    }
+
+    /**
+     * Detect whether a request should bypass cache before runtime-specific checks.
+     *
+     * This is safe for early bootstrap and shared by the advanced-cache loader
+     * and runtime cache code to avoid duplicated request rules.
+     *
+     * @param string $request_uri Optional request URI override.
+     * @param string $script_name Optional script name override.
+     * @param string $cache_logged_in_users Cache policy flag.
+     * @param string $bypass_cookies Line-separated bypass cookie fragments.
+     * @param string $bypass_useragents Line-separated bypass user agent fragments.
+     * @return string|false Reason string when bypassing, false otherwise.
+     */
+    public static function request_should_bypass_cache($request_uri = '', $script_name = '', $cache_logged_in_users = '', $bypass_cookies = '', $bypass_useragents = '') {
+        $request_uri = $request_uri !== '' ? $request_uri : self::server_var('REQUEST_URI', '');
+        $script_name = $script_name !== '' ? $script_name : self::server_var('SCRIPT_NAME', '');
+        $request_method = self::server_var('REQUEST_METHOD', '');
+        $requested_with = self::server_var('HTTP_X_REQUESTED_WITH', '');
+        $http_user_agent = self::server_var('HTTP_USER_AGENT', '');
+
+        // Only cache GET or HEAD requests.
+        if ( ! in_array($request_method, array('GET', 'HEAD'), true) ) {
+            return 'Not a GET or HEAD request';
+        }
+
+        // AJAX traffic is not page-cache traffic.
+        if (strtolower($requested_with) === 'xmlhttprequest' || (defined('DOING_AJAX') && DOING_AJAX)) {
+            return 'AJAX request';
+        }
+
+        // Allow explicit cache busting from the request string.
+        if (self::request_has_query_arg('speedify_cache_bust')) {
+            return 'Cache bust parameter';
+        }
+
+        // Legacy nocache requests should also skip caching.
+        if (stripos($request_uri, 'nocache') !== false || stripos($script_name, 'nocache') !== false) {
+            return 'Nocache querystring';
+        }
+
+        // Skip non-200 responses so we never cache errors or redirects.
+        if (function_exists('http_response_code') && http_response_code() !== 200) {
+            return 'HTTP response code';
+        }
+
+        // REST and XML-RPC requests are not page-cache candidates.
+        if ( (defined('REST_REQUEST') && REST_REQUEST) || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) ) {
+            return 'REST or XMLRPC request';
+        }
+
+        // Exclude known transport and admin endpoints early.
+        $disallowed = array('wp-cron.php', 'xmlrpc.php', 'wp-login.php', 'wp-admin');
+        foreach ($disallowed as $file) {
+            if (stripos($request_uri, $file) !== false || stripos($script_name, $file) !== false) {
+                return $file;
+            }
+        }
+
+        // wp-json is API traffic, not front-end HTML.
+        if (stripos($request_uri, '/wp-json') !== false || stripos($script_name, '/wp-json') !== false) {
+            return 'REST API request';
+        }
+
+        // Skip file-type endpoints that should not be cached as HTML.
+        $path = self::safe_parse_url($request_uri, PHP_URL_PATH);
+        if ($path) {
+            $exts = array('.ico', '.txt', '.xml', '.xsl');
+            foreach ($exts as $ext) {
+                if (substr($path, -strlen($ext)) === $ext) {
+                    return 'Disallowed extension';
+                }
+            }
+        }
+
+        // Cookie policy can still force a bypass in bootstrap/runtime.
+        if ($cache_logged_in_users !== 'true') {
+            foreach ((array) $_COOKIE as $cookie_name => $cookie_value) {
+                if (stripos((string) $cookie_name, 'wordpress_logged_in') === 0) {
+                    return 'Logged-in cookie';
+                }
+            }
+        }
+
+        if ($bypass_cookies !== '' && !empty($_COOKIE)) {
+            $cookie_rules = array_filter(array_map('trim', explode("\n", $bypass_cookies)));
+            foreach ($cookie_rules as $cookie_rule) {
+                foreach ((array) $_COOKIE as $cookie_name => $cookie_value) {
+                    if (stripos((string) $cookie_name, $cookie_rule) !== false) {
+                        return 'Cookie: ' . $cookie_name;
+                    }
+                }
+            }
+        }
+
+        if ($bypass_useragents !== '' && $http_user_agent !== '') {
+            $useragent_rules = array_filter(array_map('trim', explode("\n", $bypass_useragents)));
+            foreach ($useragent_rules as $useragent_rule) {
+                if (stripos($http_user_agent, $useragent_rule) !== false) {
+                    return 'Bypass User Agent: ' . $http_user_agent;
+                }
+            }
+        }
+
+        // Only treat DOING_CRON as real cron when the transport matches wp-cron.
+        if (self::is_cron_request($request_uri, $script_name)) {
+            return 'Cron';
+        }
+
+        // AMP pages get their own output path.
+        if (stripos($request_uri, '/amp') !== false || self::request_has_query_arg('amp')) {
+            return 'AMP page';
+        }
+
+        return false;
+    }
+
+    /**
      * Initializes the Speed class by setting up output buffering, CSS optimizations,
      * HTML rewriting, and registering filters and actions for third-party plugins.
      */
@@ -1122,7 +1260,7 @@ class Speed {
 
         // Check if it's an admin area or an AJAX request or cron
         $script_name = isset( $_SERVER['SCRIPT_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SCRIPT_NAME'] ) ) : '';
-        if (is_admin() || wp_doing_ajax() || wp_doing_cron()
+        if (is_admin() || wp_doing_ajax() || self::is_cron_request()
         || (stripos( $script_name, 'wp-login.php' ) !== false)
         || (stripos( $script_name, 'wp-cron.php' ) !== false)
         ) {

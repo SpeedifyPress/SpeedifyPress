@@ -137,6 +137,7 @@ class Unused {
         //Process inline CSS
         self::find_inline_css($html);
         $home_url = home_url();
+        $inline_reduction = array();
         foreach(self::$inline_css AS $spcid => $css) {
 
             //Track usage
@@ -156,6 +157,17 @@ class Unused {
 
             //Track usage
             self::$usage_tracker['used_length'] += strlen($sanitized_css);
+
+            $original_len = strlen($css);
+            $used_len = strlen($sanitized_css);
+            if ($original_len > 0) {
+                $reduction = (($original_len - $used_len) / $original_len) * 100;
+                $reduction = max(0, min(100, $reduction));
+                $inline_reduction["id-" . $spcid] = array(
+                    'inline_reduction_percent' => round($reduction, 2),
+                    'inline_reduction_rounded' => (int) round($reduction),
+                );
+            }
 
             //Add to global variable
             self::$stylesheets_css["id-".$spcid] = $sanitized_css;              
@@ -191,6 +203,7 @@ class Unused {
                      "markup"=>self::$used_markup,
                      "css_vars"=>self::$css_variables,
                      "keep_map"=>self::$keep_map,
+                     "inline_reduction"=>$inline_reduction,
                      // expose fonts css ===
                      "fonts_css_icons"=>$fonts_css_icons,   // new: icon fonts only
                      "fonts_css_text"=>$fonts_css_text      // new: non-icon (text) fonts
