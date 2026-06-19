@@ -34,6 +34,8 @@ This release is a major packaging, build, compliance, and edition-separation upd
 - Added extension hook dispatch model in `Speed`:
   - `call_extension()` + `__callStatic()` fallback, replacing hard-coded Pro-method wrappers.
 - Added direct-access guards (`if ( ! defined('ABSPATH') ) exit;`) across additional plugin runtime classes.
+- Added inline CSS reduction metadata to lookup output so rewritten inline styles can carry `data-spred` with the reduction percentage.
+- Added a shared request bypass classifier in `Speed` so bootstrap and runtime cache paths use the same request, cron, AJAX, AMP, REST, and cookie rules.
   - `/check_license` registration moved behind `LicenseIntegration::register_rest_routes()`.
   - `check_license()` now delegates to `LicenseIntegration` when available.
   - Plugin-enable flow validates licensing via integration module when present.
@@ -44,6 +46,7 @@ This release is a major packaging, build, compliance, and edition-separation upd
   - Improved client IP sanitization for rate limiting.
 - Updated `handle_compressx()` to use `WP_REST_Request` params instead of raw `$_GET`.
 - Updated cache/bootstrap flow to use sanitized server/request accessors and compatibility helpers in advanced cache context.
+- Updated cache/bootstrap flow to use the shared bypass classifier instead of duplicated request-shape and cookie checks.
 - Updated config update flow for `preload_fonts_intelligently` so dependent keys are expanded before save loop (fixes shortcut persistence timing issue).
 - Updated path/file operations toward WP-compatible functions where applicable (`wp_mkdir_p`, `wp_delete_file`, filesystem-backed directory removal helper).
 - Updated plugin header/release metadata:
@@ -52,6 +55,10 @@ This release is a major packaging, build, compliance, and edition-separation upd
 - Updated many URL parsing calls to `wp_parse_url` (or compatibility wrapper in early bootstrap paths).
 - Updated timestamp/log usage in multiple paths to GMT (`gmdate`) consistency.
 - Updated `unused` CSS pipeline remote fetch behavior to enforce same-origin safety and tighter local path resolution.
+- Updated inline style discovery and rewriting to handle single-quoted `data-spcid` values and recover edge-case markup with DOM fallback only when the fast regex count disagrees.
+- Hardened DOM rewriting so viewport/preload insertion no longer mutates `HtmlDocument` properties, avoiding PHP 8.2 dynamic property deprecations.
+- Normalized cache path fragments before directory and filename generation so long URL paths, query strings, cookies, and roles stay within filesystem limits.
+- Added hash-based fallback shortening for overlong cache directories so `mkdir()` and cache writes do not fail on long URLs.
 
 #### Removed
 - Removed logged-in cache worker and Woo nonce helper assets from package.
@@ -61,6 +68,9 @@ This release is a major packaging, build, compliance, and edition-separation upd
 
 #### Fixed
 - Fixed trailing slash handling regression in sanitized URI normalization.
+- Fixed admin cache settings accessors so missing non-pro keys no longer throw `undefined.value` errors in the community build.
+- Fixed `mkdir(): File name too long` and `file_put_contents(...): File name too long` failures caused by oversized cache paths.
+- Fixed cache filename suffixes to cap cookie and logged-in role fragments before they are appended.
 - Fixed multiple escaped-output and type issues that triggered WP.org lint errors in dependency code paths.
 - Fixed dashboard/community/wordpress.org license-mode rendering and fallback behavior via integration-aware data flow.
 - Fixed advanced-cache response output handling to avoid unsafe direct output warnings while preserving raw cache body/gzip responses.

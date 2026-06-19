@@ -719,7 +719,7 @@ class Cache {
             foreach ($_COOKIE as $name => $value) {
                 foreach ($patterns as $partial) {
                     if (stripos($name, $partial) !== false) {
-                        $matched[] = preg_replace('/[^A-Za-z0-9_\-]/', '', $name);
+                        $matched[] = Speed::normalize_cache_path_piece($name, 24);
                         break;
                     }
                 }
@@ -732,7 +732,7 @@ class Cache {
         // Append logged-in user role if enabled and available.
         if ($cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
             $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
-            $filename .= '-' . preg_replace('/[^A-Za-z0-9_\-]/', '', $roles_cookie);
+            $filename .= '-' . Speed::normalize_cache_path_piece($roles_cookie, 24);
         }
 
         // Append mobile suffix if separate mobile caching is enabled.
@@ -776,7 +776,7 @@ class Cache {
         // Append logged-in user role if enabled and available.
         if (self::$cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
             $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
-            $filename = preg_replace('/[^A-Za-z0-9_\-]/', '', $roles_cookie) . "-" . $filename;
+            $filename = Speed::normalize_cache_path_piece($roles_cookie, 24) . "-" . $filename;
         }
 
         return $filename;

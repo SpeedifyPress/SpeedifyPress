@@ -81,6 +81,36 @@ class Speed {
     }
 
     /**
+     * Normalize a cache path fragment and keep it within a safe length.
+     *
+     * @param mixed $value Raw fragment.
+     * @param int $max_length Maximum length for the returned fragment.
+     * @return string
+     */
+    public static function normalize_cache_path_piece($value, $max_length = 64) {
+        $value = self::sanitize_bootstrap_text($value);
+        $value = preg_replace('/[^A-Za-z0-9_\-]/', '', $value) ?: '';
+        if ($value === '') {
+            return '';
+        }
+
+        $max_length = max(16, (int) $max_length);
+        if (strlen($value) <= $max_length) {
+            return $value;
+        }
+
+        $hash = substr(md5($value), 0, 12);
+        $prefix_length = max(1, $max_length - 13);
+        $prefix = rtrim(substr($value, 0, $prefix_length), '-_.');
+
+        if ($prefix === '') {
+            return $hash;
+        }
+
+        return $prefix . '-' . $hash;
+    }
+
+    /**
      * Read and sanitize a value from $_SERVER.
      *
      * @param string $key Server key.
@@ -1768,7 +1798,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
     private static function move_viewport_to_top($dom) {
 
         $head = $dom->find('head', 0);
-        if (!$head) return $dom;
+        if (!$head) {
+            return $dom;
+        }
 
         // Capture existing viewport meta (if any), remove all occurrences
         $viewportHtml = '';
@@ -1778,14 +1810,13 @@ HTML " . number_format($elapsed_time,2) . "-->";
                 if ($viewportHtml === '') {
                     $viewportHtml = $m->outertext; // keep the first found as source
                 }
-
-                $dom->outertext = str_replace($viewportHtml, '', $dom->outertext);                
+                $m->outertext = '';
 
             }
         }
 
         if($viewportHtml) {
-            $dom->outertext = preg_replace("@<head( ([^>]+))?>@", "<head$2>" . $viewportHtml, $dom->outertext, 1);
+            $head->innertext = $viewportHtml . $head->innertext;
         }
 
         return $dom;
@@ -1945,13 +1976,11 @@ HTML " . number_format($elapsed_time,2) . "-->";
 
         }
 
-        // Add directly after the *first* </title>
-        $dom->outertext = preg_replace(
-            '/<\/title>/',
-            '</title>' . $preload_html,
-            $dom->outertext,
-            1
-        );
+        // Append preload links after the first title node without mutating the document object.
+        $title = $dom->find('title', 0);
+        if ($title) {
+            $title->outertext = $title->outertext . $preload_html;
+        }
 
         return $dom;
 
@@ -2270,9 +2299,15 @@ HTML " . number_format($elapsed_time,2) . "-->";
         // Extract the relative path from the clean URL.
         $relative_path = self::safe_parse_url($clean_url, PHP_URL_PATH);
         $relative_path = is_string($relative_path) ? $relative_path : '';
-        // Normalize and sanitize path segments
+        // Normalize and bound each path segment so long URLs do not exceed filesystem limits.
         $relative_path = self::get_sanitized_uri($relative_path);
-        $relative_path = trim($relative_path, '/') ? trim($relative_path, '/') : "";
+        $relative_segments = array_filter(array_map('trim', explode('/', trim($relative_path, '/'))), 'strlen');
+        $relative_segments = array_map(array(__CLASS__, 'normalize_cache_path_piece'), $relative_segments);
+        $relative_segments = array_values(array_filter($relative_segments, 'strlen'));
+        $relative_path = implode('/', $relative_segments);
+        if (strlen($relative_path) > 160) {
+            $relative_path = self::normalize_cache_path_piece($relative_path, 96);
+        }
     
         // Parse the query parameters from the clean URL.
         $parsed_url = self::safe_parse_url($clean_url);
@@ -2290,13 +2325,16 @@ HTML " . number_format($elapsed_time,2) . "-->";
         if (!empty($query_strings)) {
             $safe_query_parts = [];
             foreach ($query_strings as $key => $value) {
-                // Sanitize both key and value to allow only alphanumerics, underscores, and dashes.
-                $safe_key = preg_replace('/[^A-Za-z0-9_\-]/', '', $key);
-                $safe_value = preg_replace('/[^A-Za-z0-9_\-]/', '', $value);
+                // Sanitize both key and value and cap each fragment.
+                $safe_key = self::normalize_cache_path_piece($key, 24);
+                $safe_value = self::normalize_cache_path_piece($value, 24);
                 $safe_query_parts[] = $safe_value !== '' ? $safe_key . '-' . $safe_value : $safe_key;
             }
             // Join the parts with a dash.
             $query_dir = implode('-', $safe_query_parts);
+            if (strlen($query_dir) > 96) {
+                $query_dir = 'q-' . substr(md5(json_encode($query_strings)), 0, 12);
+            }
         }
     
         // Build the base cache directory from the root.
@@ -2306,6 +2344,13 @@ HTML " . number_format($elapsed_time,2) . "-->";
         // If query parameters exist, add them as an extra directory.
         if ($query_dir !== "") {
             $cache_dir .= '/' . $query_dir;
+        }
+
+        // Keep the full directory path within a safe filesystem length.
+        if (strlen($cache_dir) > 200) {
+            $hash_source = trim($relative_path . '/' . $query_dir, '/');
+            $hash_piece = self::normalize_cache_path_piece($hash_source, 96);
+            $cache_dir = $base . '/' . ($hash_piece !== '' ? $hash_piece : substr(md5($hash_source), 0, 12));
         }
 
         //Ensure ends with trailing slash
