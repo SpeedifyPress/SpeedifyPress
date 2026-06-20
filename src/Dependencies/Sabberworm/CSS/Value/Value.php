@@ -96,10 +96,10 @@ abstract class Value implements CSSElement, Positionable
         }
         if (!isset($stack[0])) {
             throw new UnexpectedTokenException(
-                " {$parserState->peek()} ",
-                $parserState->peek(1, -1) . $parserState->peek(2),
+                esc_html(" {$parserState->peek()} "),
+                esc_html($parserState->peek(1, -1) . $parserState->peek(2)),
                 'literal',
-                $parserState->currentLine()
+                (int) $parserState->currentLine()
             );
         }
         return $stack[0];

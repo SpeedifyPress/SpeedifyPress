@@ -2,6 +2,10 @@
 
 namespace SPRESS;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\Speed\CSS;
 use SPRESS\Speed\Cache;
 use SPRESS\Speed\Unused;
@@ -15,7 +19,7 @@ use SPRESS\Dependencies\Wa72\Url\Url;
 
 /**
  * The `Speed` class handles performance optimizations and output rewriting 
- * for the plugin. It manages CSS rewriting.
+ * for the plugin. It manages CSS rewriting. 
  * 
  * @package SPRESS
  */
@@ -47,6 +51,309 @@ class Speed {
     public static $debug_output_buffer = false;
 
     /**
+     * Basic text sanitization that is safe before full WordPress bootstrap.
+     *
+     * @param mixed $value Raw value.
+     * @return string
+     */
+    public static function sanitize_bootstrap_text($value) {
+        if (!is_string($value)) {
+            return '';
+        }
+        $value = stripslashes($value);
+        $value = preg_replace('/[\x00-\x1F\x7F]/u', '', $value) ?: '';
+        return trim($value);
+    }
+
+    /**
+     * Basic URL sanitization that is safe before full WordPress bootstrap.
+     *
+     * @param mixed $value Raw URL value.
+     * @return string
+     */
+    public static function sanitize_bootstrap_url($value) {
+        $value = self::sanitize_bootstrap_text($value);
+        if ($value === '') {
+            return '';
+        }
+        $value = filter_var($value, FILTER_SANITIZE_URL);
+        return is_string($value) ? trim($value) : '';
+    }
+
+    /**
+     * Normalize a cache path fragment and keep it within a safe length.
+     *
+     * @param mixed $value Raw fragment.
+     * @param int $max_length Maximum length for the returned fragment.
+     * @return string
+     */
+    public static function normalize_cache_path_piece($value, $max_length = 64) {
+        $value = self::sanitize_bootstrap_text($value);
+        $value = preg_replace('/[^A-Za-z0-9_\-]/', '', $value) ?: '';
+        if ($value === '') {
+            return '';
+        }
+
+        $max_length = max(16, (int) $max_length);
+        if (strlen($value) <= $max_length) {
+            return $value;
+        }
+
+        $hash = substr(md5($value), 0, 12);
+        $prefix_length = max(1, $max_length - 13);
+        $prefix = rtrim(substr($value, 0, $prefix_length), '-_.');
+
+        if ($prefix === '') {
+            return $hash;
+        }
+
+        return $prefix . '-' . $hash;
+    }
+
+    /**
+     * Read and sanitize a value from $_SERVER.
+     *
+     * @param string $key Server key.
+     * @param string $default Default value.
+     * @return string
+     */
+    public static function server_var($key, $default = '') {
+        if (!is_string($key) || $key === '') {
+            return $default;
+        }
+
+        $value = filter_input(INPUT_SERVER, $key, FILTER_UNSAFE_RAW);
+        if (!is_string($value) || $value === '') {
+            return $default;
+        }
+
+        return self::sanitize_bootstrap_text($value);
+    }
+
+    /**
+     * Parse URL in both early bootstrap and normal runtime.
+     *
+     * @param string $url URL string.
+     * @param int $component Optional component constant.
+     * @return mixed
+     */
+    public static function safe_parse_url($url, $component = -1) {
+        if (!function_exists('wp_parse_url')) {
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url -- Runs before WordPress is loaded.
+            return ($component === -1) ? parse_url($url) : parse_url($url, $component);
+        }
+        return wp_parse_url($url, $component);
+    }
+
+    /**
+     * Delete file in a way that's compatible with both early 
+     * and normal bootstrap.
+     *
+     * @param string $path File path.
+     * @return bool
+     */
+    public static function delete_file_compat($path) {
+        if (!is_string($path) || $path === '') {
+            return false;
+        }
+
+        if (!file_exists($path)) {
+            return true;
+        }
+
+        if (function_exists('wp_delete_file')) {
+            wp_delete_file($path);
+            return !file_exists($path);
+        }
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink -- Runs before WordPress is loaded.
+        return @unlink($path);
+    }
+
+    /**
+     * Returns parsed query args from the current request URI.
+     *
+     * @return array<string,mixed>
+     */
+    public static function get_query_args() {
+        static $cached_query_args = null;
+        if (is_array($cached_query_args)) {
+            return $cached_query_args;
+        }
+
+        $cached_query_args = array();
+        $request_uri = self::server_var('REQUEST_URI', '/');
+        $query = self::safe_parse_url($request_uri, PHP_URL_QUERY);
+        if (!is_string($query) || $query === '') {
+            return $cached_query_args;
+        }
+
+        parse_str($query, $parsed_query);
+        if (!is_array($parsed_query)) {
+            return $cached_query_args;
+        }
+
+        foreach ($parsed_query as $query_key => $query_value) {
+            $key = strtolower(preg_replace('/[^a-z0-9_\-]/i', '', (string) $query_key));
+            if ($key !== '') {
+                $cached_query_args[$key] = $query_value;
+            }
+        }
+
+        return $cached_query_args;
+    }
+
+    /**
+     * Checks whether a query arg exists in the current request URI.
+     *
+     * @param string $key Query arg key.
+     * @return bool
+     */
+    public static function request_has_query_arg($key) {
+        $query_args = self::get_query_args();
+        $needle = strtolower(preg_replace('/[^a-z0-9_\-]/i', '', (string) $key));
+        return $needle !== '' && array_key_exists($needle, $query_args);
+    }
+
+    /**
+     * Detect whether the current request is actually cron transport.
+     *
+     * Some plugins define DOING_CRON during normal front-end renders. Treat the
+     * flag as valid only when the request itself looks like wp-cron transport.
+     *
+     * @param string $request_uri Optional request URI override.
+     * @param string $script_name Optional script name override.
+     * @return bool
+     */
+    public static function is_cron_request($request_uri = '', $script_name = '') {
+        if ( ! (defined('DOING_CRON') && DOING_CRON) ) {
+            return false;
+        }
+
+        $request_uri = $request_uri !== '' ? $request_uri : self::server_var('REQUEST_URI', '');
+        $script_name = $script_name !== '' ? $script_name : self::server_var('SCRIPT_NAME', '');
+
+        return (stripos($request_uri, 'wp-cron.php') !== false)
+            || (stripos($script_name, 'wp-cron.php') !== false);
+    }
+
+    /**
+     * Detect whether a request should bypass cache before runtime-specific checks.
+     *
+     * This is safe for early bootstrap and shared by the advanced-cache loader
+     * and runtime cache code to avoid duplicated request rules.
+     *
+     * @param string $request_uri Optional request URI override.
+     * @param string $script_name Optional script name override.
+     * @param string $cache_logged_in_users Cache policy flag.
+     * @param string $bypass_cookies Line-separated bypass cookie fragments.
+     * @param string $bypass_useragents Line-separated bypass user agent fragments.
+     * @return string|false Reason string when bypassing, false otherwise.
+     */
+    public static function request_should_bypass_cache($request_uri = '', $script_name = '', $cache_logged_in_users = '', $bypass_cookies = '', $bypass_useragents = '') {
+        $request_uri = $request_uri !== '' ? $request_uri : self::server_var('REQUEST_URI', '');
+        $script_name = $script_name !== '' ? $script_name : self::server_var('SCRIPT_NAME', '');
+        $request_method = self::server_var('REQUEST_METHOD', '');
+        $requested_with = self::server_var('HTTP_X_REQUESTED_WITH', '');
+        $http_user_agent = self::server_var('HTTP_USER_AGENT', '');
+
+        // Only cache GET or HEAD requests.
+        if ( ! in_array($request_method, array('GET', 'HEAD'), true) ) {
+            return 'Not a GET or HEAD request';
+        }
+
+        // AJAX traffic is not page-cache traffic.
+        if (strtolower($requested_with) === 'xmlhttprequest' || (defined('DOING_AJAX') && DOING_AJAX)) {
+            return 'AJAX request';
+        }
+
+        // Allow explicit cache busting from the request string.
+        if (self::request_has_query_arg('speedify_cache_bust')) {
+            return 'Cache bust parameter';
+        }
+
+        // Legacy nocache requests should also skip caching.
+        if (stripos($request_uri, 'nocache') !== false || stripos($script_name, 'nocache') !== false) {
+            return 'Nocache querystring';
+        }
+
+        // Skip non-200 responses so we never cache errors or redirects.
+        if (function_exists('http_response_code') && http_response_code() !== 200) {
+            return 'HTTP response code';
+        }
+
+        // REST and XML-RPC requests are not page-cache candidates.
+        if ( (defined('REST_REQUEST') && REST_REQUEST) || (defined('XMLRPC_REQUEST') && XMLRPC_REQUEST) ) {
+            return 'REST or XMLRPC request';
+        }
+
+        // Exclude known transport and admin endpoints early.
+        $disallowed = array('wp-cron.php', 'xmlrpc.php', 'wp-login.php', 'wp-admin');
+        foreach ($disallowed as $file) {
+            if (stripos($request_uri, $file) !== false || stripos($script_name, $file) !== false) {
+                return $file;
+            }
+        }
+
+        // wp-json is API traffic, not front-end HTML.
+        if (stripos($request_uri, '/wp-json') !== false || stripos($script_name, '/wp-json') !== false) {
+            return 'REST API request';
+        }
+
+        // Skip file-type endpoints that should not be cached as HTML.
+        $path = self::safe_parse_url($request_uri, PHP_URL_PATH);
+        if ($path) {
+            $exts = array('.ico', '.txt', '.xml', '.xsl');
+            foreach ($exts as $ext) {
+                if (substr($path, -strlen($ext)) === $ext) {
+                    return 'Disallowed extension';
+                }
+            }
+        }
+
+        // Cookie policy can still force a bypass in bootstrap/runtime.
+        if ($cache_logged_in_users !== 'true') {
+            foreach ((array) $_COOKIE as $cookie_name => $cookie_value) {
+                if (stripos((string) $cookie_name, 'wordpress_logged_in') === 0) {
+                    return 'Logged-in cookie';
+                }
+            }
+        }
+
+        if ($bypass_cookies !== '' && !empty($_COOKIE)) {
+            $cookie_rules = array_filter(array_map('trim', explode("\n", $bypass_cookies)));
+            foreach ($cookie_rules as $cookie_rule) {
+                foreach ((array) $_COOKIE as $cookie_name => $cookie_value) {
+                    if (stripos((string) $cookie_name, $cookie_rule) !== false) {
+                        return 'Cookie: ' . $cookie_name;
+                    }
+                }
+            }
+        }
+
+        if ($bypass_useragents !== '' && $http_user_agent !== '') {
+            $useragent_rules = array_filter(array_map('trim', explode("\n", $bypass_useragents)));
+            foreach ($useragent_rules as $useragent_rule) {
+                if (stripos($http_user_agent, $useragent_rule) !== false) {
+                    return 'Bypass User Agent: ' . $http_user_agent;
+                }
+            }
+        }
+
+        // Only treat DOING_CRON as real cron when the transport matches wp-cron.
+        if (self::is_cron_request($request_uri, $script_name)) {
+            return 'Cron';
+        }
+
+        // AMP pages get their own output path.
+        if (stripos($request_uri, '/amp') !== false || self::request_has_query_arg('amp')) {
+            return 'AMP page';
+        }
+
+        return false;
+    }
+
+    /**
      * Initializes the Speed class by setting up output buffering, CSS optimizations,
      * HTML rewriting, and registering filters and actions for third-party plugins.
      */
@@ -56,7 +363,7 @@ class Speed {
         self::serve_csrf_token();
 
         //Set the hostname
-        self::$hostname = parse_url(site_url(), PHP_URL_HOST);
+        self::$hostname = wp_parse_url(site_url(), PHP_URL_HOST);
 
         // Initialize Cache speed optimizations
         Cache::init();        
@@ -102,15 +409,31 @@ class Speed {
      */
     public static function serve_csrf_token($headers=array()) {
         
-        $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);        
+        $request_uri = self::server_var('REQUEST_URI', '/');
+        $path = self::safe_parse_url($request_uri, PHP_URL_PATH);
         if ($path === '/_csrf' || basename($path) === '_csrf') {
 
             // Ensure a binding exists BEFORE generating the token
-            if (empty($_COOKIE['spdy_guest'])) {
+            $guest_cookie = isset($_COOKIE['spdy_guest']) ? self::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
+            if ( $guest_cookie === '' ) {
                 Cache::generate_guest_cookie();
             }            
 
-            $page_url = isset($_SERVER['HTTP_X_PAGE_URL']) ? $_SERVER['HTTP_X_PAGE_URL'] : SPEED::get_url();
+            $page_url = SPEED::get_url();
+            $header_url = self::sanitize_bootstrap_url(self::server_var('HTTP_X_PAGE_URL', ''));
+            if ($header_url) {
+                $site_host = self::get_current_host();
+                if ($site_host && strpos($site_host, ':') !== false) {
+                    $site_host = explode(':', $site_host, 2)[0];
+                }
+                $header_host = self::safe_parse_url($header_url, PHP_URL_HOST);
+                $header_scheme = self::safe_parse_url($header_url, PHP_URL_SCHEME);
+                if ($site_host && $header_host && strcasecmp($header_host, $site_host) === 0
+                    && in_array($header_scheme, ['http', 'https'], true)
+                ) {
+                    $page_url = $header_url;
+                }
+            }
             $csrf_token = Speed::generate_csrf_token($page_url);
 
             header('X-CSRF-Token: ' . $csrf_token);
@@ -341,32 +664,6 @@ class Speed {
         }        
 
 
-        // Set a custom error handler inside the callback
-        if(self::$debug_output_buffer === true) {
-            set_error_handler(function($errno, $errstr, $errfile, $errline) {
-
-                // Capture the backtrace
-                $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS);
-                
-                // Format the trace as a readable string
-                $traceString = "";
-                foreach ($trace as $index => $frame) {
-                    $file = isset($frame['file']) ? $frame['file'] : '[internal function]';
-                    $line = isset($frame['line']) ? $frame['line'] : '';
-                    $function = $frame['function'];
-                    $traceString .= "#$index $file($line): $function()\n";
-                }
-
-                // Output the error message and trace in HTML comments
-                if(current_user_can( 'manage_options' )) {
-                    echo "<!--Caught error in output buffer callback: [$errno] $errstr in $errfile on line $errline\nTrace:\n$traceString-->\n";
-                }
-
-                // Returning true prevents the PHP error handler from continuing
-                return true;
-            });        
-        }
-
         try {
             
         //Start time
@@ -395,12 +692,10 @@ class Speed {
             // Handle exception here if necessary, but PHP may not fully respect try-catch within ob_start callback
             if(current_user_can( 'manage_options' )
             && self::$debug_output_buffer === true) {
-                echo "<!--Caught exception: " . $e->getMessage() . "-->";
+                echo '<!--Caught exception: ' . esc_html( $e->getMessage() ) . '-->';
             }
         }
 
-        // Restore previous error handler
-        restore_error_handler();
 
         return $output;
 
@@ -534,13 +829,6 @@ class Speed {
                         
                         //Replace the file
                         $script->outertext = str_replace($matches[1],$file,$script->outertext);
-                        
-                        //Change type for partytown
-                        $party_conf = Config::get('speed_css', 'include_partytown');
-                        if($party_conf) {
-                            $script->outertext = str_replace("src","type='text/partytown' src",$script->outertext);
-                        }                        
-
                         //Add preload
                         if(Config::get('external_scripts', 'preload_gtag') === "true") {                            
 
@@ -633,7 +921,7 @@ class Speed {
         //No remote found
         if(!$remote_file) {
             //Write error log
-            file_put_contents($error_file, date("Y-m-d H:i:s") . " No remote file specified and no previous download found.\n",FILE_APPEND);
+            file_put_contents($error_file, gmdate("Y-m-d H:i:s") . " No remote file specified and no previous download found.\n",FILE_APPEND);
             return false;
         }
 
@@ -644,7 +932,7 @@ class Speed {
         if ( is_wp_error( $file_contents ) ) {
             $error_message = $file_contents->get_error_message();
             //Write error log
-            file_put_contents($error_file, date("Y-m-d H:i:s") . " Could not download remote file. Error: $error_message\n",FILE_APPEND);        
+            file_put_contents($error_file, gmdate("Y-m-d H:i:s") . " Could not download remote file. Error: $error_message\n",FILE_APPEND);        
             return false;
         }
 
@@ -654,7 +942,7 @@ class Speed {
         //Make sure contents OK
         if(!strstr($file_contents,"Google")) {
             //Write error log
-            file_put_contents($error_file, date("Y-m-d H:i:s") . " Could not download remote file. Error: Could not find 'Google' string in " . $file_contents . "\n",FILE_APPEND);
+            file_put_contents($error_file, gmdate("Y-m-d H:i:s") . " Could not download remote file. Error: Could not find 'Google' string in " . $file_contents . "\n",FILE_APPEND);
             return false;
         }
 
@@ -675,7 +963,7 @@ class Speed {
         $dir = self::get_pre_cache_path() . "/local_tag/";
                 
         // Create the cache directory if it does not exist
-        !is_dir($dir) && mkdir($dir, 0755, true);  
+        !is_dir($dir) && wp_mkdir_p($dir);  
 
         //Write new version
         file_put_contents($version_file,json_encode($version));
@@ -932,6 +1220,18 @@ class Speed {
 
     }    
 
+    /**
+     * Traverses an HTML DOM element and its children, adding data-spuid attributes
+     * to elements that match the specified display elements and depth threshold.
+     * 
+     * @param \simple_html_dom_node $element The current element to traverse.
+     * @param int $currentDepth The current depth of the traversal.
+     * @param int $depthThreshold The maximum depth to traverse.
+     * @param array $displayElements An array of display elements to match.
+     * @param string $parentKey The stable key of the parent element.
+     * @return void
+     * 
+     */
     private static function traverse_and_tag($element, $currentDepth, $depthThreshold, $displayElements, $parentKey = '') {
 
         // Check if this element is one of our target display elements at the desired depth
@@ -980,18 +1280,25 @@ class Speed {
     }
     
       
-
+    /**
+     * Whether the current request is a front-end request.
+     * 
+     * @return bool True if the request is a front-end request, false otherwise.
+     * 
+    */
     public static function is_frontend() {
+
         // Check if it's an admin area or an AJAX request or cron
-        if (is_admin() || wp_doing_ajax() || wp_doing_cron()
-        || (stripos( $_SERVER['SCRIPT_NAME'], 'wp-login.php' ) !== false)
-        || (stripos( $_SERVER['SCRIPT_NAME'], 'wp-cron.php' ) !== false)
+        $script_name = isset( $_SERVER['SCRIPT_NAME'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SCRIPT_NAME'] ) ) : '';
+        if (is_admin() || wp_doing_ajax() || self::is_cron_request()
+        || (stripos( $script_name, 'wp-login.php' ) !== false)
+        || (stripos( $script_name, 'wp-cron.php' ) !== false)
         ) {
             return false;
         }
         
         //Intregrations
-        if(isset($_GET['elementor-preview'])) {
+        if ( self::request_has_query_arg('elementor-preview') ) {
             return false;
         }
 
@@ -1022,14 +1329,21 @@ class Speed {
 		// Detect non-HTML.
 		if ( ! isset( $html ) || trim( $html ) === '' || strcasecmp( substr( $html, 0, 5 ), '<?xml' ) === 0 || trim( $html )[0] !== '<' ) {
 			return $html;
-		}
+        }
 
         //Builders
-		if ( isset( $_GET['fb-edit'] ) || isset( $_GET['builder'] ) || isset( $_GET['auth0'] ) || isset( $_GET['et_fb']) || isset( $_GET['ct_builder'])) {
-			return $html;
-		}
+        if (
+            self::request_has_query_arg('fb-edit') ||
+            self::request_has_query_arg('builder') ||
+            self::request_has_query_arg('auth0') ||
+            self::request_has_query_arg('et_fb') ||
+            self::request_has_query_arg('ct_builder')
+        ) {
+            return $html;
+        }
 
-		if ( strstr( $_SERVER['REQUEST_URI'], 'wp-json' ) ) {
+        $request_uri = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+		if ( strstr( $request_uri, 'wp-json' ) ) {
 			return $html;
 		}
 
@@ -1064,22 +1378,6 @@ class Speed {
             if(Config::get('external_scripts','gfonts_locally') === "true") {
                 $dom = self::proxy_google_fonts($dom);
             }
-
-            //add classes for logged-in cache load
-            if(Config::get('speed_cache','cache_logged_in_users') === "true"
-            && Config::get('speed_cache','cache_logged_in_users_exceptions') != ""
-            && Cache::is_url_logged_in_cacheable(Speed::get_url()) == true
-            ) {
-                $dom = self::add_logged_in_users_exceptions_code_idents($dom); 
-            }       
-
-            //Enable replacement of Woo nonces
-            if(Config::get('speed_cache', 'replace_woo_nonces') === 'true'
-            || Config::get('speed_cache', 'replace_ajax_nonces') === 'true'
-            ) {
-                $dom = self::add_woo_injects($dom);
-            }                
-
             //add jquery standing
             $dom = self::add_jquery_standin($dom);
 
@@ -1131,19 +1429,6 @@ class Speed {
             
             //Refresh dom
             $dom = self::refresh_dom($dom);
-
-            //add classes for logged-in cache load
-            if(Config::get('speed_cache','cache_logged_in_users') === "true"
-            && Config::get('speed_cache','cache_logged_in_users_exceptions') != ""
-            && Cache::is_url_cacheable(Speed::get_url())
-            && Cache::is_url_logged_in_cacheable(Speed::get_url()) == true
-            ) {
-                $dom = self::add_logged_in_users_exceptions($dom);
-            }                 
-
-            //add partytown (after gtag) //requires dom refresh
-            $dom = self::add_partytown($dom);                
-            
             //Add image lazy loading //requires dom refresh
             $dom = self::add_image_lazyload($dom);       
             
@@ -1298,7 +1583,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $baseUrl  = self::get_pre_cache_url()  . '/gfonts';
 
         // Ensure directory
-        if (!is_dir($basePath)) @mkdir($basePath, 0755, true);
+        if (!is_dir($basePath)) {
+            @wp_mkdir_p($basePath);
+        }
 
         // Include UA in the key because Google Fonts serves different CSS per UA
         $ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -1359,7 +1646,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
         // Make sure font directory exists
         $fontDir  = "$basePath/files";
         $fontUrl  = "$baseUrl/files";
-        if (!is_dir($fontDir)) @mkdir($fontDir, 0755, true);
+        if (!is_dir($fontDir)) {
+            @wp_mkdir_p($fontDir);
+        }
 
         // Match url(...) capturing .woff2 or .woff
         $pattern = '/url\(\s*(["\']?)(https?:\/\/fonts\.gstatic\.com\/[^)\'"]+\.(?:woff2?|ttf))(?:\?[^)\'"]*)?\1\s*\)/i';
@@ -1368,7 +1657,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
             $remote = $m[2];
 
             // Build deterministic local filename (preserve extension)
-            $ext = strtolower(pathinfo(parse_url($remote, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'woff2');
+            $ext = strtolower(pathinfo(wp_parse_url($remote, PHP_URL_PATH), PATHINFO_EXTENSION) ?: 'woff2');
             $name = 'gf-' . md5($remote) . '.' . $ext;
             $localPath = "$fontDir/$name";
             $localUrl  = "$fontUrl/$name";
@@ -1509,7 +1798,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
     private static function move_viewport_to_top($dom) {
 
         $head = $dom->find('head', 0);
-        if (!$head) return $dom;
+        if (!$head) {
+            return $dom;
+        }
 
         // Capture existing viewport meta (if any), remove all occurrences
         $viewportHtml = '';
@@ -1519,14 +1810,13 @@ HTML " . number_format($elapsed_time,2) . "-->";
                 if ($viewportHtml === '') {
                     $viewportHtml = $m->outertext; // keep the first found as source
                 }
-
-                $dom->outertext = str_replace($viewportHtml, '', $dom->outertext);                
+                $m->outertext = '';
 
             }
         }
 
         if($viewportHtml) {
-            $dom->outertext = preg_replace("@<head( ([^>]+))?>@", "<head$2>" . $viewportHtml, $dom->outertext, 1);
+            $head->innertext = $viewportHtml . $head->innertext;
         }
 
         return $dom;
@@ -1686,13 +1976,11 @@ HTML " . number_format($elapsed_time,2) . "-->";
 
         }
 
-        // Add directly after the *first* </title>
-        $dom->outertext = preg_replace(
-            '/<\/title>/',
-            '</title>' . $preload_html,
-            $dom->outertext,
-            1
-        );
+        // Append preload links after the first title node without mutating the document object.
+        $title = $dom->find('title', 0);
+        if ($title) {
+            $title->outertext = $title->outertext . $preload_html;
+        }
 
         return $dom;
 
@@ -1735,7 +2023,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $uploads_dir = str_replace(ABSPATH,"",$upload_dir_parts['basedir']); //just the wp-content/uploads bit
         
         //get relative path of the image
-        $image_relative_path = parse_url($src, PHP_URL_PATH);        
+        $image_relative_path = wp_parse_url($src, PHP_URL_PATH);        
 
         //Remove the wp-content/uploads 
         $image_relative_path = str_replace($uploads_dir,"",$image_relative_path);
@@ -1834,8 +2122,8 @@ HTML " . number_format($elapsed_time,2) . "-->";
 	
 			// Ensure the output directory exists
 			if (!is_dir($outputDirectory)) {
-				if (!mkdir($outputDirectory, 0755, true)) {
-					throw new \Exception("Failed to create directory: $outputDirectory");
+				if (!wp_mkdir_p($outputDirectory)) {
+					throw new \Exception(esc_html("Failed to create directory: $outputDirectory"));
 				}
 			}
 
@@ -1853,7 +2141,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
                     $allowed_base === false ||
                     strpos( $resolved_dir, rtrim( $allowed_base, DIRECTORY_SEPARATOR ) ) !== 0
                 ) {
-                    throw new \Exception( 'Invalid output directory: ' . $outputDirectory );
+                    throw new \Exception( esc_html( 'Invalid output directory: ' . $outputDirectory ) );
                 }
             }
             // -------------------------------------------------------------------
@@ -1866,7 +2154,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
 			if (file_put_contents($outputPath, $data)) {
 				return $outputPath; // Return the saved file path
 			} else {
-				throw new \Exception("Failed to write file: $outputPath");
+				throw new \Exception(esc_html("Failed to write file: $outputPath"));
 			}
 		} else {
 			return $dataUrl;
@@ -1887,9 +2175,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
             $raw = AdvancedCache::$original_uri;
         } else {
             //Directly grab from $_SERVER, cast to string, default to “/” if missing
-            $raw = isset( $_SERVER['REQUEST_URI'] )
-            ? (string) $_SERVER['REQUEST_URI']
-            : '/';
+            $raw = self::server_var('REQUEST_URI', '/');
         }
     
         $safe = self::get_sanitized_uri($raw);
@@ -1912,9 +2198,10 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $raw = preg_replace('/[\x00-\x1F\x7F]/u', '', $raw) ?: '';
     
         // 2. Parse into components so we only ever honor path + query
-        $parts = parse_url($raw);
+        $parts = self::safe_parse_url($raw);
         $path  = $parts['path']  ?? '/';
         $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+        $hadTrailingSlash = ($path !== '/' && substr($path, -1) === '/');
     
         // 3. Normalize percent-encoding
         //    a) Decode once
@@ -1936,6 +2223,9 @@ HTML " . number_format($elapsed_time,2) . "-->";
         //    c) Re-encode each segment to block sneaky bytes
         $encoded = array_map('rawurlencode', $normalized);
         $path    = '/' . implode('/', $encoded);
+        if ($hadTrailingSlash && $path !== '/') {
+            $path .= '/';
+        }
     
         // 4. Rebuild the relative URL
         $relative = $path . $query;
@@ -1967,15 +2257,16 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $request_uri = self::get_uri($get_original);
 
         // Determine protocol and host.
-        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? "https://" : "http://";
-        $host     = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';        
+        $https    = strtolower(self::server_var('HTTPS', ''));
+        $protocol = ($https !== '' && $https !== 'off') ? "https://" : "http://";
+        $host     = self::server_var('HTTP_HOST', '');
         $full_url = $protocol . $host . $request_uri;
 
 
         // Remove query strings that should be ignored.
         if (!empty(Cache::$ignore_querystrings)) {
             $ignore_keys = array_filter(array_map('trim', explode("\n", Cache::$ignore_querystrings)));
-            $parsed_url = parse_url($full_url);
+            $parsed_url = self::safe_parse_url($full_url);
             if ($parsed_url === false) { $parsed_url = []; } // avoid "array offset on bool"
             $query = [];
             if (isset($parsed_url['query'])) {
@@ -2006,12 +2297,20 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $clean_url = self::get_clean_url($url);
     
         // Extract the relative path from the clean URL.
-        $relative_path = parse_url($clean_url, PHP_URL_PATH);
-        // Normalize: if the relative path is "/" (or empty), set it to an empty string.
-        $relative_path = trim($relative_path, '/') ? trim($relative_path, '/') : "";
+        $relative_path = self::safe_parse_url($clean_url, PHP_URL_PATH);
+        $relative_path = is_string($relative_path) ? $relative_path : '';
+        // Normalize and bound each path segment so long URLs do not exceed filesystem limits.
+        $relative_path = self::get_sanitized_uri($relative_path);
+        $relative_segments = array_filter(array_map('trim', explode('/', trim($relative_path, '/'))), 'strlen');
+        $relative_segments = array_map(array(__CLASS__, 'normalize_cache_path_piece'), $relative_segments);
+        $relative_segments = array_values(array_filter($relative_segments, 'strlen'));
+        $relative_path = implode('/', $relative_segments);
+        if (strlen($relative_path) > 160) {
+            $relative_path = self::normalize_cache_path_piece($relative_path, 96);
+        }
     
         // Parse the query parameters from the clean URL.
-        $parsed_url = parse_url($clean_url);
+        $parsed_url = self::safe_parse_url($clean_url);
         $query_array = [];
         if (isset($parsed_url['query'])) {
             parse_str($parsed_url['query'], $query_array);
@@ -2026,13 +2325,16 @@ HTML " . number_format($elapsed_time,2) . "-->";
         if (!empty($query_strings)) {
             $safe_query_parts = [];
             foreach ($query_strings as $key => $value) {
-                // Sanitize both key and value to allow only alphanumerics, underscores, and dashes.
-                $safe_key = preg_replace('/[^A-Za-z0-9_\-]/', '', $key);
-                $safe_value = preg_replace('/[^A-Za-z0-9_\-]/', '', $value);
+                // Sanitize both key and value and cap each fragment.
+                $safe_key = self::normalize_cache_path_piece($key, 24);
+                $safe_value = self::normalize_cache_path_piece($value, 24);
                 $safe_query_parts[] = $safe_value !== '' ? $safe_key . '-' . $safe_value : $safe_key;
             }
             // Join the parts with a dash.
             $query_dir = implode('-', $safe_query_parts);
+            if (strlen($query_dir) > 96) {
+                $query_dir = 'q-' . substr(md5(json_encode($query_strings)), 0, 12);
+            }
         }
     
         // Build the base cache directory from the root.
@@ -2044,10 +2346,17 @@ HTML " . number_format($elapsed_time,2) . "-->";
             $cache_dir .= '/' . $query_dir;
         }
 
+        // Keep the full directory path within a safe filesystem length.
+        if (strlen($cache_dir) > 200) {
+            $hash_source = trim($relative_path . '/' . $query_dir, '/');
+            $hash_piece = self::normalize_cache_path_piece($hash_source, 96);
+            $cache_dir = $base . '/' . ($hash_piece !== '' ? $hash_piece : substr(md5($hash_source), 0, 12));
+        }
+
         //Ensure ends with trailing slash
         $cache_dir = rtrim($cache_dir, '/') . '/';
-        
-        return $cache_dir;        
+
+        return $cache_dir;
   
     }   
 
@@ -2066,13 +2375,14 @@ HTML " . number_format($elapsed_time,2) . "-->";
         }
 
         if (!$full_url) {
-            $protocol    = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
-            $host        = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : '';
-            $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+            $https       = strtolower(self::server_var('HTTPS', ''));
+            $protocol    = ($https !== '' && $https !== 'off') ? 'https://' : 'http://';
+            $host        = self::server_var('HTTP_HOST', '');
+            $request_uri = self::server_var('REQUEST_URI', '');
             $request_uri = self::get_sanitized_uri($request_uri);
             $full_url    = $protocol . $host . $request_uri;
         } else {
-            $parsed = parse_url($full_url);
+            $parsed = self::safe_parse_url($full_url);
             $protocol = isset($parsed['scheme']) ? $parsed['scheme'] . '://' : 'http://';
             $host = isset($parsed['host']) ? $parsed['host'] : '';
         }
@@ -2080,7 +2390,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
         // Remove ignored query strings.
         if (!empty($ignore_querystrings)) {
             $ignore_keys = array_filter(array_map('trim', explode("\n", $ignore_querystrings)));
-            $parsed_url  = parse_url($full_url);
+            $parsed_url  = self::safe_parse_url($full_url);
             $query       = [];
             if (isset($parsed_url['query'])) {
                 parse_str($parsed_url['query'], $query);
@@ -2195,7 +2505,7 @@ HTML " . number_format($elapsed_time,2) . "-->";
                 // Delete files matching any of the patterns
                 foreach ($patterns as $pattern) {
                     if (substr($filename, -strlen($pattern)) === $pattern) {
-                        @unlink($path);
+                        @wp_delete_file($path);
                         break;
                     }
                 }
@@ -2213,16 +2523,39 @@ HTML " . number_format($elapsed_time,2) . "-->";
                     && $entries[0]->isFile()
                     && strtolower($entries[0]->getFilename()) === 'update_required'
                 ) {
-                    @unlink($entries[0]->getRealPath());
-                    @rmdir($subPath);
+                    @wp_delete_file($entries[0]->getRealPath());
+                    self::remove_cache_directory($subPath);
 
                 // Else if completely empty, just remove the folder
                 } elseif (empty($entries)) {
-                    @rmdir($subPath);
+                    self::remove_cache_directory($subPath);
                 }
             }
         }
 
+    }
+
+    /**
+     * Removes a cache directory via WP_Filesystem when available.
+     *
+     * @param string $path Directory path.
+     * @return void
+     */
+    protected static function remove_cache_directory($path) {
+        if (!is_string($path) || $path === '' || !is_dir($path)) {
+            return;
+        }
+
+        global $wp_filesystem;
+        if (!function_exists('WP_Filesystem')) {
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+        }
+        if (function_exists('WP_Filesystem')) {
+            WP_Filesystem();
+        }
+        if (is_object($wp_filesystem) && method_exists($wp_filesystem, 'rmdir')) {
+            $wp_filesystem->rmdir($path, false);
+        }
     }
         
     /**
@@ -2251,7 +2584,13 @@ HTML " . number_format($elapsed_time,2) . "-->";
         $expiry = time() + $csrf_expiry_seconds; // Token expiry
 
         //Long token exiry (replacing woo tokens)
-        $long_expiry = time() + (function_exists('apply_filters') ? apply_filters('nonce_life', DAY_IN_SECONDS) : DAY_IN_SECONDS);
+        $default_nonce_life = defined('DAY_IN_SECONDS') ? DAY_IN_SECONDS : 86400;
+        $long_expiry = time() + (function_exists('apply_filters')
+            ? (
+                // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+                apply_filters('nonce_life', $default_nonce_life)
+            )
+            : $default_nonce_life);
 
         // Generate a random string
         $random = bin2hex(random_bytes(6)); 
@@ -2350,7 +2689,8 @@ HTML " . number_format($elapsed_time,2) . "-->";
             //It's possible we've moved from a guest session to a logged in session
             //only the same page, no refresh, if so validate    
             // Recompute the signature with the old session binding.
-            $data = $expiry . ':' . $long_expiry . ':' . $random . ':' . $url . ':' .  hash('sha256', 'sg:'.$_COOKIE['spdy_guest']);
+            $guest_cookie = isset( $_COOKIE['spdy_guest'] ) ? sanitize_text_field( wp_unslash( $_COOKIE['spdy_guest'] ) ) : '';
+            $data = $expiry . ':' . $long_expiry . ':' . $random . ':' . $url . ':' .  hash('sha256', 'sg:'. $guest_cookie);
             $expected_signature = substr(hash_hmac('sha256', $data, NONCE_SALT), 0, 32);
 
             if (!hash_equals($expected_signature, $signature)) {
@@ -2369,15 +2709,97 @@ HTML " . number_format($elapsed_time,2) . "-->";
         ];
     }
 
+    /**
+     * Get the current request host without port, using server vars to avoid WP dependencies.
+     *
+     * @return string
+     */
+    public static function get_current_host() {
+        $host = self::server_var('HTTP_HOST', self::server_var('SERVER_NAME', ''));
+        if ($host && strpos($host, ':') !== false) {
+            $host = explode(':', $host, 2)[0];
+        }
+        if ($host === '' && function_exists('site_url')) {
+            $host = self::safe_parse_url(site_url(), PHP_URL_HOST) ?: '';
+        }
+        return $host;
+    }
+
+    /**
+     * Check if a URL is same-origin as the current host (or a provided host).
+     *
+     * Allows relative URLs; rejects non-http(s) schemes.
+     *
+     * @param string $url
+     * @param string|null $base_host
+     * @return bool
+     */
+    public static function is_same_origin_url($url, $base_host = null) {
+        if (!is_string($url) || $url === '') {
+            return false;
+        }
+        $parts = self::safe_parse_url($url);
+        if ($parts === false) {
+            return false;
+        }
+        $scheme = $parts['scheme'] ?? '';
+        if ($scheme && !in_array($scheme, ['http', 'https'], true)) {
+            return false;
+        }
+        $host = $parts['host'] ?? '';
+        if ($host === '') {
+            return true; // relative URL
+        }
+        if ($host && strpos($host, ':') !== false) {
+            $host = explode(':', $host, 2)[0];
+        }
+        $base = $base_host ?: self::get_current_host();
+        if ($base === '') {
+            return false;
+        }
+        return strcasecmp($host, $base) === 0;
+    }
+
+    /**
+     * Normalize a URL to an absolute URL on the provided
+     * origin
+     *
+     * @param string $url
+     * @return string
+     */
+    public static function make_absolute_host_url($url, $host = null) {
+        $parts = self::safe_parse_url($url);
+        if ($parts === false) {
+            return $url;
+        }
+        if (!empty($parts['scheme']) && !empty($parts['host'])) {
+            return $url;
+        }
+        $host = $host ?: self::get_current_host();
+        if ($host === '') {
+            return $url;
+        }
+        $https = strtolower(self::server_var('HTTPS', ''));
+        $scheme = ($https !== '' && $https !== 'off') ? 'https' : 'http';
+        if (strpos($url, '//') === 0) {
+            return $scheme . ':' . $url;
+        }
+        $path = ($url && $url[0] === '/') ? $url : '/' . ltrim($url, '/');
+        return $scheme . '://' . $host . $path;
+    }    
+
     ////////////////////////////
     /**
-     * PRO methods
-     * See Speed/Pro
+     * Optional extension hooks.
+     *
+     * Undefined calls for known extension methods are dispatched
+     * to the extension class when available, otherwise they fall
+     * back to the first argument (usually $html/$dom).
      */
     ////////////////////////////
 
     /**
-     * Calls a method on the Pro class if it exists, otherwise returns 
+     * Calls a method on the extension class if it exists, otherwise returns 
      * the given fallback value.
      *
      * @param string $method The name of the method to call.
@@ -2385,40 +2807,21 @@ HTML " . number_format($elapsed_time,2) . "-->";
      * @param mixed $fallback The value to return if the method does not exist.
      * @return mixed The result of calling the method, or the fallback value.
      */
-    private static function call_pro(string $method, array $args, $fallback) {
+    private static function call_extension(string $method, array $args, $fallback) {
 
-        $pro_class = \SPRESS\Speed\Pro::class;
+        $extension_class = \SPRESS\Speed\Extension::class;
 
         // is_callable covers both "class exists" and "method exists"
-        if (is_callable([$pro_class, $method])) {
-            return $pro_class::$method(...$args);
+        if (is_callable([$extension_class, $method])) {
+            return $extension_class::$method(...$args);
         }
 
         return $fallback;
-    }    
-
-    private static function find_replace($html) {
-        return self::call_pro(__FUNCTION__, [$html], $html);
     }
 
-    private static function add_woo_injects($dom) {
-        return self::call_pro(__FUNCTION__, [$dom], $dom);
+    public static function __callStatic($method, $args) {
+        $fallback = array_key_exists(0, $args) ? $args[0] : null;
+        return self::call_extension((string) $method, (array) $args, $fallback);
     }
-
-    private static function add_logged_in_users_exceptions($dom) {
-        return self::call_pro(__FUNCTION__, [$dom], $dom);
-    }
-
-    private static function add_logged_in_users_exceptions_code_idents($dom) {
-        return self::call_pro(__FUNCTION__, [$dom], $dom);
-    }
-
-    private static function add_partytown($dom) {
-        return self::call_pro(__FUNCTION__, [$dom], $dom);
-    }    
-
-    public static function code_insertions($dom) {
-        return self::call_pro(__FUNCTION__, [$dom], $dom);
-    }    
 
 }

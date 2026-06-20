@@ -216,7 +216,9 @@ class CSS extends Minify
             // check if current file was not imported previously in the same
             // import chain.
             if (in_array($importPath, $parents)) {
-                throw new FileImportException('Failed to import file "' . $importPath . '": circular reference detected.');
+                throw new FileImportException(
+                    \esc_html('Failed to import file "' . $importPath . '": circular reference detected.')
+                );
             }
 
             // grab referenced file & minify it (which may include importing
@@ -783,7 +785,9 @@ class CSS extends Minify
     {
         $result = preg_replace($pattern, $replacement, $subject);
         if ($result === null) {
-            throw PatternMatchException::fromLastError("Failed to replace with pattern '$pattern'");
+            throw PatternMatchException::fromLastError(
+                \esc_html("Failed to replace with pattern '$pattern'")
+            );
         }
 
         return $result;

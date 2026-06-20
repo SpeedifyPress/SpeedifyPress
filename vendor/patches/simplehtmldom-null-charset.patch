@@ -1,0 +1,12 @@
+--- a/HtmlNode.php
++++ b/HtmlNode.php
+@@ -452,7 +452,8 @@
+ 					case self::HDOM_QUOTE_DOUBLE:
+ 					default:
+ 						$quote = '"';
+-						$val = htmlentities($val, ENT_COMPAT, $this->dom->target_charset);
++						$charset = (isset($this->dom) && isset($this->dom->target_charset) && $this->dom->target_charset) ? $this->dom->target_charset : 'UTF-8';
++						$val = htmlentities($val, ENT_COMPAT, $charset);
+ 				}
+ 
+ 				$ret .= $key

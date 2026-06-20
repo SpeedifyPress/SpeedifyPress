@@ -2,6 +2,10 @@
 
 namespace SPRESS\Speed;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\App\Config;
 
 /**
@@ -358,12 +362,12 @@ class Bloat {
 		add_action('template_redirect', function () {
 			if (!is_attachment()) return;
 
-			$url = wp_get_attachment_url(get_queried_object_id());
-			if ($url) {
-				wp_redirect($url, 301);
-				exit;
-			}
-		});
+				$url = wp_get_attachment_url(get_queried_object_id());
+				if ($url) {
+					wp_safe_redirect($url, 301);
+					exit;
+				}
+			});
 	}
 
 	/**
@@ -411,12 +415,12 @@ class Bloat {
 			remove_menu_page('edit-comments.php');
 		});
 
-		add_action('admin_init', function () {
-			if (is_admin() && isset($GLOBALS['pagenow']) && $GLOBALS['pagenow'] === 'edit-comments.php') {
-				wp_redirect(admin_url());
-				exit;
-			}
-		});
+			add_action('admin_init', function () {
+				if (is_admin() && isset($GLOBALS['pagenow']) && $GLOBALS['pagenow'] === 'edit-comments.php') {
+					wp_safe_redirect(admin_url());
+					exit;
+				}
+			});
 	}
 
 	/**

@@ -2,6 +2,10 @@
 
 namespace SPRESS\App;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\Auth;
 
 /**
@@ -48,15 +52,6 @@ class Menu {
         //Add settings link
         add_filter('plugin_action_links_' . SPRESS_FILE_NAME , array(__CLASS__, 'add_plugin_page_shortcuts'));
 
-        //Add plugin info
-        add_filter( 'plugins_api', array(__CLASS__,'plugin_info'), 20, 3);
-
-        //Add update notification
-        add_action( 'after_plugin_row_' . SPRESS_FILE_NAME, array( __CLASS__, 'show_update_notification' ), 10, 2 );
-
-        //Add view details link
-        add_filter('plugin_row_meta', array(__CLASS__, 'add_view_details_link'), 10, 3);
-
         //Request updated REST nonce
         add_action( 'wp_ajax_sip_get_rest_nonce',  array(__CLASS__, 'rest_nonce_request'));           
 
@@ -89,174 +84,6 @@ class Menu {
         wp_send_json_success( [ 'nonce' => wp_create_nonce( 'wp_rest' ) ] );        
         
     }
-
-    public static function show_update_notification() {
-        
-        $plugin_file = SPRESS_FILE_NAME;
-        $plugin_slug = SPRESS_DIR_NAME;     
-        $version = 0;   
-
-        //Check for licence
-        if(License::get_download_link() == false) {
-
-            $version = License::get_latest_version();
-
-            //Version check
-            //No update, so just give them the license warning
-            if($version <= SPRESS_VER) {
-            
-                $settings_url = admin_url('admin.php?page='.self::$menu_slug);
-
-                echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
-                <td colspan='4' class='plugin-update'>
-                    <div class='update-message notice inline notice-warning notice-alt'>
-                        <p>Please <a href='" . $settings_url . "'>activate your license</a> to enable plugin updates.</p>
-                    </div>
-                </td>
-                </tr>";         
-                
-                echo '<script>
-                    jQuery(document).ready(function($) {
-                        $("tr[data-plugin=\''. $plugin_file. '\']").addClass("update");
-                    });
-                </script>';                  
-                
-            }        
-                        
-
-        } 
-        
-        //On multisite it won't show us the update link
-        //so we need to make it ourselves
-        if(is_multisite()) {
-            
-            if(!$version) {
-                $version = License::get_latest_version();
-            }
-
-            //Version check
-            if($version <= SPRESS_VER) {
-                return;
-            }
-
-            $update_url = wp_nonce_url(self_admin_url('update.php?action=upgrade-plugin&plugin=' . $plugin_file), 'upgrade-plugin_' . $plugin_file);
-        
-            echo "<tr class='plugin-update-tr active update' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
-                    <td colspan='4' class='plugin-update'>
-                        <div class='update-message notice inline notice-warning notice-alt'>
-                            <p>There is a new version of SpeedifyPress available. 
-                                <a href='{$update_url}'
-                                class='update-link' 
-                                data-plugin='{$plugin_file}' 
-                                data-slug='{$plugin_slug}'
-                                data-name='SpeedifyPress'
-                                aria-label='Update SpeedifyPress now'
-                                data-wp-action='update-plugin'>
-                                    Update to version {$version}
-                                </a>
-                            </p>
-                        </div>
-                    </td>
-                </tr>";
-
-                echo "<style>
-                tr.update[data-plugin='". $plugin_file. "'] th, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] th 
-                tr.update[data-plugin='". $plugin_file. "'] td, tr.plugin-update-tr[data-plugin='". $plugin_file. "'] td {
-                    box-shadow:none !important;
-                }                    
-                </style>";                
-
-                echo '<script>
-                    jQuery(document).ready(function($) {
-                        $("tr[data-plugin=\''. $plugin_file. '\']").addClass("update");
-                    });
-                </script>';                  
-
-        }
-
-    }
-    
-    
-    
-
-    /**
-
-     */
-    public static function add_view_details_link($plugin_meta, $plugin_file, $plugin_data = array()) {
-    
-        // Ensure this is only applied to the SPRESS plugin
-        if ($plugin_file === SPRESS_FILE_NAME) {
-                        
-            // Skip if WordPress already added a View Details link
-            foreach ($plugin_meta as $meta) {
-                if (stripos($meta, 'plugin-install.php') !== false && stripos($meta, 'thickbox') !== false) {
-                    return $plugin_meta; // WP already added the view link
-                }
-            }            
-
-            // Define the link to the plugin details page with ThickBox support
-            $view_details_link = sprintf(
-                '<a href="%s" class="thickbox" title="%s">View details</a>',
-                esc_url(License::get_plugin_info_url()),
-                esc_attr($plugin_data['Name'] ?? 'Plugin Details')
-            );
-            
-            // Append the new link to the existing meta array
-            $plugin_meta[] = $view_details_link;
-        }
-        
-        return $plugin_meta;
-    }
-
-    public static function plugin_info($result, $action, $args) {
-
-        // Do nothing if this is not about getting plugin information
-        if ('plugin_information' !== $action) {
-            return $result;
-        }   
-    
-        // Do nothing if it is not our plugin
-        if (!strstr(SPRESS_FILE_NAME, $args->slug)) {
-            return $result;
-        }
-
-        $release_url = "https://speedifypress.com/license/release/";
-
-        // Fetch release data using WordPress HTTP API instead of file_get_contents.
-        // Validate the host to prevent SSRF attacks.
-        $host = parse_url( $release_url, PHP_URL_HOST );
-        if ( $host !== 'speedifypress.com' ) {
-            return $result;
-        }
-        $response = wp_remote_get( $release_url, array( 'timeout' => 10 ) );
-        if ( is_wp_error( $response ) ) {
-            return $result;
-        }
-        $release_body = wp_remote_retrieve_body( $response );
-        $release_data = json_decode( $release_body, true );
-
-        // Ensure the data is valid and matches the expected WordPress format
-        if (is_array($release_data)) {
-
-            //Add latest version
-            $release_data['version'] = License::get_latest_version();
-
-            //Add download link for latest version
-            if($release_data['version'] > SPRESS_VER
-                && get_option('spress_namespace_INVOICE_NUMBER') !== false) {
-                $release_data['download_link'] = License::get_download_link();
-            }
-
-            //Add correct slug
-            $release_data['slug'] = SPRESS_DIR_NAME;
-
-            //Set correct format
-            $result = (object) array_filter(array_merge((array) $result, $release_data));
-        }
-    
-        return $result;
-    }
-        
 
     public static function add_plugin_page_shortcuts($links) {
     
@@ -435,7 +262,7 @@ class Menu {
 
                 // use shared rotating nonce if present, else initial PHP-minted one
                 sendWithNonce(
-                  (window.spress_namespace && window.spress_namespace.restNonce) || '<?php echo wp_create_nonce( 'wp_rest' ); ?>',
+                  (window.spress_namespace && window.spress_namespace.restNonce) || '<?php echo esc_js( wp_create_nonce( 'wp_rest' ) ); ?>',
                   false
                 );
 
@@ -466,8 +293,8 @@ class Menu {
                     }
                 } 
 
-            #wp-admin-bar-<?php echo self::$menu_slug; ?>>.ab-item {
-                background-image: url(<?php echo self::$menu_icon ?>)!important;
+            #wp-admin-bar-<?php echo esc_attr( self::$menu_slug ); ?>>.ab-item {
+                background-image: url('<?php echo esc_attr( self::$menu_icon ); ?>')!important;
                 background-size: 15px!important;
                 background-repeat: no-repeat!important;
                 background-position: 10px 7px!important;
@@ -496,7 +323,8 @@ class Menu {
 
         //Different menu icon when on our page
         $menu_icon = self::$menu_icon;
-        $page = isset($_GET['page']) ? sanitize_text_field($_GET['page']) : '';
+        $query_args = \SPRESS\Speed::get_query_args();
+        $page = isset($query_args['page']) ? sanitize_text_field((string) $query_args['page']) : '';
         if($page == self::$menu_slug) {
             $menu_icon = self::$menu_icon_selected;
         }
@@ -571,7 +399,15 @@ class Menu {
 
         // Output the necessary data for the frontend into a JavaScript object.
         // The restNonce property contains the nonce for authenticated REST API requests.
-        echo "<script>window.spress_namespace={config:$config,version:'$version',ajaxurl:'$ajax_url',resturl:'$rest_url',restNonce:'$rest_nonce','has_woo':'$has_woo'}</script>";        
+        $frontend_payload = array(
+            'config'    => json_decode( $config, true ),
+            'version'   => (string) $version,
+            'ajaxurl'   => (string) $ajax_url,
+            'resturl'   => (string) $rest_url,
+            'restNonce' => (string) $rest_nonce,
+            'has_woo'   => ( $has_woo === 'true' ),
+        );
+        echo '<script>window.spress_namespace=' . wp_json_encode( $frontend_payload ) . ';</script>';        
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';

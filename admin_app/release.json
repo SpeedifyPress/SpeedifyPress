@@ -1,0 +1,19 @@
+{
+  "name": "SpeedifyPress",
+  "slug": "speedify_press",
+  "author": "<a href='https://speedifypress.com'>SpeedifyPress</a>",
+  "author_profile": "https://speedifypress.com",
+  "homepage": "https://speedifypress.com",
+  "version": "",
+  "requires": "4.7",
+  "tested": "",
+  "requires_php": "7.4",
+  "sections": {
+    "description": "The ultimate WordPress Optimisation toolkit",
+    "changelog": ""
+  },
+	"banners" : {
+		"low" : "https://speedifypress.com/license/banner-772x250.png",
+		"high" : "https://speedifypress.com/license/banner-1544x500.png"
+	} 
+}

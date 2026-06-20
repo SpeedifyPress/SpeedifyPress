@@ -155,8 +155,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
                 if ($list === null || !($list instanceof KeyFrame)) {
                     if (!Selector::isValid($selector)) {
                         throw new UnexpectedTokenException(
-                            "Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'.",
-                            $selector,
+                            esc_html("Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'."),
+                            esc_html($selector),
                             'custom'
                         );
                     }
@@ -164,8 +164,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
                 } else {
                     if (!KeyframeSelector::isValid($selector)) {
                         throw new UnexpectedTokenException(
-                            "Selector did not match '" . KeyframeSelector::SELECTOR_VALIDATION_RX . "'.",
-                            $selector,
+                            esc_html("Selector did not match '" . KeyframeSelector::SELECTOR_VALIDATION_RX . "'."),
+                            esc_html($selector),
                             'custom'
                         );
                     }
@@ -281,8 +281,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
         if (\count($this->selectors) === 0) {
             // If all the selectors have been removed, this declaration block becomes invalid
             throw new OutputException(
-                'Attempt to print declaration block with missing selector',
-                $this->getLineNumber()
+                esc_html('Attempt to print declaration block with missing selector'),
+                esc_html($this->getLineNumber())
             );
         }
         $result .= $outputFormat->getContentBeforeDeclarationBlock();

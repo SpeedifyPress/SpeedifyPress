@@ -114,11 +114,16 @@ class ParserState
     public function parseIdentifier(bool $ignoreCase = true): string
     {
         if ($this->isEnd()) {
-            throw new UnexpectedEOFException('', '', 'identifier', $this->lineNumber);
+            throw new UnexpectedEOFException('', '', 'identifier', (int) $this->lineNumber);
         }
         $result = $this->parseCharacter(true);
         if ($result === null) {
-            throw new UnexpectedTokenException('', $this->peek(5), 'identifier', $this->lineNumber);
+            throw new UnexpectedTokenException(
+                '',
+                \esc_html($this->peek(5)),
+                'identifier',
+                (int) $this->lineNumber
+            );
         }
         $character = null;
         while (!$this->isEnd() && ($character = $this->parseCharacter(true)) !== null) {
@@ -256,10 +261,10 @@ class ParserState
             $length = $this->strlen($value);
             if (!$this->streql($this->substr($this->currentPosition, $length), $value)) {
                 throw new UnexpectedTokenException(
-                    $value,
-                    $this->peek(\max($length, 5)),
+                    \esc_html($value),
+                    \esc_html($this->peek(\max($length, 5))),
                     'literal',
-                    $this->lineNumber
+                    (int) $this->lineNumber
                 );
             }
 
@@ -268,7 +273,12 @@ class ParserState
             $result = $value;
         } else {
             if ($this->currentPosition + $value > \count($this->characters)) {
-                throw new UnexpectedEOFException((string) $value, $this->peek(5), 'count', $this->lineNumber);
+                throw new UnexpectedEOFException(
+                    \esc_html((string) $value),
+                    \esc_html($this->peek(5)),
+                    'count',
+                    (int) $this->lineNumber
+                );
             }
 
             $result = $this->substr($this->currentPosition, $value);
@@ -292,7 +302,12 @@ class ParserState
         $matches = null;
         $input = ($maximumLength !== null) ? $this->peek($maximumLength) : $this->inputLeft();
         if (\preg_match($expression, $input, $matches, PREG_OFFSET_CAPTURE) !== 1) {
-            throw new UnexpectedTokenException($expression, $this->peek(5), 'expression', $this->lineNumber);
+            throw new UnexpectedTokenException(
+                \esc_html($expression),
+                \esc_html($this->peek(5)),
+                'expression',
+                (int) $this->lineNumber
+            );
         }
 
         return $this->consume($matches[0][0]);
@@ -367,10 +382,10 @@ class ParserState
 
         $this->currentPosition = $start;
         throw new UnexpectedEOFException(
-            'One of ("' . \implode('","', $stopCharacters) . '")',
-            $this->peek(5),
+            \esc_html('One of ("' . \implode('","', $stopCharacters) . '")'),
+            \esc_html($this->peek(5)),
             'search',
-            $this->lineNumber
+            (int) $this->lineNumber
         );
     }
 
@@ -446,7 +461,9 @@ class ParserState
             if ($this->streql($this->charset, 'utf-8')) {
                 $result = \preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
                 if (!\is_array($result)) {
-                    throw new SourceException('`preg_split` failed with error ' . \preg_last_error());
+                    throw new SourceException(
+                        \esc_html('`preg_split` failed with error ' . \preg_last_error())
+                    );
                 }
             } else {
                 $length = \mb_strlen($string, $this->charset);

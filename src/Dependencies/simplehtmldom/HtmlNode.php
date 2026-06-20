@@ -1,5 +1,9 @@
 <?php namespace SPRESS\Dependencies\simplehtmldom;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Website: http://sourceforge.net/projects/simplehtmldom/
  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
@@ -73,8 +77,9 @@ class HtmlNode
 			case 'prev_sibling':
 				$actual_function = 'previousSibling'; break;
 			default:
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_trigger_error
 				trigger_error(
-					'Call to undefined method ' . __CLASS__ . '::' . $func . '()',
+					\esc_html('Call to undefined method ' . __CLASS__ . '::' . $func . '()'),
 					E_USER_ERROR
 				);
 		}
@@ -140,17 +145,17 @@ class HtmlNode
 	/** @codeCoverageIgnore */
 	function dump($show_attr = true, $depth = 0)
 	{
-		echo str_repeat("\t", $depth) . $this->tag;
+		echo \esc_html(str_repeat("\t", $depth) . $this->tag);
 
 		if ($show_attr && count($this->attr) > 0) {
-			echo '(';
+			echo \esc_html('(');
 			foreach ($this->attr as $k => $v) {
-				echo "[$k]=>\"$v\", ";
+				echo \esc_html("[$k]=>\"$v\", ");
 			}
-			echo ')';
+			echo \esc_html(')');
 		}
 
-		echo "\n";
+		echo \esc_html("\n");
 
 		if ($this->nodes) {
 			foreach ($this->nodes as $node) {
@@ -205,7 +210,7 @@ class HtmlNode
 		$string .= "\n";
 
 		if ($echo) {
-			echo $string;
+			echo \esc_html($string);
 			return;
 		} else {
 			return $string;

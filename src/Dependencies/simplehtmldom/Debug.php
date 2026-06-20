@@ -1,5 +1,7 @@
 <?php namespace SPRESS\Dependencies\simplehtmldom;
 
+// phpcs:disable WordPress.PHP.DevelopmentFunctions.error_log_error_log,WordPress.PHP.DevelopmentFunctions.error_log_debug_backtrace
+
 /**
  * Implements functions for debugging purposes. Debugging can be enabled and
  * disabled on demand. Debug messages are send to error_log by default but it

@@ -2,6 +2,10 @@
 
 namespace SPRESS;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\Speed;
 use SPRESS\Dependencies\Wa72\Url\Url;
 
@@ -146,27 +150,9 @@ class RestApi {
         );  
         
         
-        // Route for clearing unused CSS cache
-        register_rest_route(
-            'speedifypress',
-            '/check_license/?',
-            array(
-                'methods' => array('POST'),
-                'callback' => array(__CLASS__, 'check_license'),
-                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
-            )
-        );          
-
-        // Route for getting Cloudflare worker script
-        register_rest_route(
-            'speedifypress',
-            '/get_cloudflare_script/?',
-            array(
-                'methods' => array('GET'),
-                'callback' => array(__CLASS__, 'get_cloudflare_script'),
-                'permission_callback' => array('SPRESS\\Auth', 'admin_permission_callback'),
-            )
-        );           
+        if ( class_exists( '\SPRESS\App\LicenseIntegration' ) ) {
+            App\LicenseIntegration::register_rest_routes();
+        }
 
     }
 
@@ -207,15 +193,11 @@ class RestApi {
             && ($config['plugin_mode'] == "enabled" || $config['plugin_mode'] == "partial")
         ) {
             
-            //Check can download
-            $can_download = App\License::get_download_link();
-            if(!$can_download) {
-                //Throw error
-                return new \WP_Error(
-                    'no_license',
-                    'No license found. Please sign up for a free license to activate the plugin.',
-                    [ 'status' => 403 ]
-                );
+            if ( class_exists( '\SPRESS\App\LicenseIntegration' ) ) {
+                $licensing_check = App\LicenseIntegration::validate_plugin_enable();
+                if ( is_wp_error( $licensing_check ) ) {
+                    return $licensing_check;
+                }
             }
 
             // Check required PHP extensions when enabling the plugin.
@@ -276,42 +258,6 @@ class RestApi {
         $data = App\Dashboard::get_data();
         return $data;
     }
-
-
-    public static function get_cloudflare_script() {
-
-        $location = App\License::get_download_link(true);
-        
-        if ( $location ) {
-            // Protect against SSRF by validating the host. Only allow the official domain.
-            $host = parse_url( $location, PHP_URL_HOST );
-            if ( $host !== 'speedifypress.com' ) {
-                return false;
-            }
-            // Fetch the worker script using the WordPress HTTP API with a timeout.
-            $response = wp_remote_get( $location, array( 'timeout' => 10 ) );
-            if ( is_wp_error( $response ) ) {
-                return false;
-            }
-            $contents = wp_remote_retrieve_body( $response );
-
-            if ( strstr( $contents, 'this.csrf_salt' ) ) {
-                // Replace this.csrf_salt = '{salt}'; with NONCE_SALT using preg_replace
-                $contents = preg_replace('/this\.csrf_salt = \'(.*)\';/', 'this.csrf_salt = \'' . NONCE_SALT . '\';', $contents);
-            }
-            return $contents;
-
-        }
-
-        return false;
-        
-    }
-
-    /**
-     * Retrieves data on the unused CSS cache
-     *
-     * @return array Cache data.
-     */
     public static function get_css_data() {
         $data['cache_data'] = Speed\CSS::get_cache_data();
         $data['stats_data'] = Speed\CSS::get_stats_data();        
@@ -428,17 +374,19 @@ class RestApi {
      *
      * @return array Empty array (no data returned).
      */
-    public static function handle_compressx() {      
+    public static function handle_compressx( \WP_REST_Request $request ) {      
+
+        $action = sanitize_text_field( (string) $request->get_param( 'action' ) );
 
         //COnfigure the plugin
-        if($_GET['action'] == 'configure') {
+        if($action === 'configure') {
 
             //Set standard WordPress options
             update_option('compressx_auto_optimize',1);
             update_option('compressx_quality',array("quality"=>"lossy_super"));
             return 1;
 
-        } else if ($_GET['action'] == 'install') {
+        } else if ($action === 'install') {
             
 
             include_once ABSPATH . 'wp-admin/includes/plugin.php';
@@ -579,37 +527,17 @@ class RestApi {
      *
      * @return array Empty array (no data returned).
      */
-    public static function check_license($request) {          
-
-        $json = $request->get_json_params();
-        $data = array();
-
-        //Decode from base64; handle missing or invalid license number
-        $license_number = self::get_decoded( $json, 'license_number' );
-        if ( $license_number === null ) {
+    public static function check_license($request) {
+        if ( ! class_exists( '\SPRESS\App\LicenseIntegration' ) ) {
             return new \WP_Error(
-                'invalid_license',
-                'License number is missing or invalid.',
-                [ 'status' => 400 ]
+                'licensing_unavailable',
+                'Licensing is not available in this build.',
+                [ 'status' => 404 ]
             );
         }
-        $license = App\License::check_license( $license_number );
 
-        if(isset($license['error'])
-        && $license['error'] != '') {
-            return new \WP_Error(
-                'license_failed',
-                $license['error'],
-                [ 'status' => 403 ]
-            );            
-        } else {
-            $data['success'] = $license;
-            $data['allowed_hosts'] = App\License::$allowed_hosts;
-            $data['num_current_hosts'] = App\License::$num_current_hosts;
-        }
-        return $data;
-
-    }    
+        return App\LicenseIntegration::check_license( $request );
+    }
 
 
 
@@ -647,7 +575,7 @@ class RestApi {
          * the count exceeds five, return a 429 Too Many Requests error.
          *
          */        
-        $client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+        $client_ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
         $rate_key  = 'spress_update_css_' . md5( $client_ip );
         $request_count = (int) get_transient( $rate_key );
         $request_count++;
@@ -667,6 +595,30 @@ class RestApi {
         }
 
         $json = $request->get_json_params();
+        //Origin/Referer validation 
+$origin = isset( $_SERVER['HTTP_ORIGIN'] ) ? esc_url_raw( wp_unslash( $_SERVER['HTTP_ORIGIN'] ) ) : '';
+        $referer = isset( $_SERVER['HTTP_REFERER'] ) ? esc_url_raw( wp_unslash( $_SERVER['HTTP_REFERER'] ) ) : '';
+        if ($origin === '' || $referer === '') {
+            return new \WP_Error(
+                'invalid_origin',
+                'Missing origin',
+                [ 'status' => 403 ]
+            );
+        }
+        if ($origin !== '' && !Speed::is_same_origin_url($origin)) {
+            return new \WP_Error(
+                'invalid_origin',
+                'Invalid origin',
+                [ 'status' => 403 ]
+            );
+        }
+        if ($referer !== '' && !Speed::is_same_origin_url($referer)) {
+            return new \WP_Error(
+                'invalid_referer',
+                'Invalid referer',
+                [ 'status' => 403 ]
+            );
+        }
     
         // 1) Base64 decode
         $b64 = self::get_decoded( $json, 'compressedData' );
@@ -790,6 +742,22 @@ class RestApi {
     
         // url: must be valid
         $url = esc_url_raw( $data['url'] );
+        if ( empty( $url ) ) {
+            return new \WP_Error(
+                'invalid_request',
+                'Invalid URL',
+                [ 'status' => 400 ]
+            );
+        }
+
+        // Enforce same-origin for public updates to prevent cache poisoning/tampering
+        if ( ! Speed::is_same_origin_url( $url ) ) {
+            return new \WP_Error(
+                'invalid_request',
+                'URL host mismatch',
+                [ 'status' => 403 ]
+            );
+        }
 
         //If it's just force includes, then we can skip the rest
         if(!empty($data['force_includes_only']) && $data['force_includes_only'] == "1") {
@@ -804,6 +772,15 @@ class RestApi {
                 'includes' => $force_includes ?? null,
             ] );            
 
+        }
+
+        // Skip processing if this URL already has a lookup file
+        $lookup_file = Speed\CSS::get_lookup_file($url);
+        if (file_exists($lookup_file)) {
+            return rest_ensure_response( [
+                'skipped' => true,
+                'reason' => 'already_processed'
+            ] );
         }
     
         // post_id: integer
@@ -914,7 +891,6 @@ class RestApi {
             'includes' => $force_includes ?? null
         ] );
     }   
-    
 
 
     /**

@@ -1,0 +1,101 @@
+{
+    "name": "spress/plugin",
+    "type": "wordpress-plugin",
+    "autoload": {
+        "psr-4": {
+            "SPRESS\\": "src/"
+        }
+    },
+    "require": {
+        "matthiasmullie/minify": "^1.3",
+        "wa72/url": "^0.7.1",
+        "simplehtmldom/simplehtmldom": "2.0-RC2",
+        "sabberworm/php-css-parser": "9.0.0"
+    },
+    "extra": {
+        "patches": {
+            "sabberworm/php-css-parser": {
+                "Escape CSSString parse exception interpolation for WP linting": "vendor/patches/sabberworm-cssstring-escape.patch",
+                "Escape more Sabberworm exceptions for WP linting": "vendor/patches/sabberworm-more-escapes.patch"
+            },
+            "simplehtmldom/simplehtmldom": {
+                "Handle null dom->target_charset in HtmlNode::makeup": "vendor/patches/simplehtmldom-null-charset.patch",
+                "WordPress.org compliance tweaks (escaping/direct-access/alt funcs)": "vendor/patches/simplehtmldom-wporg-compliance.patch"
+            },
+            "matthiasmullie/minify": {
+                "WordPress.org compliance tweaks (escaping/alt funcs)": "vendor/patches/minify-wporg-compliance.patch"
+            },
+            "wa72/url": {
+                "Use wp_parse_url for WordPress lint compatibility": "vendor/patches/wa72-url-wp-parse-url.patch"
+            }
+        },
+        "mozart": {
+            "dep_namespace": "SPRESS\\Dependencies\\",
+            "dep_directory": "/src/Dependencies/",
+            "classmap_directory": "/classes/dependencies/",
+            "classmap_prefix": "SPRESS_",
+            "packages": [
+                "matthiasmullie/minify",
+                "wa72/url",
+                "simplehtmldom/simplehtmldom",
+                "sabberworm/php-css-parser"
+            ],
+            "delete_vendor_directories": true,
+            "override_autoload": {
+                "simplehtmldom/simplehtmldom": {
+                    "psr-4": {
+                        "simplehtmldom\\": ""
+                    }
+                },
+                "matthiasmullie/minify": {
+                    "psr-4": {
+                        "MatthiasMullie\\Minify\\": "src"
+                    },
+                    "classmap": [
+                        "data"
+                    ]
+                },
+                "matthiasmullie/path-converter": {
+                    "psr-4": {
+                        "MatthiasMullie\\PathConverter\\": "src"
+                    }
+                }
+            }
+        }
+    },
+    "scripts": {
+        "post-install-cmd": [
+            "$(composer global config bin-dir --absolute)/mozart compose",
+            "mkdir -p src/Dependencies/MatthiasMullie/data && { if [ -d classes/dependencies/MatthiasMullie/Minify/data ]; then rsync -a classes/dependencies/MatthiasMullie/Minify/data/ src/Dependencies/MatthiasMullie/data/; elif [ -d classes/dependencies/matthiasmullie/minify/data ]; then rsync -a classes/dependencies/matthiasmullie/minify/data/ src/Dependencies/MatthiasMullie/data/; fi; } ; rm -rf classes",
+            "composer dump-autoload -o --no-dev"
+        ],
+        "post-update-cmd": [
+            "$(composer global config bin-dir --absolute)/mozart compose",
+            "mkdir -p src/Dependencies/MatthiasMullie/data && { if [ -d classes/dependencies/MatthiasMullie/Minify/data ]; then rsync -a classes/dependencies/MatthiasMullie/Minify/data/ src/Dependencies/MatthiasMullie/data/; elif [ -d classes/dependencies/matthiasmullie/minify/data ]; then rsync -a classes/dependencies/matthiasmullie/minify/data/ src/Dependencies/MatthiasMullie/data/; fi; }; rm -rf classes",
+            "composer dump-autoload -o --no-dev"
+        ],
+        "doinstall": [
+            "composer clear-cache",
+            "rm -rf vendor composer.lock patches.lock.json",
+            "composer install --optimize-autoloader"
+        ]
+    },
+    "config": {
+        "platform-check": false,
+        "preferred-install": {
+            "matthiasmullie/minify": "dist",
+            "matthiasmullie/path-converter": "dist",
+            "wa72/url": "dist",
+            "simplehtmldom/simplehtmldom": "dist",
+            "sabberworm/php-css-parser": "dist"
+        },
+        "allow-plugins": {
+            "cweagans/composer-patches": true
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require-dev": {
+        "cweagans/composer-patches": "^2.0"
+    }
+}

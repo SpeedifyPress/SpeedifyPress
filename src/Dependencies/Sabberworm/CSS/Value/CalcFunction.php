@@ -32,10 +32,10 @@ class CalcFunction extends CSSFunction
         $function = $parserState->parseIdentifier();
         if ($parserState->peek() !== '(') {
             // Found ; or end of line before an opening bracket
-            throw new UnexpectedTokenException('(', $parserState->peek(), 'literal', $parserState->currentLine());
+            throw new UnexpectedTokenException('(', esc_html($parserState->peek()), 'literal', (int) $parserState->currentLine());
         } elseif ($function !== 'calc') {
             // Found invalid calc definition. Example calc (...
-            throw new UnexpectedTokenException('calc', $function, 'literal', $parserState->currentLine());
+            throw new UnexpectedTokenException('calc', esc_html($function), 'literal', (int) $parserState->currentLine());
         }
         $parserState->consume('(');
         $calcRuleValueList = new CalcRuleValueList($parserState->currentLine());
@@ -72,10 +72,10 @@ class CalcFunction extends CSSFunction
                                 || $parserState->comes('+ '))
                         ) {
                             throw new UnexpectedTokenException(
-                                " {$parserState->peek()} ",
-                                $parserState->peek(1, -1) . $parserState->peek(2),
+                                esc_html(" {$parserState->peek()} "),
+                                esc_html($parserState->peek(1, -1) . $parserState->peek(2)),
                                 'literal',
-                                $parserState->currentLine()
+                                (int) $parserState->currentLine()
                             );
                         }
                     }
@@ -85,12 +85,12 @@ class CalcFunction extends CSSFunction
                     throw new UnexpectedTokenException(
                         \sprintf(
                             'Next token was expected to be an operand of type %s. Instead "%s" was found.',
-                            \implode(', ', $operators),
-                            $parserState->peek()
+                            esc_html(\implode(', ', $operators)),
+                            esc_html($parserState->peek())
                         ),
                         '',
                         'custom',
-                        $parserState->currentLine()
+                        (int) $parserState->currentLine()
                     );
                 }
             }
