@@ -2,6 +2,10 @@
 
 namespace SPRESS\Speed;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 use SPRESS\App\Config;
 use SPRESS\Speed;
 use SPRESS\Speed\CSS;
@@ -178,7 +182,6 @@ class JS {
         $exclude_scripts_array[] = self::$script_name; // Always exclude our own scripts
         $exclude_scripts_array[] = CSS::$script_name."-js-extra"; // Always exclude our own scripts data
         $exclude_scripts_array[] = Speed::$csrf_name; // Always exclude our csrf token
-        $exclude_scripts_array[] = "partytown"; // Always exclude partytown from delay
         $scripts = $dom->find('script');
     
         foreach ((array) $scripts AS $script) {
@@ -447,40 +450,5 @@ class JS {
      *
      * @return void
      */
-    public static function public_enqueue_partytown() {
-
-        $plugin_dir_relative = str_replace(content_url(), '', SPRESS_PLUGIN_URL);
-        $party_path = '/wp-content' . $plugin_dir_relative . 'assets/partytown/';
-
-        ?>
-        <script rel="js-extra">
-            window.partytown = {"lib":"<?php echo $party_path; ?>",
-                                "forward":["dataLayer.push"],
-                                "resolveSendBeaconRequestParameters": function (url) {
-                                                                        return url.hostname.includes('analytics.google') ||
-                                                                            url.hostname.includes('google-analytics')
-                                                                            ? { keepalive: false }
-                                                                            : {};
-                                                                    }
-                                };
-        </script>
-        <?php        
-
-        wp_enqueue_script(
-            'partytown js-extra',
-            SPRESS_PLUGIN_URL . 'assets/partytown/partytown.min.js',
-            array(),
-            SPRESS_VER,
-            false
-        );  
-        
-
-
-
-    }   
-
-
- 
-
 
 }

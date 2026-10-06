@@ -3,7 +3,7 @@
         'name' => 'spress/plugin',
         'pretty_version' => 'dev-master',
         'version' => 'dev-master',
-        'reference' => '6c5e5a630e4d0298ab6214774aa5916a8d16e82d',
+        'reference' => '6a53c72f86cd7fb0d06f060693550ea84782327f',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -67,7 +67,7 @@
         'spress/plugin' => array(
             'pretty_version' => 'dev-master',
             'version' => 'dev-master',
-            'reference' => '6c5e5a630e4d0298ab6214774aa5916a8d16e82d',
+            'reference' => '6a53c72f86cd7fb0d06f060693550ea84782327f',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

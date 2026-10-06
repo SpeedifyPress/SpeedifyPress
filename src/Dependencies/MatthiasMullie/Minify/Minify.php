@@ -132,7 +132,9 @@ abstract class Minify
 
             // check if we can read the file
             if (!$this->canImportFile($path)) {
-                throw new IOException('The file "' . $path . '" could not be opened for reading. Check if PHP has enough permissions.');
+                throw new IOException(
+                    \esc_html('The file "' . $path . '" could not be opened for reading. Check if PHP has enough permissions.')
+                );
             }
 
             $this->add($path);
@@ -241,6 +243,7 @@ abstract class Minify
 
         $this->writeToFile($handler, $content);
 
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fclose
         @fclose($handler);
     }
 
@@ -351,7 +354,7 @@ abstract class Minify
                 } else {
                     if ($matchResult === false) {
                         throw PatternMatchException::fromLastError(
-                            "Failed to match pattern '$pattern' at $processedOffset"
+                            \esc_html("Failed to match pattern '$pattern' at $processedOffset")
                         );
                     }
                     // if the pattern couldn't be matched, there's no point in
@@ -502,6 +505,7 @@ abstract class Minify
      */
     protected function canImportFile($path)
     {
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url
         $parsed = parse_url($path);
         if (
             // file is elsewhere
@@ -532,8 +536,11 @@ abstract class Minify
      */
     protected function openFileForWriting($path)
     {
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fopen
         if ($path === '' || ($handler = @fopen($path, 'w')) === false) {
-            throw new IOException('The file "' . $path . '" could not be opened for writing. Check if PHP has enough permissions.');
+            throw new IOException(
+                \esc_html('The file "' . $path . '" could not be opened for writing. Check if PHP has enough permissions.')
+            );
         }
 
         return $handler;
@@ -552,10 +559,13 @@ abstract class Minify
     {
         if (
             !is_resource($handler)
+            // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_fwrite
             || ($result = @fwrite($handler, $content)) === false
             || ($result < strlen($content))
         ) {
-            throw new IOException('The file "' . $path . '" could not be written to. Check your disk space and file permissions.');
+            throw new IOException(
+                \esc_html('The file "' . $path . '" could not be written to. Check your disk space and file permissions.')
+            );
         }
     }
 

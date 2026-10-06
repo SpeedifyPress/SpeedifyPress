@@ -1,0 +1,20 @@
+### Project Specific
+# Files
+.env
+*.zip
+
+# Directories
+speedyify_css/
+build/
+assets/partytown/debug/*
+
+# Editor directories and files
+.vscode/*
+
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

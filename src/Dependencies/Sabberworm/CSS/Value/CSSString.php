@@ -62,8 +62,8 @@ class CSSString extends PrimitiveValue
                 $content = $parserState->parseCharacter(false);
                 if ($content === null) {
                     throw new SourceException(
-                        "Non-well-formed quoted string {$parserState->peek(3)}",
-                        $parserState->currentLine()
+                        esc_html("Non-well-formed quoted string {$parserState->peek(3)}"),
+                        (int) $parserState->currentLine()
                     );
                 }
                 $result .= $content;

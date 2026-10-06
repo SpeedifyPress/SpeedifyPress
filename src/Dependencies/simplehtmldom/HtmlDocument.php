@@ -1,5 +1,9 @@
 <?php namespace SPRESS\Dependencies\simplehtmldom;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Website: http://sourceforge.net/projects/simplehtmldom/
  * Acknowledge: Jose Solorzano (https://sourceforge.net/projects/php-html/)
@@ -105,8 +109,9 @@ class HtmlDocument
 				$actual_function = 'loadFile'; break;
 			case 'clear': return; /* no-op */
 			default:
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_trigger_error
 				trigger_error(
-					'Call to undefined method ' . __CLASS__ . '::' . $func . '()',
+					\esc_html('Call to undefined method ' . __CLASS__ . '::' . $func . '()'),
 					E_USER_ERROR
 				);
 		}

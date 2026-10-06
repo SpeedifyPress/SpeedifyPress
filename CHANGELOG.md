@@ -5,6 +5,119 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+### 0.81.1 - 2026-09-30
+
+#### Added
+- Updated bundled dependency runtime files:
+  - Sabberworm exception-message escaping and preservation of integer parser line numbers.
+  - MatthiasMullie Minify exception-message escaping, while retaining native file and URL operations with PHPCS annotations.
+  - simplehtmldom diagnostic-output escaping and direct-access guards, while retaining its native HTTP loaders.
+  - Wa72's native `parse_url()` call is unchanged; its only change is a PHPCS annotation, not a URL-parsing fix.
+- Added `LicenseIntegration` to centralize licensing routes, dashboard data, activation checks, plugin-details hooks, and update notifications. Renamed the existing `License` service to `LicenseService` and updated its callers.
+- Added bootstrap-safe request helpers in `Speed`:
+  - `sanitize_bootstrap_text()`
+  - `sanitize_bootstrap_url()`
+  - `server_var()`
+  - `safe_parse_url()`
+  - `delete_file_compat()`
+  - `get_query_args()`
+  - `request_has_query_arg()`
+  - `get_current_host()`
+  - `is_same_origin_url()`
+  - `make_absolute_host_url()`
+- Added extension hook dispatch model in `Speed`:
+  - `call_extension()` + `__callStatic()` fallback, replacing hard-coded Pro-method wrappers.
+- Added direct-access guards (`if ( ! defined('ABSPATH') ) exit;`) across additional plugin runtime classes.
+- Added inline CSS reduction metadata to lookup output so rewritten inline styles can carry `data-spred` with the reduction percentage.
+- Added browser-side collection of `icon_selectors` alongside icon-font families. Exact class or ID selectors for icon-bearing elements are deduplicated, submitted with usage data, and stored in the page's CSS lookup.
+- Added selector-based hiding for lazily loaded inline icon fonts, using `visibility: hidden` to preserve layout. The deferred interaction template carries both the real font CSS and the script that sets `spress-icon-fonts-ready` to reveal those elements.
+- Added a shared request bypass classifier in `Speed` for request methods, response codes, AJAX, REST/XML-RPC, admin and transport endpoints, AMP, excluded extensions, logged-in cookies, and optional cookie/user-agent rules. It returns a bypass reason or `false`, retaining diagnostic output rather than only a boolean result.
+
+#### Changed
+- Separated generic AJAX nonce replacement from WooCommerce cart handling. A shared `add_nonce_token_injection()` method and neutrally named script handle request tokens for either option; `add_woo_injects()` now runs only for WooCommerce cart cleanup.
+- Separated licensing integration from license-service logic:
+  - `/check_license` registration moved behind `LicenseIntegration::register_rest_routes()`.
+  - `check_license()` now delegates to `LicenseIntegration` when available.
+  - Plugin-enable flow validates licensing via integration module when present.
+- Hardened public CSS update endpoint:
+  - Required non-empty Origin and Referer headers and checked their hostnames against the current site host.
+  - Validated the submitted URL and checked its hostname against the current site host. These checks reject unsupported schemes but do not compare scheme and port as a strict browser-origin check would.
+  - Added early skip response when URL lookup already processed.
+  - Improved client IP sanitization for rate limiting.
+- Updated `handle_compressx()` to use `WP_REST_Request` params instead of raw `$_GET`.
+- Updated cache/bootstrap flow to use sanitized server/request accessors and compatibility helpers in advanced cache context.
+- Updated cache/bootstrap flow to use the shared bypass classifier instead of duplicated request-shape and cookie checks.
+- Updated config update flow for `preload_fonts_intelligently` so dependent keys are expanded before save loop (fixes shortcut persistence timing issue).
+- Updated path/file operations toward WP-compatible functions where applicable (`wp_mkdir_p`, `wp_delete_file`, filesystem-backed directory removal helper).
+- Added an explicit GPLv3-or-later license declaration to the plugin header. Updated the plugin header and release metadata version to `0.81.01`.
+- Updated release metadata to declare PHP 7.4 as the minimum version and WordPress 7.0 as the tested version.
+- Updated cache bypass globals and naming for safer namespace isolation (e.g. `spress_bypass_reason`, `spress_cache_purging`, `spress_start_time`).
+- Updated many URL parsing calls to `wp_parse_url` (or compatibility wrapper in early bootstrap paths).
+- Updated timestamp/log usage in multiple paths to GMT (`gmdate`) consistency.
+- Restricted initial remote CSS fetch URLs to the site's hostname and normalized relative or protocol-relative URLs before fetching. Added an `ABSPATH` prefix check to resolved local stylesheet paths.
+- Changed unused-CSS debug logging to append with `FILE_APPEND | LOCK_EX` and serialize markup, variables, and font-finder diagnostics as JSON.
+- Gave the usage collector its own `-collector` script handle, localized its data using that handle, and added removal of matching collector and Turnstile script tags once a page has a CSS lookup.
+- Updated inline style discovery and rewriting to handle single-quoted `data-spcid` values and recover edge-case markup with DOM fallback only when the fast regex count disagrees.
+- Reduced unnecessary inline-style regex capture work and normalized lookup identifiers so existing `id-` prefixes are not duplicated.
+- Expanded icon-font detection beyond the usual private-use range to recognize escaped pseudo-element content and glyphs in the `FB00-FDFF` and `FE70-FEFF` ranges, including Gutenverse's GTN fonts.
+- Consolidated icon-family and selector detection into a shared scan, with sorted, deduplicated results.
+- Removed the animation-frame/idle delay from blank icon-font registration and expanded its declared Unicode ranges. The blank font remains alongside selector-based hiding.
+- Clarified that icon fonts are loaded on user interaction and that separate-cookie caches may require additional force-included CSS selectors.
+- Hardened DOM rewriting so viewport/preload insertion no longer mutates `HtmlDocument` properties, avoiding PHP 8.2 dynamic property deprecations.
+- Normalized and capped individual URL-path, query-string, cookie-name, and role fragments used in cache paths. Long fragments retain a short readable prefix plus a hash.
+- Added hash-based shortening for oversized URL-derived cache directories and query-string directory names to address long-path write failures.
+- Encoded the admin bootstrap payload with `wp_json_encode()` instead of manually interpolating JavaScript, and escaped REST nonces inserted into inline scripts.
+- Escaped admin-bar selector and icon values while preserving the data-URL menu icon.
+- Replaced bloat-removal redirects with `wp_safe_redirect()` for attachment-page and disabled-comments redirects.
+- Corrected the license updater's dialog title to use the `speedify-press` translation text domain.
+
+#### Removed
+- Excluded `composer.json`, `composer.lock`, and `patches.lock.json` from Community Lite after regenerating the runtime autoloader. The required `vendor/autoload.php` and `vendor/composer/` files remain included.
+- Removed Partytown assets, configuration, enqueue methods, script-delay exemption, and analytics-processing branches from this Community build.
+- Removed logged-in cache worker and Woo nonce helper assets, together with logged-in caching and nonce-replacement configuration and HTML-injection branches, from this Community build.
+- Removed the Cloudflare worker-download REST route and its fetch method from the Community runtime.
+- Excluded the Pro-only AJAX nonce checker override, its include, and the shared nonce-token injection asset from non-Pro packages.
+- Replaced the old `License` entries in both Composer autoload maps with `LicenseIntegration` and `LicenseService`.
+- Removed large simplehtmldom bundled non-runtime docs/examples/manual content from shipped tree.
+- Removed the output-buffer callback's custom error-handler override and its matching `restore_error_handler()` call from the distributed runtime.
+
+#### Fixed
+- Avoided zlib output-compression notices at shutdown by flushing only removable output buffers when a zlib buffer is present, leaving protected buffers for PHP shutdown.
+- Fixed blank admin views from "Change Settings" links by keeping navigation identifiers independent of edition-specific sidebar labels and ignoring unavailable destinations.
+- Fixed trailing slash handling regression in sanitized URI normalization.
+- Fixed admin cache settings accessors so missing non-pro keys no longer throw `undefined.value` errors in the community build.
+- Shortened oversized URL-derived cache paths to address `mkdir(): File name too long` and `file_put_contents(...): File name too long` errors.
+- Capped individual cookie-name and logged-in role fragments used in cache filename suffixes.
+- Fixed false cron bypasses on normal page requests when another plugin or theme defines `DOING_CRON`. Cron detection now also requires `wp-cron.php` in the request URI or script name, and front-end detection uses the same helper.
+- Centralized `speedify_cache_bust` and legacy `nocache` handling so both bootstrap and runtime caching recognize bypass requests.
+- Made shared URL parsing and file deletion fall back to native PHP before WordPress functions are available. Added a numeric nonce-lifetime default when `DAY_IN_SECONDS` is not yet defined.
+- Restricted the CSRF endpoint's optional `X-Page-URL` override to HTTP(S) URLs matching the current host, and corrected the advanced-cache `X-CSRF-Source` header to use a key/value pair.
+- Preserved integer line-number arguments in Sabberworm parser exceptions while adding escaping to their message and token arguments.
+- Added escaping for dependency exception messages and diagnostic output, while retaining native parsing and filesystem operations where required by the libraries.
+- Added a guarded, fully qualified reference to the optional `SPRESS\App\CloudflareModule` when preparing collector configuration; it is not called when the module is absent.
+- Updated dashboard license data to use `LicenseIntegration`, with a fallback when the integration is unavailable. Community Lite retains Community licensing rather than adopting WordPress.org's license-free activation flow.
+- Preserved raw cached HTML and gzip response bytes rather than HTML-escaping them; these deliberate response-output paths are documented with targeted PHPCS exceptions.
+
+#### Security / Compliance
+- Tightened request sanitization throughout cache/bootstrap paths (`$_SERVER`, cookies, headers, query parsing).
+- Added hostname validation to the public CSS update endpoint and optional CSRF page-URL override.
+- Added direct file access protection in additional dependency/runtime files.
+- Added PHPCS annotations for retained dependency URL/file/HTTP operations, diagnostic functions, and legacy global names. These annotations suppress lint findings; they do not replace those operations with WordPress APIs.
+- Continued replacement of raw superglobal access patterns with validated/sanitized wrappers for WP.org review readiness.
+
+#### Developer Notes
+- Community Lite ships the patched dependency runtime and generated autoloader, not Composer manifests, lock files, or patch sources. Dependency rebuilding requires the source repository.
+- Added `.gitignore` rules for environment files, ZIP archives, build output, and editor artifacts.
+
+### 0.80.6 - 2026-01-28
+- Strip collector + Turnstile scripts and hints on processed pages
+
+### 0.80.5 - 2026-01-27
+- Add Turnstile protection for public CSS update endpoint with admin UI + docs
+- Enforce same-origin, Origin+Referer checks, and skip redundant update_css processing
+- Harden CSRF token header handling for advanced cache context
+- Tighten URL fetch safety in Unused CSS pipeline
+
 ### 0.80.4 - 2026-01-25
 - Fix bug in calling is_shop
 
@@ -490,4 +603,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 0.01.0
 - Initial commit
-

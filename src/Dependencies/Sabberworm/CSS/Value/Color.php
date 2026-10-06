@@ -73,9 +73,9 @@ class Color extends CSSFunction
         } else {
             throw new UnexpectedTokenException(
                 'Invalid hex color value',
-                $hexValue,
+                esc_html($hexValue),
                 'custom',
-                $parserState->currentLine()
+                (int) $parserState->currentLine()
             );
         }
 
@@ -155,7 +155,7 @@ class Color extends CSSFunction
                         'Color function with no arguments',
                         '',
                         'custom',
-                        $parserState->currentLine()
+                        (int) $parserState->currentLine()
                     );
                 }
                 $isLegacySyntax = $parserState->comes(',');

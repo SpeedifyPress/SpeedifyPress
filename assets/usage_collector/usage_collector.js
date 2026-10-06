@@ -205,6 +205,7 @@ class CSSUsageCollector {
         await this.getLcpImage().then((image) => {
 
             const toSend = [...this.observedClasses].filter(c => !this.alreadyIncluded.has(c));
+            const iconFontData = this.getIconFontData();
             
             this.updateConfig({ csrf: window.spdy_csrfToken, 
                                 force_includes: toSend, 
@@ -213,7 +214,8 @@ class CSSUsageCollector {
                                 post_types: post_types,
                                 invisible: {elements: invisibleElements, viewport: { width:window.innerWidth, height: window.innerHeight }},
                                 usedFontRules: [...this.getFontsDownloaded()].join("|"),
-                                icon_fonts: this.getIconFontFamilies(),
+                                icon_fonts: iconFontData.families,
+                                icon_selectors: iconFontData.selectors,
                                 lcp_image: image
                             }
                            );                      
@@ -250,7 +252,7 @@ class CSSUsageCollector {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ compressedData: base64CompressedData }), // Wrap in an object if needed
+                    body: JSON.stringify({ compressedData: base64CompressedData }),
                 });
 
                 // Flag first update sent 
@@ -327,27 +329,41 @@ class CSSUsageCollector {
     }
 
     /**
-     * Scans the DOM for icon-like pseudo-elements (::before/::after) whose
-     * computed `content` looks like a unicode escape or Private Use Area glyph,
-     * and returns a de-duplicated, sorted array of the font-family names used.
-     * @returns {string[]}
+     * Scans the DOM for icon-like pseudo-elements (::before/::after), then returns
+     * both the font-family names and the exact selectors for matching icon-bearing nodes.
+     * @returns {{families: string[], selectors: string[]}}
      */
-    getIconFontFamilies() {
-        const fonts = new Set();
+    getIconFontData() {
+        const families = new Set();
+        const selectors = new Set();
         const pseudos = ["::before", "::after"];
 
         const hasUnicodeEscape = (s) => /\\[0-9a-fA-F]{1,6}\s?/.test(s || "");
-        const hasPUAGlyph = (s = "") => {
+        const hasIconGlyph = (s = "") => {
             for (const ch of s) {
                 const cp = ch.codePointAt(0);
-                if ((cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0xF0000 && cp <= 0xFFFFD) || (cp >= 0x100000 && cp <= 0x10FFFD)) {
+                if (
+                    (cp >= 0xE000 && cp <= 0xF8FF) ||   // Private Use Area
+                    (cp >= 0xF0000 && cp <= 0xFFFFD) || // Plane 15 PUA
+                    (cp >= 0x100000 && cp <= 0x10FFFD) || // Plane 16 PUA
+                    (cp >= 0xFB00 && cp <= 0xFDFF) ||   // Presentation forms commonly used by icon fonts
+                    (cp >= 0xFE70 && cp <= 0xFEFF)      // Arabic presentation forms commonly used by icon fonts
+                ) {
                     return true;
                 }
             }
             return false;
         };
         const stripQuotes = (s) => (s && /^['"].*['"]$/.test(s) ? s.slice(1, -1) : s);
+        const escapeIdent = (s) => {
+            if (window.CSS && typeof window.CSS.escape === "function") {
+                return window.CSS.escape(s);
+            }
+            return String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+        };
 
+        // Capture the icon font families from the actual rendered pseudo content.
+        // This keeps the existing detection logic and adds selector extraction in the same pass.
         document.querySelectorAll("*").forEach((el) => {
             pseudos.forEach((pseudo) => {
                 const cs = getComputedStyle(el, pseudo);
@@ -356,17 +372,47 @@ class CSSUsageCollector {
                 content = stripQuotes(content);
 
                 if (!content || content === "none" || content === "normal") return;
-                if (!(hasPUAGlyph(content) || hasUnicodeEscape(raw))) return;
+                if (!(hasIconGlyph(content) || hasUnicodeEscape(raw))) return;
 
                 const ff = cs.getPropertyValue("font-family") || "";
                 ff.split(",")
                     .map((s) => s.trim().replace(/^['"]|['"]$/g, ""))
                     .filter(Boolean)
-                    .forEach((name) => fonts.add(name));
+                    .forEach((name) => families.add(name));
+
+                // Prefer an exact class-based selector for the matched icon-bearing node.
+                // This stays narrow and avoids hiding unrelated elements that share a generic namespace class.
+                if (el.classList && el.classList.length) {
+                    const classSelector = "." + Array.from(el.classList).map(escapeIdent).join(".");
+                    if (classSelector !== ".") {
+                        selectors.add(classSelector);
+                    }
+                } else if (el.id) {
+                    selectors.add("#" + escapeIdent(el.id));
+                }
             });
         });
 
-        return Array.from(fonts).sort((a, b) => a.localeCompare(b));
+        return {
+            families: Array.from(families).sort((a, b) => a.localeCompare(b)),
+            selectors: Array.from(selectors).sort((a, b) => a.localeCompare(b))
+        };
+    }
+
+    /**
+     * Returns the de-duplicated, sorted array of icon font-family names found in the DOM.
+     * @returns {string[]}
+     */
+    getIconFontFamilies() {
+        return this.getIconFontData().families;
+    }
+
+    /**
+     * Returns the de-duplicated, sorted array of selectors for icon-bearing nodes found in the DOM.
+     * @returns {string[]}
+     */
+    getIconSelectors() {
+        return this.getIconFontData().selectors;
     }    
 
     // Returns true if at least one LCP entry appears within maxWaitMs
@@ -888,4 +934,3 @@ class CSSUsageCollector {
 
     } 
 })();
-
