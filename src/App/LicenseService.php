@@ -1,17 +1,15 @@
 <?php
 
 namespace SPRESS\App;
-use SPRESS\App\Menu;
-use SPRESS\App\License;
 
 /**
- * Class License
+ * Class LicenseService
  *
  * Handles licensing functionality for the plugin.
  *
  * @package SPRESS
  */
-class License {
+class LicenseService {
 
     public static $allowed_hosts;
     public static $num_current_hosts;
@@ -32,7 +30,7 @@ class License {
 
             static $shown = false; // Prevent multiple prints
 
-            if (!$shown && License::check_license() !== true) {
+            if (!$shown && self::check_license() !== true) {
                 
                 echo '<br><span style="color: red; font-weight: bold;">' . 'Your license is inactive. Please <a href="'. 'admin.php?page='.Menu::$menu_slug .'">activate your license</a> to receive updates. Click <a target="_blank" href="https://speedifypress.com">here</a> to purchase a license.' . '</span>';
                 $shown = true;
@@ -80,7 +78,7 @@ class License {
                 // Abort update with meaningful error
                 wp_die(
                     __( 'Update failed: License is invalid or expired.', 'speedify-press' ),
-                    __( 'Plugin Update', 'your-textdomain' ),
+                    __( 'Plugin Update', 'speedify-press' ),
                     array( 'back_link' => true )
                 );
 
@@ -256,7 +254,7 @@ class License {
 
                 //Set the license status verb
                 $status_verb = "renews";
-                if($subscription->ends_at) {
+                if(!empty($subscription->ends_at)) {
                     if(strtotime($subscription->ends_at) > time()) {
                         $status_verb = 'expires';    
                     } else {

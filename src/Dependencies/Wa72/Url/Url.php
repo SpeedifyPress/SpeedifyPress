@@ -31,6 +31,7 @@ class Url
         if ($this->is_protocol_relative()) {
             $url = 'http:' . $url;
         }
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.parse_url_parse_url
         $urlo = parse_url($url);
         if (isset($urlo['scheme']) && !$this->is_protocol_relative()) {
             $this->scheme = strtolower($urlo['scheme']);

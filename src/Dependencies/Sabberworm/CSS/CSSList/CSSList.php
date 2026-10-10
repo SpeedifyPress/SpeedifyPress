@@ -89,7 +89,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
         }
         $list->addComments($comments);
         if (!$isRoot && !$usesLenientParsing) {
-            throw new SourceException('Unexpected end of document', $parserState->currentLine());
+            throw new SourceException('Unexpected end of document', (int) $parserState->currentLine());
         }
     }
 
@@ -114,7 +114,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
                         '@charset may only occur in root document',
                         '',
                         'custom',
-                        $parserState->currentLine()
+                        (int) $parserState->currentLine()
                     );
                 }
                 if (\count($list->getContents()) > 0) {
@@ -122,7 +122,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
                         '@charset must be the first parseable token in a document',
                         '',
                         'custom',
-                        $parserState->currentLine()
+                        (int) $parserState->currentLine()
                     );
                 }
                 $parserState->setCharset($atRule->getCharset());
@@ -133,7 +133,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
                 if ($parserState->getSettings()->usesLenientParsing()) {
                     return DeclarationBlock::parse($parserState) ?? false;
                 } else {
-                    throw new SourceException('Unopened {', $parserState->currentLine());
+                    throw new SourceException('Unopened {', (int) $parserState->currentLine());
                 }
             } else {
                 // End of list
@@ -190,14 +190,14 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
             }
             $parserState->consumeUntil([';', ParserState::EOF], true, true);
             if ($prefix !== null && !\is_string($prefix)) {
-                throw new UnexpectedTokenException('Wrong namespace prefix', $prefix, 'custom', $identifierLineNumber);
+                throw new UnexpectedTokenException('Wrong namespace prefix', esc_html($prefix), 'custom', (int) $identifierLineNumber);
             }
             if (!($url instanceof CSSString || $url instanceof URL)) {
                 throw new UnexpectedTokenException(
                     'Wrong namespace url of invalid type',
-                    $url,
+                    esc_html($url),
                     'custom',
-                    $identifierLineNumber
+                    (int) $identifierLineNumber
                 );
             }
             return new CSSNamespace($url, $prefix, $identifierLineNumber);
@@ -208,7 +208,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
                 if ($parserState->getSettings()->usesLenientParsing()) {
                     return null;
                 } else {
-                    throw new SourceException('Unmatched brace count in media query', $parserState->currentLine());
+                    throw new SourceException('Unmatched brace count in media query', (int) $parserState->currentLine());
                 }
             }
             $useRuleSet = true;
@@ -356,8 +356,8 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
             if (!($selector instanceof Selector)) {
                 if (!Selector::isValid($selector)) {
                     throw new UnexpectedTokenException(
-                        "Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'.",
-                        $selector,
+                        esc_html("Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'."),
+                        esc_html($selector),
                         'custom'
                     );
                 }

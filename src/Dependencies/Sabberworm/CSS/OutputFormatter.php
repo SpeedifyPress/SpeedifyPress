@@ -67,7 +67,7 @@ class OutputFormatter
                 $spaceString = $this->outputFormat->getSpaceAfterListArgumentSeparator();
                 break;
             default:
-                throw new \InvalidArgumentException("Unknown space type: $name", 1740049248);
+                throw new \InvalidArgumentException(esc_html("Unknown space type: $name"), 1740049248);
         }
 
         return $this->prepareSpace($spaceString);

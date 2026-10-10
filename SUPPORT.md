@@ -8,6 +8,7 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
 
 - [ Cache Settings](#cache-settings)
    - [Mode Selection](#mode-selection)
+   - [Nonce Replacement](#nonce-replacement)
    - [Filters](#filters)
    - [Cache Outputs](#cache-outputs)
 - [ CSS Settings](#css-settings)
@@ -46,6 +47,20 @@ Here you can choose how the plugin should perform page preloading. This is when 
 *Choose the cache lifetime*
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
+
+### Nonce Replacement
+
+A nonce is a security token used to check requests. Tokens embedded in cached pages can expire before the page cache does, causing actions such as product searches or cart updates to fail. These optional settings use SpeedifyPress's CSRF token system to help supported requests work with long-lived cached pages.
+
+*Replace WooCommerce nonces?*
+
+Enables SpeedifyPress's token handling for supported WooCommerce Store API and wc-ajax requests. Use this when WooCommerce actions fail because a cached page contains an expired nonce. Test adding and removing products, cart updates and checkout after enabling it.
+
+*Replace AJAX nonces?*
+
+Adds a SpeedifyPress CSRF token to supported same-origin admin-ajax.php requests. When a plugin uses WordPress's check_ajax_referer(), a valid SpeedifyPress token can be accepted if the original nonce is missing or expired. This can help features such as AJAX product searches; it is not limited to WooCommerce and does not cover plugins that use their own nonce checks.
+
+Enable only the options your site needs, clear the page cache and test the affected features on both fresh and cached visits. These settings do not replace permission checks or make personalised account, cart or checkout content safe to share between visitors. If a feature is incompatible, disable its replacement option and use a shorter cache lifetime or bypass caching for the affected page.
 
 ### Filters
 
