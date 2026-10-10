@@ -100,7 +100,9 @@ class Cache {
         if (defined('SPRESS_FILE_NAME')) {
             register_activation_hook(SPRESS_FILE_NAME, array(__CLASS__, 'install'));
             register_deactivation_hook(SPRESS_FILE_NAME, array(__CLASS__, 'uninstall'));
-            add_action('upgrader_process_complete', array(__CLASS__, 'install'), 10, 2);
+            add_action('upgrader_process_complete', array(__CLASS__, 'refresh_after_upgrade'), 10, 2);
+            // Updates run with the old class loaded; check again once the new code is running.
+            add_action('admin_init', array(__CLASS__, 'maybe_refresh_advanced_cache'));
         }
 
         //Register purging hooks
@@ -1192,7 +1194,59 @@ class Cache {
 
         // Write the resulting code into advanced-cache.php in the wp-content directory.
         $advanced_cache_path = WP_CONTENT_DIR . '/advanced-cache.php';
-        return file_put_contents($advanced_cache_path, $advanced_cache_code);
+        $written = file_put_contents($advanced_cache_path, $advanced_cache_code);
+        if ($written === strlen($advanced_cache_code)) {
+            // Record success only after the complete drop-in has been written.
+            update_option('spress_advanced_cache_signature', self::advanced_cache_signature($template), false);
+        } else {
+            return false;
+        }
+        return $written;
+    }
+
+    /**
+     * Identifies the template, installed edition/version, and plugin location.
+     */
+    private static function advanced_cache_signature($template) {
+        return hash('sha256', SPRESS_VER . "\n" . SPRESS_PLUGIN_DIR . "\n" . $template);
+    }
+
+    /**
+     * Refreshes our drop-in on the next admin request after an update or manual replacement.
+     */
+    public static function maybe_refresh_advanced_cache() {
+        $template = file_get_contents(SPRESS_PLUGIN_DIR . 'assets/advanced-cache.php');
+        if ($template === false) {
+            return;
+        }
+
+        $path = WP_CONTENT_DIR . '/advanced-cache.php';
+        if (file_exists($path)) {
+            // Do not take over a drop-in installed by another caching plugin.
+            $existing = file_get_contents($path);
+            if ($existing === false || strpos($existing, 'Advanced Cache for SpeedifyPress') === false) {
+                return;
+            }
+            if (get_option('spress_advanced_cache_signature') === self::advanced_cache_signature($template)) {
+                return;
+            }
+        }
+
+        self::write_advanced_cache();
+    }
+
+    /**
+     * Refreshes the drop-in only when this plugin is updated, not for unrelated upgrades.
+     */
+    public static function refresh_after_upgrade($upgrader, $options) {
+        if (($options['type'] ?? '') !== 'plugin' || ($options['action'] ?? '') !== 'update') {
+            return;
+        }
+        $plugins = $options['plugins'] ?? array($options['plugin'] ?? '');
+        if (in_array(SPRESS_FILE_NAME, $plugins, true)) {
+            self::init();
+            self::maybe_refresh_advanced_cache();
+        }
     }
 
     /**

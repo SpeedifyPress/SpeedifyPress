@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the output-buffer callback's custom error-handler override and its matching `restore_error_handler()` call from the distributed runtime.
 
 #### Fixed
+- Refresh outdated SpeedifyPress `advanced-cache.php` drop-ins on the next admin request after a plugin update or manual replacement, including same-version template changes. Unrelated plugin updates and other plugins' drop-ins are left alone, and unsuccessful writes remain eligible for retry.
 - Prevented viewport relocation from duplicating existing head content. Applied the same fix to Pro's nonce-token injection, avoiding repeated scripts, styles, and multiple copies of `LoggedInExceptionsRefresher` on a page.
 - Resolved stylesheet links against the page being optimized rather than simply appending them to the site URL. Root-relative, page-relative, and protocol-relative links now resolve correctly on subdirectory installations without duplicating the installation prefix.
 - Resolved cached-link tagging URLs against `document.baseURI`, preserving page-relative links and document base URLs instead of treating every link as relative to the domain root.

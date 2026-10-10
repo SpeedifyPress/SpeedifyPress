@@ -1299,6 +1299,18 @@ class Speed {
         ksort($attrs);
         $attrStr = '';
         foreach ($attrs as $key => $value) {
+
+            //Normalise dynamic WordPress classes
+            if ($key === 'class') {
+                $classes = preg_split('/\s+/', trim($value));
+
+                $classes = array_filter($classes, function($class) {
+                    return !preg_match('/^wp-container-.*-is-layout-[a-f0-9]+$/i', $class);
+                });
+
+                $value = implode(' ', $classes);
+            }
+            
             $attrStr .= $key . '=' . $value . ';';
         }
         return $attrStr;
