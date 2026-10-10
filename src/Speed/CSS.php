@@ -127,7 +127,7 @@ class CSS {
         $include_patterns = array_merge($include_patterns, $force_includes);
 
         //Get unused
-        $unused = Unused::init($html, $include_patterns, $icon_fonts);
+        $unused = Unused::init($html, $include_patterns, $icon_fonts, $source_url);
         
         /*
         $unused = array();
@@ -694,7 +694,8 @@ class CSS {
                         $path   = rtrim(Speed::get_root_cache_path(), '/') . '/' . $b['file'];
                         $marker = htmlspecialchars($b['marker'], ENT_QUOTES);
 
-                        if (self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped") {
+                        // Keep text font definitions external even when page CSS is inlined.
+                        if ($b['marker'] === 'icons' && (self::$inclusion_mode == "inline" || self::$inclusion_mode == "inline-grouped")) {
                             $css = @file_get_contents($path) ?: '';
                             if ($css === '') continue;
                             if ($b['marker'] === 'icons') {
@@ -740,12 +741,6 @@ class CSS {
 
                                 }
 
-                            } else {
-                                // Text fonts: immediate inline
-                                if($system_fonts) {
-                                    $css = "@media (min-width: 800px) {\n" . $css . "\n}";
-                                }
-                                $injections['head'][] = "<style rel='spress-inlined' data-spress-fonts='{$marker}'>" . $css . "</style>";
                             }
                         } else {
                             if ($b['marker'] === 'icons') {
@@ -755,8 +750,9 @@ class CSS {
                                     "<link rel='preload' as='style' href='{$href}' crossorigin='anonymous' data-spress-processed='true' data-spress-fonts='" . $marker . "' onload=\"this.onload=null;this.rel='stylesheet'\">";
                             } else {
                                 // Text/body fonts: normal stylesheet (non-deferred)
+                                $font_media_attr = $system_fonts ? " media='(min-width: 800px)'" : '';
                                 // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedStylesheet
-                                $injections['head'][] = "<link rel='stylesheet' href='{$href}' crossorigin='anonymous'  data-spress-processed='true' data-spress-fonts='{$marker}'{$media_attr}>";
+                                $injections['head'][] = "<link rel='stylesheet' href='{$href}' crossorigin='anonymous' data-spress-processed='true' data-spress-fonts='{$marker}'{$font_media_attr}>";
                             }
                         }
                     }

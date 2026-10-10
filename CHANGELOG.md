@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-### 0.81.1 - 2026-09-30
+### 0.81.2 - 2026-10-05
 
 #### Added
 - Updated bundled dependency runtime files:
@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a shared request bypass classifier in `Speed` for request methods, response codes, AJAX, REST/XML-RPC, admin and transport endpoints, AMP, excluded extensions, logged-in cookies, and optional cookie/user-agent rules. It returns a bypass reason or `false`, retaining diagnostic output rather than only a boolean result.
 
 #### Changed
+- Deduplicated identical `@font-face` rules before minification, reducing oversized font-definition files. Rules retain their original order, and different `@media` or `@supports` wrapper contexts remain distinct.
+- Kept text-font definitions in the existing external font stylesheet even when page CSS uses inline or inline-grouped mode, allowing the stylesheet to be cached and reused across pages. The mobile system-font option applies an explicit `(min-width: 800px)` condition to this stylesheet; icon-font delivery remains unchanged.
 - Separated generic AJAX nonce replacement from WooCommerce cart handling. A shared `add_nonce_token_injection()` method and neutrally named script handle request tokens for either option; `add_woo_injects()` now runs only for WooCommerce cart cleanup.
 - Separated licensing integration from license-service logic:
   - `/check_license` registration moved behind `LicenseIntegration::register_rest_routes()`.
@@ -82,6 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed the output-buffer callback's custom error-handler override and its matching `restore_error_handler()` call from the distributed runtime.
 
 #### Fixed
+- Prevented viewport relocation from duplicating existing head content. Applied the same fix to Pro's nonce-token injection, avoiding repeated scripts, styles, and multiple copies of `LoggedInExceptionsRefresher` on a page.
+- Resolved stylesheet links against the page being optimized rather than simply appending them to the site URL. Root-relative, page-relative, and protocol-relative links now resolve correctly on subdirectory installations without duplicating the installation prefix.
+- Resolved cached-link tagging URLs against `document.baseURI`, preserving page-relative links and document base URLs instead of treating every link as relative to the domain root.
+- Used WordPress's configured admin-AJAX URL for the admin-bar nonce-refresh fallback, supporting installations outside the domain root.
+- Corrected REST-request detection to inspect the parsed URL path and `REST_REQUEST`, including `/wp-json/` endpoints beneath an installation subdirectory.
+- Corrected local upload-image dimension lookup by mapping the configured uploads URL prefix to its filesystem directory. Resolved paths must remain inside that directory, preventing path traversal while supporting subdirectory and custom uploads paths.
+- Fixed Pro request-token replacement for WooCommerce Store API and admin-AJAX endpoints beneath an installation subdirectory, retaining same-origin checks.
+- Derived Pro's Partytown library path from the plugin URL instead of assuming `/wp-content` is at the domain root, supporting subdirectory installations and custom content-directory URLs.
 - Avoided zlib output-compression notices at shutdown by flushing only removable output buffers when a zlib buffer is present, leaving protected buffers for PHP shutdown.
 - Fixed blank admin views from "Change Settings" links by keeping navigation identifiers independent of edition-specific sidebar labels and ignoring unavailable destinations.
 - Fixed trailing slash handling regression in sanitized URI normalization.

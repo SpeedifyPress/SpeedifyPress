@@ -4,7 +4,7 @@
     if (!src) { console.warn('window.spdy_cached_uris is not set.'); return; }
 
     const norm = (u) => {
-      const x = new URL(u, location.origin);
+      const x = new URL(u, document.baseURI);
       x.hash = '';
       if (x.pathname.length > 1 && x.pathname.endsWith('/')) x.pathname = x.pathname.slice(0, -1);
       return x.origin + x.pathname + x.search;

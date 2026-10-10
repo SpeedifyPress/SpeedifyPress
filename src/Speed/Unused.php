@@ -94,10 +94,11 @@ class Unused {
      * @param string $html The HTML content to process.
      * @param array $allow_selectors An optional array of selectors that are allowed.
      * @param array $icon_fonts An optional array of icon font family names
+     * @param string|null $source_url The page URL used to resolve relative stylesheet links.
      * @return array An array containing optimized CSS, usage tracker statistics, percentage reduction, and used markup.
      */
 
-    public static function init($html, $allow_selectors = [], $icon_fonts = null) {
+    public static function init($html, $allow_selectors = [], $icon_fonts = null, $source_url = null) {
 
         $start_time = microtime(true);
 
@@ -127,7 +128,7 @@ class Unused {
         self::find_used_selectors_in_dom($dom);                           
 
         //Get stylesteets
-        self::find_stylesheet_urls($html);
+        self::find_stylesheet_urls($html, $source_url);
 
         //Pass 1, get fonts and keyframes from CSS
         foreach(self::$stylesheet_urls AS $url) {            
@@ -240,9 +241,10 @@ class Unused {
      * class property.
      *
      * @param string $html The HTML content to parse for stylesheets.
+     * @param string|null $source_url The page URL used to resolve relative stylesheet links.
      * @return void
      */
-    public static function find_stylesheet_urls($html) {
+    public static function find_stylesheet_urls($html, $source_url = null) {
 
         //Look for selectors in the sheets
         preg_match_all('#<link[^>]*stylesheet[^>]*>#Usi', $html, $matches);
@@ -260,11 +262,8 @@ class Unused {
 
             if($url) {
 
-                if (strpos($url, '//') === 0) {
-                    $url = (is_ssl() ? 'https:' : 'http:') . $url;
-                } elseif (! preg_match('#^https?://#i', $url)) {
-                    $url = rtrim(home_url(), '/') . '/' . ltrim($url, '/');
-                }
+                // Resolve against the source page, preserving root-relative installation paths.
+                $url = \WP_Http::make_absolute_url($url, $source_url ?: Speed::get_url());
 
                 //remove the version params
                 $url = self::url_remove_querystring($url);
@@ -1544,7 +1543,7 @@ class Unused {
 
 
     /**
-     * Minify and return the combined @font-face CSS for a given bucket.
+     * Deduplicate, minify and return the combined @font-face CSS for a given bucket.
      * Preserves original order and wrapper at-rules (e.g. @supports/@media).
      *
      * @param array $bucket Array of ['css','wrappers','order'] items.
@@ -1557,6 +1556,7 @@ class Unused {
         usort($bucket, function($a,$b){ return $a['order'] <=> $b['order']; });
 
         $parts = [];
+        $seen = [];
         foreach ($bucket as $item) {
             $css = $item['css'];
             // Re-wrap with original at-rules, from outermost to innermost
@@ -1570,6 +1570,11 @@ class Unused {
                     }
                 }
             }
+            // Compare the fully wrapped rule so different conditional contexts remain distinct.
+            if (isset($seen[$css])) {
+                continue;
+            }
+            $seen[$css] = true;
             $parts[] = $css;
         }
         $fonts_css = implode('', $parts);

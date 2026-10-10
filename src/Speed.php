@@ -1328,8 +1328,8 @@ class Speed {
         }
 
         // Check if it's a REST API request by looking at the URI
-        $request_uri = self::get_url();
-        if (strpos($request_uri, '/wp-json/') === 0) {
+        $request_path = self::safe_parse_url(self::get_url(), PHP_URL_PATH) ?: '';
+        if ((defined('REST_REQUEST') && REST_REQUEST) || strpos($request_path, '/wp-json/') !== false) {
             return false;
         }
     
@@ -1841,7 +1841,13 @@ HTML " . number_format($elapsed_time,2) . "-->";
         }
 
         if($viewportHtml) {
-            $head->innertext = $viewportHtml . $head->innertext;
+            // Preserve the existing children without copying them back into innertext.
+            $firstNode = $head->nodes[0] ?? null;
+            if ($firstNode) {
+                $firstNode->outertext = $viewportHtml . $firstNode->outertext;
+            } else {
+                $head->innertext = $viewportHtml;
+            }
         }
 
         return $dom;
@@ -2043,20 +2049,21 @@ HTML " . number_format($elapsed_time,2) . "-->";
             ];
         }
     
-        // Handle local files in /wp-content/uploads/
-        $upload_dir_parts =  wp_get_upload_dir();
-        $uploads_dir = str_replace(ABSPATH,"",$upload_dir_parts['basedir']); //just the wp-content/uploads bit
-        
-        //get relative path of the image
-        $image_relative_path = wp_parse_url($src, PHP_URL_PATH);        
+        // Map the configured uploads URL prefix to its disk directory, including subdirectories.
+        $upload_dir_parts = wp_get_upload_dir();
+        $uploads_path = rtrim((string) wp_parse_url($upload_dir_parts['baseurl'], PHP_URL_PATH), '/') . '/';
+        $image_path = wp_parse_url($src, PHP_URL_PATH);
+        $local_path = false;
+        if (is_string($image_path) && strpos($image_path, $uploads_path) === 0) {
+            $local_path = realpath($upload_dir_parts['basedir'] . '/' . substr($image_path, strlen($uploads_path)));
+            $uploads_base = realpath($upload_dir_parts['basedir']);
+            // Do not let path traversal escape the uploads directory.
+            if (!$uploads_base || !$local_path || strpos($local_path, $uploads_base . DIRECTORY_SEPARATOR) !== 0) {
+                $local_path = false;
+            }
+        }
 
-        //Remove the wp-content/uploads 
-        $image_relative_path = str_replace($uploads_dir,"",$image_relative_path);
-
-        //Add onto the full path for the wp-uploads dir (which contains wp-content/uploads)
-        $local_path = $upload_dir_parts['basedir'] . $image_relative_path;
-        
-        if (file_exists($local_path)) {
+        if ($local_path && is_file($local_path)) {
             $size = getimagesize($local_path);
             if ($size) {
                 return [

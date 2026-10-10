@@ -183,7 +183,7 @@ class Menu {
             async function __spress_refreshNonce(){
               // cache in a global so we don’t re-fetch constantly
              if (window.__spress_refreshingNonce) return window.__spress_refreshingNonce;
-              const ajaxUrl = (typeof ajaxurl !== 'undefined' && ajaxurl) || '/wp-admin/admin-ajax.php';
+              const ajaxUrl = (typeof ajaxurl !== 'undefined' && ajaxurl) || '<?php echo esc_js(admin_url('admin-ajax.php')); ?>';
               window.__spress_refreshingNonce = fetch(ajaxUrl, {
                 method: 'POST',
                 credentials: 'same-origin',
