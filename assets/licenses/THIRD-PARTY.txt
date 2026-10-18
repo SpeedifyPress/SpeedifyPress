@@ -1,0 +1,31 @@
+# Third-Party Licences
+
+Original licence texts and notices for dependencies used by SpeedifyPress and SpeedifyCSS. These remain under their respective licences; the plugin root LICENSE does not replace them.
+
+The npm notices come from the exact installed package versions (downloaded by npm); Composer licences were downloaded from the source commits pinned in composer.lock. Notices cover direct JavaScript dependencies and the shared Vue, Popper and datepicker modules; not every library is used in every edition.
+
+When updating dependencies, refresh these notices to match the versions being distributed.
+
+| Package | Version | Licence | Source |
+| --- | --- | --- | --- |
+| @builder.io/partytown | 0.10.2 | MIT | Installed npm package; admin_app/package-lock.json |
+| axios | 1.7.7 | MIT | Installed npm package; admin_app/package-lock.json |
+| codejar | 4.2.0 | MIT | Installed npm package; admin_app/package-lock.json |
+| flowbite | 2.5.2 | MIT | Installed npm package; admin_app/package-lock.json |
+| instant.page | 5.2.0 | MIT | Installed npm package; admin_app/package-lock.json |
+| prismjs | 1.30.0 | MIT | Installed npm package; admin_app/package-lock.json |
+| quicklink | 3.0.1 | Apache-2.0 | Installed npm package; admin_app/package-lock.json |
+| vue | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/shared | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/reactivity | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/runtime-core | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/runtime-dom | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/compiler-core | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @vue/compiler-dom | 3.5.12 | MIT | Installed npm package; admin_app/package-lock.json |
+| @popperjs/core | 2.11.8 | MIT | Installed npm package; admin_app/package-lock.json |
+| flowbite-datepicker | 1.3.0 | MIT | Installed npm package; admin_app/package-lock.json |
+| matthiasmullie/minify | 1.3.75 | MIT | https://raw.githubusercontent.com/matthiasmullie/minify/76ba4a5f555fd7bf4aa408af608e991569076671/LICENSE |
+| matthiasmullie/path-converter | 1.1.3 | MIT | https://raw.githubusercontent.com/matthiasmullie/path-converter/e7d13b2c7e2f2268e1424aaed02085518afa02d9/LICENSE |
+| sabberworm/php-css-parser | v9.0.0 | MIT | https://raw.githubusercontent.com/MyIntervals/PHP-CSS-Parser/54574e3de2f8cdc91175ffd2337e5c6804a7d729/LICENSE |
+| simplehtmldom/simplehtmldom | 2.0-RC2 | MIT | https://raw.githubusercontent.com/simplehtmldom/simplehtmldom/3c87726400e59d8e1bc4709cfe82353abeb0f4d1/LICENSE |
+| wa72/url | v0.7.1 | MIT | https://raw.githubusercontent.com/wasinger/url/9ae182a0e3408ca8956186eafbbc497144d27d44/LICENSE |

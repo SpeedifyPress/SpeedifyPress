@@ -3,7 +3,7 @@
 Plugin Name: SpeedifyPress
 Description: Suite of tools and utilities to optimise WordPress sites
 Author: Leon Chevalier
-Version: 0.81.2
+Version: 0.81.3
 Text Domain: speedify-press
 License: GPLv3 or later
 Author URI: https://github.com/acid-drop
@@ -13,8 +13,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // Exit if accessed directly
 }
 
+// Check conflicts before autoloading shared classes or defining shared constants.
+$spress_bootstrap_file = __FILE__;
+if (!(require __DIR__ . '/src/App/Pluggable/plugin-conflicts.php')) {
+	return;
+}
+unset($spress_bootstrap_file);
+
 //The composer autoload function 
 require_once dirname(__FILE__) . '/vendor/autoload.php';
+
+// Protect zlib buffers on every request, including admin and disabled-processing requests.
+add_action('shutdown', array('SPRESS\Speed', 'protect_output_buffers'), 0);
 
 // Use get_file_data() to read the version from the plugin header
 $spress_plugin_data = get_file_data( __FILE__, array( 'Version' => 'Version' ) );

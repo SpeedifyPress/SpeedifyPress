@@ -1,0 +1,236 @@
+diff --git a/src/CSSList/CSSList.php b/src/CSSList/CSSList.php
+index a6425c9..f1ccd4d 100644
+--- a/src/CSSList/CSSList.php
++++ b/src/CSSList/CSSList.php
+@@ -89,7 +89,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+         }
+         $list->addComments($comments);
+         if (!$isRoot && !$usesLenientParsing) {
+-            throw new SourceException('Unexpected end of document', $parserState->currentLine());
++            throw new SourceException('Unexpected end of document', (int) $parserState->currentLine());
+         }
+     }
+ 
+@@ -114,7 +114,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+                         '@charset may only occur in root document',
+                         '',
+                         'custom',
+-                        $parserState->currentLine()
++                        (int) $parserState->currentLine()
+                     );
+                 }
+                 if (\count($list->getContents()) > 0) {
+@@ -122,7 +122,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+                         '@charset must be the first parseable token in a document',
+                         '',
+                         'custom',
+-                        $parserState->currentLine()
++                        (int) $parserState->currentLine()
+                     );
+                 }
+                 $parserState->setCharset($atRule->getCharset());
+@@ -133,7 +133,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+                 if ($parserState->getSettings()->usesLenientParsing()) {
+                     return DeclarationBlock::parse($parserState) ?? false;
+                 } else {
+-                    throw new SourceException('Unopened {', $parserState->currentLine());
++                    throw new SourceException('Unopened {', (int) $parserState->currentLine());
+                 }
+             } else {
+                 // End of list
+@@ -190,14 +190,14 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+             }
+             $parserState->consumeUntil([';', ParserState::EOF], true, true);
+             if ($prefix !== null && !\is_string($prefix)) {
+-                throw new UnexpectedTokenException('Wrong namespace prefix', $prefix, 'custom', $identifierLineNumber);
++                throw new UnexpectedTokenException('Wrong namespace prefix', esc_html($prefix), 'custom', (int) $identifierLineNumber);
+             }
+             if (!($url instanceof CSSString || $url instanceof URL)) {
+                 throw new UnexpectedTokenException(
+                     'Wrong namespace url of invalid type',
+-                    $url,
++                    esc_html($url),
+                     'custom',
+-                    $identifierLineNumber
++                    (int) $identifierLineNumber
+                 );
+             }
+             return new CSSNamespace($url, $prefix, $identifierLineNumber);
+@@ -208,7 +208,7 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+                 if ($parserState->getSettings()->usesLenientParsing()) {
+                     return null;
+                 } else {
+-                    throw new SourceException('Unmatched brace count in media query', $parserState->currentLine());
++                    throw new SourceException('Unmatched brace count in media query', (int) $parserState->currentLine());
+                 }
+             }
+             $useRuleSet = true;
+@@ -356,8 +356,8 @@ abstract class CSSList implements CSSElement, CSSListItem, Positionable
+             if (!($selector instanceof Selector)) {
+                 if (!Selector::isValid($selector)) {
+                     throw new UnexpectedTokenException(
+-                        "Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'.",
+-                        $selector,
++                        esc_html("Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'."),
++                        esc_html($selector),
+                         'custom'
+                     );
+                 }
+diff --git a/src/OutputFormatter.php b/src/OutputFormatter.php
+index 6d38660..76ff4c5 100644
+--- a/src/OutputFormatter.php
++++ b/src/OutputFormatter.php
+@@ -67,7 +67,7 @@ class OutputFormatter
+                 $spaceString = $this->outputFormat->getSpaceAfterListArgumentSeparator();
+                 break;
+             default:
+-                throw new \InvalidArgumentException("Unknown space type: $name", 1740049248);
++                throw new \InvalidArgumentException(esc_html("Unknown space type: $name"), 1740049248);
+         }
+ 
+         return $this->prepareSpace($spaceString);
+diff --git a/src/Parsing/ParserState.php b/src/Parsing/ParserState.php
+index 10a016c..6cc4771 100644
+--- a/src/Parsing/ParserState.php
++++ b/src/Parsing/ParserState.php
+@@ -114,11 +114,16 @@ class ParserState
+     public function parseIdentifier(bool $ignoreCase = true): string
+     {
+         if ($this->isEnd()) {
+-            throw new UnexpectedEOFException('', '', 'identifier', $this->lineNumber);
++            throw new UnexpectedEOFException('', '', 'identifier', (int) $this->lineNumber);
+         }
+         $result = $this->parseCharacter(true);
+         if ($result === null) {
+-            throw new UnexpectedTokenException('', $this->peek(5), 'identifier', $this->lineNumber);
++            throw new UnexpectedTokenException(
++                '',
++                \esc_html($this->peek(5)),
++                'identifier',
++                (int) $this->lineNumber
++            );
+         }
+         $character = null;
+         while (!$this->isEnd() && ($character = $this->parseCharacter(true)) !== null) {
+@@ -256,10 +261,10 @@ class ParserState
+             $length = $this->strlen($value);
+             if (!$this->streql($this->substr($this->currentPosition, $length), $value)) {
+                 throw new UnexpectedTokenException(
+-                    $value,
+-                    $this->peek(\max($length, 5)),
++                    \esc_html($value),
++                    \esc_html($this->peek(\max($length, 5))),
+                     'literal',
+-                    $this->lineNumber
++                    (int) $this->lineNumber
+                 );
+             }
+ 
+@@ -268,7 +273,12 @@ class ParserState
+             $result = $value;
+         } else {
+             if ($this->currentPosition + $value > \count($this->characters)) {
+-                throw new UnexpectedEOFException((string) $value, $this->peek(5), 'count', $this->lineNumber);
++                throw new UnexpectedEOFException(
++                    \esc_html((string) $value),
++                    \esc_html($this->peek(5)),
++                    'count',
++                    (int) $this->lineNumber
++                );
+             }
+ 
+             $result = $this->substr($this->currentPosition, $value);
+@@ -292,7 +302,12 @@ class ParserState
+         $matches = null;
+         $input = ($maximumLength !== null) ? $this->peek($maximumLength) : $this->inputLeft();
+         if (\preg_match($expression, $input, $matches, PREG_OFFSET_CAPTURE) !== 1) {
+-            throw new UnexpectedTokenException($expression, $this->peek(5), 'expression', $this->lineNumber);
++            throw new UnexpectedTokenException(
++                \esc_html($expression),
++                \esc_html($this->peek(5)),
++                'expression',
++                (int) $this->lineNumber
++            );
+         }
+ 
+         return $this->consume($matches[0][0]);
+@@ -367,10 +382,10 @@ class ParserState
+ 
+         $this->currentPosition = $start;
+         throw new UnexpectedEOFException(
+-            'One of ("' . \implode('","', $stopCharacters) . '")',
+-            $this->peek(5),
++            \esc_html('One of ("' . \implode('","', $stopCharacters) . '")'),
++            \esc_html($this->peek(5)),
+             'search',
+-            $this->lineNumber
++            (int) $this->lineNumber
+         );
+     }
+ 
+@@ -446,7 +461,9 @@ class ParserState
+             if ($this->streql($this->charset, 'utf-8')) {
+                 $result = \preg_split('//u', $string, -1, PREG_SPLIT_NO_EMPTY);
+                 if (!\is_array($result)) {
+-                    throw new SourceException('`preg_split` failed with error ' . \preg_last_error());
++                    throw new SourceException(
++                        \esc_html('`preg_split` failed with error ' . \preg_last_error())
++                    );
+                 }
+             } else {
+                 $length = \mb_strlen($string, $this->charset);
+diff --git a/src/RuleSet/DeclarationBlock.php b/src/RuleSet/DeclarationBlock.php
+index 38f7138..007e574 100644
+--- a/src/RuleSet/DeclarationBlock.php
++++ b/src/RuleSet/DeclarationBlock.php
+@@ -155,8 +155,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
+                 if ($list === null || !($list instanceof KeyFrame)) {
+                     if (!Selector::isValid($selector)) {
+                         throw new UnexpectedTokenException(
+-                            "Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'.",
+-                            $selector,
++                            esc_html("Selector did not match '" . Selector::SELECTOR_VALIDATION_RX . "'."),
++                            esc_html($selector),
+                             'custom'
+                         );
+                     }
+@@ -164,8 +164,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
+                 } else {
+                     if (!KeyframeSelector::isValid($selector)) {
+                         throw new UnexpectedTokenException(
+-                            "Selector did not match '" . KeyframeSelector::SELECTOR_VALIDATION_RX . "'.",
+-                            $selector,
++                            esc_html("Selector did not match '" . KeyframeSelector::SELECTOR_VALIDATION_RX . "'."),
++                            esc_html($selector),
+                             'custom'
+                         );
+                     }
+@@ -281,8 +281,8 @@ class DeclarationBlock implements CSSElement, CSSListItem, Positionable, RuleCon
+         if (\count($this->selectors) === 0) {
+             // If all the selectors have been removed, this declaration block becomes invalid
+             throw new OutputException(
+-                'Attempt to print declaration block with missing selector',
+-                $this->getLineNumber()
++                esc_html('Attempt to print declaration block with missing selector'),
++                esc_html($this->getLineNumber())
+             );
+         }
+         $result .= $outputFormat->getContentBeforeDeclarationBlock();
+diff --git a/src/Value/Value.php b/src/Value/Value.php
+index 5ed3523..ed3abf0 100644
+--- a/src/Value/Value.php
++++ b/src/Value/Value.php
+@@ -96,10 +96,10 @@ abstract class Value implements CSSElement, Positionable
+         }
+         if (!isset($stack[0])) {
+             throw new UnexpectedTokenException(
+-                " {$parserState->peek()} ",
+-                $parserState->peek(1, -1) . $parserState->peek(2),
++                esc_html(" {$parserState->peek()} "),
++                esc_html($parserState->peek(1, -1) . $parserState->peek(2)),
+                 'literal',
+-                $parserState->currentLine()
++                (int) $parserState->currentLine()
+             );
+         }
+         return $stack[0];

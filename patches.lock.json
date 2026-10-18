@@ -1,0 +1,73 @@
+{
+    "_hash": "5279eba71971c28c592d376a8ad420e3dbf41961f2dcd1c8f2ac951226f46039",
+    "patches": {
+        "sabberworm/php-css-parser": [
+            {
+                "package": "sabberworm/php-css-parser",
+                "description": "Escape CSSString parse exception interpolation for WP linting",
+                "url": "vendor/patches/sabberworm-cssstring-escape.patch",
+                "sha256": "faa79b1d35759d11340c08dfb3bfbde1c1156c68d61a224d83fb6bdef86079aa",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            },
+            {
+                "package": "sabberworm/php-css-parser",
+                "description": "Escape more Sabberworm exceptions for WP linting",
+                "url": "vendor/patches/sabberworm-more-escapes.patch",
+                "sha256": "85f5b652ce2d8fe275eea6542da3ba1486354e882c94c34ef3ba70eee3cfaf81",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            }
+        ],
+        "simplehtmldom/simplehtmldom": [
+            {
+                "package": "simplehtmldom/simplehtmldom",
+                "description": "Handle null dom->target_charset in HtmlNode::makeup",
+                "url": "vendor/patches/simplehtmldom-null-charset.patch",
+                "sha256": "d3f35084a031a5282ed9a983f83ea839bbca41f78ac89422eb77aa2c721fd8e2",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            },
+            {
+                "package": "simplehtmldom/simplehtmldom",
+                "description": "WordPress.org compliance tweaks (escaping/direct-access/alt funcs)",
+                "url": "vendor/patches/simplehtmldom-wporg-compliance.patch",
+                "sha256": "1790a3760b6f69e19e429da20b1749a25ddd97f637295558139531782fbf1096",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            }
+        ],
+        "matthiasmullie/minify": [
+            {
+                "package": "matthiasmullie/minify",
+                "description": "WordPress.org compliance tweaks (escaping/alt funcs)",
+                "url": "vendor/patches/minify-wporg-compliance.patch",
+                "sha256": "aadcc29161bb2073791f0a2423dd63afc159f74b4b5c9bc33772e4579c6e1589",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            }
+        ],
+        "wa72/url": [
+            {
+                "package": "wa72/url",
+                "description": "Use wp_parse_url for WordPress lint compatibility",
+                "url": "vendor/patches/wa72-url-wp-parse-url.patch",
+                "sha256": "6251e9968714468e616319025f7c63fa758e0bcc3ac1e9cb53459b4fa0d66360",
+                "depth": 1,
+                "extra": {
+                    "provenance": "root"
+                }
+            }
+        ]
+    }
+}

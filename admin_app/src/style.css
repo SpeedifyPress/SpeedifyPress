@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  .tailwind p a {
+    @apply text-blue-600 hover:text-blue-800;
+  }
+}
+
+#app {
+  max-width: 1280px;
+  padding: 1rem;
+  padding-left: 0;
+  text-align: center;
+}
+
+.wp-person a:focus .gravatar, a:focus, a:focus .media-icon img, a:focus .plugin-icon {
+  color: #043959;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+.content-column .no-gradient {
+  fill:#4f4f4f;
+}
+
+.content-column svg:not(.no-gradient), .force-gradient svg, .hover-gradient-ucss:hover, svg.animate-spin {
+  fill: url(#gradient_spress)!important;
+}
+
+.text-raisin {
+  color:#1B1725;
+}
+
+.fill-raisin {
+  fill:#1B1725;
+}
+
+.content-column {
+  position: relative;
+}
+
+.flyout-overlay {
+  background-color: rgba(255, 255, 255, 0.95); /* Semi-transparent white */
+  backdrop-filter: blur(5px); /* Adds a slight blur for effect */
+}
+
+
+.max-w-xs {
+  max-width: 20rem !important;
+}
+
+.max-w-md {
+    max-width: 31rem !important;
+}

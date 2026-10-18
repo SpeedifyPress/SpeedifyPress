@@ -239,6 +239,16 @@ class RestApi {
         }
 
         //Save the config
+        if (($config['config_key'] ?? '') === 'speed_cache'
+            && ($config['cache_mode'] ?? '') === 'enabled'
+            && Speed\Cache::has_foreign_advanced_cache()
+        ) {
+            return new \WP_Error(
+                'cache_dropin_conflict',
+                'Another page-cache drop-in is installed. Disable the other plugin\'s page caching before enabling ours. If its advanced-cache.php remains, remove it only after confirming it is no longer used.',
+                ['status' => 409]
+            );
+        }
         App\Config::update_config($config);
 
         //If the config contains vars written
@@ -258,6 +268,13 @@ class RestApi {
         $data = App\Dashboard::get_data();
         return $data;
     }
+
+
+    /**
+     * Retrieves data on the unused CSS cache
+     *
+     * @return array Cache data.
+     */
     public static function get_css_data() {
         $data['cache_data'] = Speed\CSS::get_cache_data();
         $data['stats_data'] = Speed\CSS::get_stats_data();        
@@ -522,23 +539,6 @@ class RestApi {
 
     }    
 
-    /**
-     * Checks the user's license
-     *
-     * @return array Empty array (no data returned).
-     */
-    public static function check_license($request) {
-        if ( ! class_exists( '\SPRESS\App\LicenseIntegration' ) ) {
-            return new \WP_Error(
-                'licensing_unavailable',
-                'Licensing is not available in this build.',
-                [ 'status' => 404 ]
-            );
-        }
-
-        return App\LicenseIntegration::check_license( $request );
-    }
-
 
 
     /**
@@ -644,11 +644,12 @@ $origin = isset( $_SERVER['HTTP_ORIGIN'] ) ? esc_url_raw( wp_unslash( $_SERVER['
         // 2) GZIP decompress (suppress PHP warnings)
         if($sent_compressed == true) {
 
-            $uncompressed = @gzdecode( $b64 );
+            // Bound expansion inside zlib; checking strlen afterwards cannot stop a gzip bomb.
+            $uncompressed = @gzdecode( $b64, self::$max_css_uncompressed_bytes + 1 );
             if ( $uncompressed === false ) {
                 return new \WP_Error(
                     'decompression_failed',
-                    'Failed to decompress CSS payload',
+                    'Invalid compressed CSS payload or decompression limit exceeded',
                     [ 'status' => 400 ]
                 );
             }

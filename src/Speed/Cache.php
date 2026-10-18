@@ -78,13 +78,25 @@ class Cache {
                 // Get the user role using wp_get_current_user.
                 $user = wp_get_current_user();
                 if ($user && !empty($user->roles)) {
-                    $role = implode('-', $user->roles);
-                    $safe_role = preg_replace('/[^A-Za-z0-9_\-]/', '', $role);
-                    // Set a cookie for advanced-cache naming.
-                    setcookie('speedify_press_logged_in_roles', $safe_role, time() + 3600, COOKIEPATH, COOKIE_DOMAIN);
-                    $_COOKIE['speedify_press_logged_in_roles'] = $safe_role; //immediately add to global COOKIE
+                    $roles = array_values(array_unique(array_map('strval', $user->roles)));
+                    sort($roles, SORT_STRING);
+                    $login_cookie = self::get_logged_in_cookie();
+                    $login_parts = $login_cookie !== '' ? explode('|', $login_cookie, 4) : array();
+
+                    if (count($login_parts) === 4 && ctype_digit($login_parts[1])) {
+                        $expires = min(time() + 300, (int) $login_parts[1]);
+                        $ticket = self::sign_logged_in_roles($roles, $expires, $login_cookie);
+                        if ($ticket !== false && $expires > time()) {
+                            setcookie('speedify_press_logged_in_roles', $ticket, $expires, COOKIEPATH, COOKIE_DOMAIN);
+                            $_COOKIE['speedify_press_logged_in_roles'] = $ticket;
+                        }
+                    }
                 }
-            }            
+
+            } elseif (function_exists('is_user_logged_in') && !is_user_logged_in() && isset($_COOKIE['speedify_press_logged_in_roles'])) {
+                unset($_COOKIE['speedify_press_logged_in_roles']);
+                setcookie('speedify_press_logged_in_roles', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN);
+            }
         });
 
         //On logout remove the logged_in_roles cookie
@@ -261,10 +273,12 @@ class Cache {
         }
 
         // 3) Our guest cookie
+        // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Bootstrap sanitizer rejects non-strings, strips slashes and removes control characters before WordPress helpers are available.
         $guest_cookie = isset($_COOKIE['spdy_guest']) ? Speed::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
         if ( $guest_cookie === '' ) {
             //Cookies must have been deleted, regen
             self::generate_guest_cookie();            
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Bootstrap sanitizer rejects non-strings, strips slashes and removes control characters before WordPress helpers are available.
             $guest_cookie = isset($_COOKIE['spdy_guest']) ? Speed::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
         }
         return hash('sha256', 'sg:' . $guest_cookie);
@@ -530,24 +544,15 @@ class Cache {
 
         global $spress_bypass_reason;
 
-        // Check if the URI contains any bypass URL strings.
-        if (!empty(self::$bypass_urls)) {
-            $bypass_urls = array_filter(array_map('trim', explode("\n", self::$bypass_urls)));
-            foreach ($bypass_urls as $bypass_url) {
-                if($bypass_url === "/" && wp_parse_url($url, PHP_URL_PATH) === "/") {
-                    $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
-                    return false;
-                } elseif ($bypass_url !== "/" && stripos($url, $bypass_url) !== false) {
-                    $spress_bypass_reason = 'Bypass URL: ' . $bypass_url;
-                    return false;
-                }
-            }
-        }
-
-        $request_uri = Speed::get_url();
         $script_name = Speed::server_var('SCRIPT_NAME', '');
 
-        $request_bypass_reason = Speed::request_should_bypass_cache($request_uri, $script_name, self::$cache_logged_in_users, self::$bypass_cookies, self::$bypass_useragents);
+        // Add cookies that always force a bypass
+        $force_skip_cookies = array("wp-postpass","comment_author");
+        foreach($force_skip_cookies AS $cookie_name) {
+            self::$bypass_cookies .= "\n" . $cookie_name;
+        }
+
+        $request_bypass_reason = Speed::request_should_bypass_cache($url, $script_name, self::$cache_logged_in_users, self::$bypass_cookies, self::$bypass_useragents, self::$bypass_urls);
         if ($request_bypass_reason !== false) {
             $spress_bypass_reason = $request_bypass_reason;
             return false;
@@ -560,11 +565,14 @@ class Cache {
         }
 
         // Skip password-protected posts.
-        if (function_exists('post_password_required') && post_password_required()) {
+        $post = function_exists('get_queried_object') ? get_queried_object() : null;
+        if (
+            (function_exists('post_password_required') && post_password_required())
+            || (is_object($post) && !empty($post->post_password))
+        ) {
             $spress_bypass_reason = 'Password protected';
             return false;
-        }
-
+        }        
 
         return true;
     }    
@@ -711,6 +719,7 @@ class Cache {
      * @return string The computed cache filename.
      */
     public static function get_cache_filename($extension, $separate_cookie_cache, $cache_logged_in_users, $cache_mobile_separately) {
+
         // Start with a base filename.
         $filename = 'index';
 
@@ -733,8 +742,10 @@ class Cache {
 
         // Append logged-in user role if enabled and available.
         if ($cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
-            $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
-            $filename .= '-' . Speed::normalize_cache_path_piece($roles_cookie, 24);
+            $roles = self::verified_logged_in_roles();
+            if ($roles !== false) {
+                $filename .= '-' . self::logged_in_roles_cache_key($roles);
+            }
         }
 
         // Append mobile suffix if separate mobile caching is enabled.
@@ -762,6 +773,115 @@ class Cache {
         return $filename;
     }    
 
+    /**
+     * Bypass cache variants when a login or role cookie lacks a valid signed ticket.
+     *
+     * @return bool Whether this request has an unverified login or role cookie.
+     */
+    public static function should_bypass_unverified_logged_in_cache() {
+
+        $has_role_cookie = array_key_exists('speedify_press_logged_in_roles', (array) $_COOKIE);
+        if (!$has_role_cookie && self::get_logged_in_cookie() === '') {
+            return false;
+        }
+
+        return self::verified_logged_in_roles() === false;
+    }
+
+    /** Get the raw logged-in cookie in both bootstrap and normal WordPress requests. */
+    private static function get_logged_in_cookie() {
+
+        $names = defined('LOGGED_IN_COOKIE') ? array(LOGGED_IN_COOKIE) : array();
+        foreach (array_keys((array) $_COOKIE) as $name) {
+            if (is_string($name) && strpos($name, 'wordpress_logged_in_') === 0) {
+                $names[] = $name;
+            }
+        }
+
+        foreach (array_unique($names) as $name) {
+            if (isset($_COOKIE[$name]) && is_string($_COOKIE[$name])) {
+                return function_exists('wp_unslash') ? wp_unslash($_COOKIE[$name]) : $_COOKIE[$name];
+            }
+        }
+
+        return '';
+    }
+
+    /** Sign role data with the configured WordPress secret and bind it to the login cookie. */
+    private static function sign_logged_in_roles($roles, $expires, $login_cookie) {
+
+        if (!defined('LOGGED_IN_KEY') || !defined('LOGGED_IN_SALT')
+            || LOGGED_IN_KEY === '' || LOGGED_IN_SALT === '') {
+            return false;
+        }
+
+        $roles_json = json_encode($roles);
+        if ($roles_json === false) {
+            return false;
+        }
+        $roles_token = rtrim(strtr(base64_encode($roles_json), '+/', '-_'), '=');
+        if (strlen($roles_token) > 2048) {
+            return false;
+        }
+
+        $key = hash('sha256', LOGGED_IN_KEY . LOGGED_IN_SALT, true);
+        $payload = implode("\n", array(
+            'speedify-press-role-v2', defined('SPRESS_DIR_NAME') ? SPRESS_DIR_NAME : '',
+            defined('SPRESS_MULTISITE_IDENTIFIER') ? SPRESS_MULTISITE_IDENTIFIER : '',
+            hash('sha256', $login_cookie), $roles_token, (string) $expires,
+        ));
+
+        return $roles_token . '|' . $expires . '|' . hash_hmac('sha256', $payload, $key);
+    }
+
+    /** Return the signed role value only when it matches the current, unexpired login cookie. */
+    private static function verified_logged_in_roles() {
+
+        $ticket = $_COOKIE['speedify_press_logged_in_roles'] ?? null;
+        if (!is_string($ticket)) {
+            return false;
+        }
+
+        $parts = explode('|', $ticket);
+        if (count($parts) !== 3 || !preg_match('/^[A-Za-z0-9_-]{1,2048}$/D', $parts[0])
+            || !ctype_digit($parts[1]) || !preg_match('/^[a-f0-9]{64}$/D', $parts[2])) {
+            return false;
+        }
+
+        $json = base64_decode(strtr($parts[0], '-_', '+/') . str_repeat('=', (4 - strlen($parts[0]) % 4) % 4), true);
+        $roles = $json !== false ? json_decode($json, true) : null;
+        if (!is_array($roles) || $roles !== array_values($roles) || json_encode($roles) !== $json) {
+            return false;
+        }
+        $sorted_roles = array_values(array_unique(array_map('strval', $roles)));
+        sort($sorted_roles, SORT_STRING);
+        if ($sorted_roles !== $roles) {
+            return false;
+        }
+
+        $login_cookie = self::get_logged_in_cookie();
+        $login_parts = $login_cookie !== '' ? explode('|', $login_cookie, 4) : array();
+        $expires = (int) $parts[1];
+        if (count($login_parts) !== 4 || !ctype_digit($login_parts[1])
+            || $expires <= time() || $expires > (int) $login_parts[1]) {
+            return false;
+        }
+
+        $expected_ticket = self::sign_logged_in_roles($parts[0], $expires, $login_cookie);
+        if ($expected_ticket === false) {
+            return false;
+        }
+
+        $expected_parts = explode('|', $expected_ticket);
+        return hash_equals($expected_parts[2], $parts[2]) ? $roles : false;
+    }
+
+    /** Create a compact, collision-resistant cache suffix from canonical roles. */
+    private static function logged_in_roles_cache_key($roles) {
+
+        return substr(hash('sha256', json_encode($roles)), 0, 32);
+    }
+
 
     /**
      * Returns the filename for the cached URIs list.
@@ -777,8 +897,10 @@ class Cache {
 
         // Append logged-in user role if enabled and available.
         if (self::$cache_logged_in_users === 'true' && isset($_COOKIE['speedify_press_logged_in_roles'])) {
-            $roles_cookie = Speed::sanitize_bootstrap_text($_COOKIE['speedify_press_logged_in_roles']);
-            $filename = Speed::normalize_cache_path_piece($roles_cookie, 24) . "-" . $filename;
+            $roles = self::verified_logged_in_roles();
+            if ($roles !== false) {
+                $filename = self::logged_in_roles_cache_key($roles) . "-" . $filename;
+            }
         }
 
         return $filename;
@@ -1149,17 +1271,37 @@ class Cache {
         return file_put_contents($wp_config_path, $updated) !== false;
     }
 
+    /** Determine ownership before writing or removing the shared WordPress cache drop-in. */
+    public static function owns_advanced_cache() {
+
+        $path = WP_CONTENT_DIR . '/advanced-cache.php';
+        if (!is_file($path) || !is_readable($path)) return false;
+        $contents = file_get_contents($path);
+        return $contents !== false && strpos($contents, 'Advanced Cache for SpeedifyPress') !== false;
+    }
+
+    /** Treat unreadable files and dangling links as conflicts too, rather than replacing them. */
+    public static function has_foreign_advanced_cache() {
+
+        $path = WP_CONTENT_DIR . '/advanced-cache.php';
+        return (file_exists($path) || is_link($path)) && !self::owns_advanced_cache();
+    }
+
     /**
-     * Writes the advanced-cache.php file into the wp-content directory.
+     * Write our configured drop-in, refusing to replace another plugin's cache.
      *
-     * This method reads a shell template file (stored in the plugin's /assets/ folder),
-     * replaces placeholders with configuration values, updates wp-config.php to define WP_CACHE,
-     * and writes the result to WP_CONTENT_DIR . '/advanced-cache.php'. The advanced-cache.php file is used by
-     * WordPress to serve cached pages early in the load process.
-     *
-     * @return bool|int Returns the number of bytes written, or false on failure.
+     * @return bool|int Bytes written, zero when disabled, or false on failure/conflict.
      */
     public static function write_advanced_cache() {
+
+        if (self::$cache_mode !== 'enabled') {
+            if (self::owns_advanced_cache()) self::uninstall();
+            return 0;
+        }
+
+        // Protect every writer, not just changes made through the admin REST route.
+        if (self::has_foreign_advanced_cache()) return false;
+
         // Update wp-config.php to ensure WP_CACHE is defined.
         self::update_wp_config_cache_constant();
 
@@ -1180,6 +1322,11 @@ class Cache {
             '%%SPRESS_CACHE_LOGGED_IN_USERS%%'       => self::$cache_logged_in_users,
             '%%SPRESS_CACHE_MOBILE_SEPARATELY%%'     => self::$cache_mobile_separately,
             '%%SPRESS_IGNORE_QUERYSTRINGS%%'         => self::$ignore_querystrings,
+
+            // These placeholders sit inside PHP string literals; preserve quotes and backslashes safely.
+            '%%SPRESS_BYPASS_COOKIES%%'              => addcslashes((string) self::$bypass_cookies, "\\'"),
+            '%%SPRESS_BYPASS_USERAGENTS%%'           => addcslashes((string) self::$bypass_useragents, "\\'"),
+            '%%SPRESS_BYPASS_URLS%%'                 => addcslashes((string) self::$bypass_urls, "\\'"),
             '%%SPRESS_CACHE_LIFETIME%%'              => self::$cache_lifetime,
             '%%SPRESS_DIR_NAME%%'                    => SPRESS_DIR_NAME,
             '%%SPRESS_PLUGIN_MODE%%'                 => self::$plugin_mode,
@@ -1208,6 +1355,7 @@ class Cache {
      * Identifies the template, installed edition/version, and plugin location.
      */
     private static function advanced_cache_signature($template) {
+
         return hash('sha256', SPRESS_VER . "\n" . SPRESS_PLUGIN_DIR . "\n" . $template);
     }
 
@@ -1215,6 +1363,11 @@ class Cache {
      * Refreshes our drop-in on the next admin request after an update or manual replacement.
      */
     public static function maybe_refresh_advanced_cache() {
+
+        if (self::$cache_mode !== 'enabled') {
+            self::write_advanced_cache();
+            return;
+        }
         $template = file_get_contents(SPRESS_PLUGIN_DIR . 'assets/advanced-cache.php');
         if ($template === false) {
             return;
@@ -1222,6 +1375,7 @@ class Cache {
 
         $path = WP_CONTENT_DIR . '/advanced-cache.php';
         if (file_exists($path)) {
+
             // Do not take over a drop-in installed by another caching plugin.
             $existing = file_get_contents($path);
             if ($existing === false || strpos($existing, 'Advanced Cache for SpeedifyPress') === false) {
@@ -1239,6 +1393,7 @@ class Cache {
      * Refreshes the drop-in only when this plugin is updated, not for unrelated upgrades.
      */
     public static function refresh_after_upgrade($upgrader, $options) {
+
         if (($options['type'] ?? '') !== 'plugin' || ($options['action'] ?? '') !== 'update') {
             return;
         }
@@ -1272,9 +1427,13 @@ class Cache {
      * @return bool True if uninstallation steps succeed.
      */
     public static function uninstall() {
+
+        // Another cache may have replaced our drop-in since installation.
+        if (self::has_foreign_advanced_cache()) return false;
+
         // Remove advanced-cache.php from wp-content.
         $advanced_cache_path = WP_CONTENT_DIR . '/advanced-cache.php';
-        if (file_exists($advanced_cache_path)) {
+        if (self::owns_advanced_cache()) {
             wp_delete_file($advanced_cache_path);
         }
         // Remove our WP_CACHE definition from wp-config.php.

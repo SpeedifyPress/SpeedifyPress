@@ -2,6 +2,10 @@
 
 namespace SPRESS\App;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /**
  * Class LicenseService
  *
@@ -32,7 +36,7 @@ class LicenseService {
 
             if (!$shown && self::check_license() !== true) {
                 
-                echo '<br><span style="color: red; font-weight: bold;">' . 'Your license is inactive. Please <a href="'. 'admin.php?page='.Menu::$menu_slug .'">activate your license</a> to receive updates. Click <a target="_blank" href="https://speedifypress.com">here</a> to purchase a license.' . '</span>';
+                echo '<br><span style="color: red; font-weight: bold;">Your license is inactive. Please <a href="' . esc_url( admin_url( 'admin.php?page=' . Menu::$menu_slug ) ) . '">activate your license</a> to receive updates. Click <a target="_blank" rel="noopener noreferrer" href="https://speedifypress.com">here</a> to purchase a license.</span>';
                 $shown = true;
             }
         }, 10, 2);              
@@ -72,13 +76,13 @@ class LicenseService {
                 // Remove .maintenance file to avoid "stuck in maintenance" issue
                 $maintenance_file = ABSPATH . '.maintenance';
                 if ( file_exists( $maintenance_file ) ) {
-                    @unlink( $maintenance_file );
+                    wp_delete_file( $maintenance_file );
                 }
 
                 // Abort update with meaningful error
                 wp_die(
-                    __( 'Update failed: License is invalid or expired.', 'speedify-press' ),
-                    __( 'Plugin Update', 'speedify-press' ),
+                    esc_html__( 'Update failed: License is invalid or expired.', 'speedify-press' ),
+                    esc_html__( 'Plugin Update', 'speedify-press' ),
                     array( 'back_link' => true )
                 );
 
@@ -158,7 +162,11 @@ class LicenseService {
             $stem = 'https://speedifypress.com/license/download/?invoice=';
         }
 
-        return $stem . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($_SERVER['HTTP_HOST'] ?? null) . '&version=' . urlencode(SPRESS_VER);
+        // Licensing runs after WordPress loads; reject array-shaped input before unslashing.
+        $host = isset($_SERVER['HTTP_HOST']) && is_string($_SERVER['HTTP_HOST'])
+            ? sanitize_text_field(wp_unslash($_SERVER['HTTP_HOST'])) : '';
+
+        return $stem . urlencode(get_option('spress_namespace_INVOICE_NUMBER')). '&filename='.urlencode(SPRESS_DIR_NAME) . '&host=' . urlencode($host) . '&version=' . urlencode(SPRESS_VER);
 
     }
 
@@ -192,7 +200,9 @@ class LicenseService {
             $number = get_option('spress_namespace_INVOICE_NUMBER');
         }
 
-        $host = $_SERVER['HTTP_HOST'] ?? '';
+        // Keep the request host out of URLs until it has been validated and sanitized.
+        $host = isset($_SERVER['HTTP_HOST']) && is_string($_SERVER['HTTP_HOST'])
+            ? sanitize_text_field(wp_unslash($_SERVER['HTTP_HOST'])) : '';
         $check_url = "https://speedifypress.com/license/check/?license_number=" . urlencode($number) . "&host=" . urlencode($host) . "&nocache=" . time();
 
         $response = wp_remote_get($check_url, ['timeout' => 10]);

@@ -238,40 +238,38 @@ class CSS {
         //Get currently cached content
         $cache_file = Cache::get_cache_filepath($source_url,"html");
 
-        //See if it exists
-        if(!file_exists($cache_file)) {
-            return $unused;
-        }
-    
-        $output = file_get_contents($cache_file);
-
-        //Clear Integrations 
-        Cache::clear_cache(true, $post_id);      
-
-        //Rewrite with new CSS if not already done
-        if(!strstr($output,"@@@CSSDone@@@")) {
+        // Updating our page cache is optional; CSS generation also works without it.
+        if(file_exists($cache_file)) {
             
-            $output = self::rewrite_css($output,true);
+            $output = file_get_contents($cache_file);
 
-            //Add invisible elements
-            //if delay JS is active 
-            //(otherwise it'll hide elements JS relies on)
-            if(Config::get('speed_js','delay_js') === "true"
-            && (trim(Config::get('speed_js','delay_exclude')) == "js-extra" || Config::get('speed_js','delay_exclude') == "")
-            ) {
-                $dom = (new HtmlDocument(""))->load($output,true, false);   
-                $dom = Speed::add_invisible_elements($dom);  
-                $output = $dom->outertext;
+            //Rewrite with new CSS if not already done
+            if($output !== false && !strstr($output,"@@@CSSDone@@@")) {
+
+                $output = self::rewrite_css($output,true);
+
+                //Add invisible elements
+                //if delay JS is active
+                //(otherwise it'll hide elements JS relies on)
+                if(Config::get('speed_js','delay_js') === "true"
+                && (trim(Config::get('speed_js','delay_exclude')) == "js-extra" || Config::get('speed_js','delay_exclude') == "")
+                ) {
+                    $dom = (new HtmlDocument(""))->load($output,true, false);
+                    $dom = Speed::add_invisible_elements($dom);
+                    $output = $dom->outertext;
+                }
+
+                //Resave cache file
+                Cache::save_cache($cache_file,$output," @@@CSSDone@@@");
             }
 
-            //Resave cache file
-            Cache::save_cache($cache_file,$output," @@@CSSDone@@@");
-
+            // Only our page-cache drop-in consumes the Cloudflare update marker.
+            $cache_dir = Speed::get_cache_dir_from_url($source_url);
+            file_put_contents($cache_dir."update_required","");
         }
 
-        //Mark this path as needing a Cloudflare update
-        $cache_dir  = Speed::get_cache_dir_from_url($source_url);
-        file_put_contents($cache_dir."update_required","");                  
+        // Purge after local rewriting, even if only an external page cache is in use.
+        Cache::clear_cache(true, $post_id);
 
         return $unused;
 
@@ -1079,16 +1077,6 @@ class CSS {
         $ignore_cookies = self::getConfigArray('ignore_cookies');    
         $generation_res = Config::get('speed_css', 'generation_res');
         $force_includes = self::get_update_force_includes(array(), Speed::get_url(), false);
-        $current_url = Speed::get_url();
-        $lookup_file = self::get_lookup_file($current_url);
-        $has_lookup = $lookup_file && file_exists($lookup_file);
-        $turnstile_data = array(
-            'turnstile_site_key' => null,
-            'turnstile_enabled' => 'false',
-        );
-        if ( class_exists( '\SPRESS\App\CloudflareModule' ) ) {
-            $turnstile_data = \SPRESS\App\CloudflareModule::get_frontend_data( $has_lookup );
-        }
 
         return array(
             'include_patterns' => $include_pattern,
@@ -1625,25 +1613,6 @@ class CSS {
     }
     
 
-
-    /**
-     * Extracts the root path from a given path.
-     *
-     * This function takes a path and returns the root directory of that path.
-     * If the path contains more than one part, it appends a trailing slash.
-     *
-     * @param string $path The path to extract the root from.
-     * @return string The root path.
-     */
-    private static function get_root_path( $path ) {
-
-        $parts = explode('/', trim($path, '/'));
-        $return = $parts[0] . (count($parts) > 1 ? '/' : '');
-        if($return === '') {
-            $return = '/';
-        }
-        return $return;
-    }
 
     /**
      * Extracts the plugin name from a given URL.
