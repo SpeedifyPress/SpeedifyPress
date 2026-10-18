@@ -1,0 +1,239 @@
+<script setup>
+
+import Skeleton from './../components/Skeleton.vue'
+import Button from './../components/Button.vue'
+
+import { api } from '../lib/api';
+
+defineProps({
+  icon: {
+    type: String,
+    required: false
+  },
+  iconclass: {
+    type: String,
+    required: false
+  },  
+  plugin_type: { 
+    type: String, required: true 
+  },  
+  build_plugin_type: { 
+    type: String, required: true 
+  },
+  isPro: {
+    type: Boolean,
+    required: true
+  }         
+})
+
+import { defineEmits } from 'vue'
+const emit = defineEmits(['showDocs'])
+</script>
+
+<template>
+  <div>
+
+    <div class="flex flex-wrap">
+
+            <div class="w-full p-2 mr-4" >
+                <div class="flex items-left mb-4">
+                    <span v-html="icon" class="mr-2 force-gradient"></span>
+                    <h5 class="text-xl font-bold leading-none text-raisin dark:text-white">External Scripts</h5>
+                    <svg  @click="emit('showDocs', 'External Scripts')" class="flex-shrink-0 w-5 h-5 inline-block mt-[-1px] cursor-pointer ml-auto" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><g><path d="M0 0h24v24H0z" fill="none"/><path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-11v6h2v-6h-2zm0-4v2h2V7h-2z"/></g></svg>
+                </div>
+                <hr class="h-px my-4 bg-gray-200 border-0 dark:bg-gray-700">
+            </div>                                       
+                           
+            <div class="w-full max-w-md p-4 ml-2 mr-4 mb-4 bg-white border border-gray-200 rounded-lg shadow" >
+
+                <div class="flow-root">                  
+
+                  <div class="ml-0">
+
+                    <form @submit.prevent="submitForm" class="max-w-xl mx-auto" data-ref="update_external" ref="update_external">
+
+                      <div class="flex items-left mb-4">                
+                        <svg :class="iconclass" class="mr-2" viewBox="0 0 56.6934 56.6934" width="56.6934px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path d="M51.981,24.4812c-7.7173-0.0038-15.4346-0.0019-23.1518-0.001c0.001,3.2009-0.0038,6.4018,0.0019,9.6017  c4.4693-0.001,8.9386-0.0019,13.407,0c-0.5179,3.0673-2.3408,5.8723-4.9258,7.5991c-1.625,1.0926-3.492,1.8018-5.4168,2.139  c-1.9372,0.3306-3.9389,0.3729-5.8713-0.0183c-1.9651-0.3921-3.8409-1.2108-5.4773-2.3649  c-2.6166-1.8383-4.6135-4.5279-5.6388-7.5549c-1.0484-3.0788-1.0561-6.5046,0.0048-9.5805  c0.7361-2.1679,1.9613-4.1705,3.5708-5.8002c1.9853-2.0324,4.5664-3.4853,7.3473-4.0811c2.3812-0.5083,4.8921-0.4113,7.2234,0.294  c1.9815,0.6016,3.8082,1.6874,5.3044,3.1163c1.5125-1.5039,3.0173-3.0164,4.527-4.5231c0.7918-0.811,1.624-1.5865,2.3908-2.4196  c-2.2928-2.1218-4.9805-3.8274-7.9172-4.9056C32.0723,4.0363,26.1097,3.995,20.7871,5.8372  C14.7889,7.8907,9.6815,12.3763,6.8497,18.0459c-0.9859,1.9536-1.7057,4.0388-2.1381,6.1836  C3.6238,29.5732,4.382,35.2707,6.8468,40.1378c1.6019,3.1768,3.8985,6.001,6.6843,8.215c2.6282,2.0958,5.6916,3.6439,8.9396,4.5078  c4.0984,1.0993,8.461,1.0743,12.5864,0.1355c3.7284-0.8581,7.256-2.6397,10.0725-5.24c2.977-2.7358,5.1006-6.3403,6.2249-10.2138  C52.5807,33.3171,52.7498,28.8064,51.981,24.4812z"/></svg>
+                        <h5 class="text-lg font-bold leading-none text-gray-900 dark:text-white">Google options</h5>                      
+                      </div>                        
+                   
+
+                      <div class="flex mt-4">
+                          <div class="flex items-center h-5 mt-2">
+                              <input id="gtag-locally" name="gtag_locally" aria-describedby="helper-checkbox-text" type="checkbox" 
+                                      class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                                      v-bind:checked="gtag_locally === 'true'"  
+                              >
+                          </div>
+                          <div class="ms-2 text-sm">
+                              <label for="gtag-locally" class="font-medium text-gray-900 dark:text-gray-300">Locally host gtag.js</label>
+                              <p id="gtag-locally-text" class="text-xs font-normal text-gray-500 dark:text-gray-300">Detect gtag.js and host it locally. Uses cron to keep updated.</p>
+                          </div>
+                      </div>
+
+                                            
+
+                      <Button config_key="external_scripts" title="Update External Scripts" :status_object="buttons" id="update_external" />
+
+                    </form>
+
+                  </div>
+
+                </div>
+
+            </div>
+
+                           
+
+
+    </div>    
+
+
+  </div>
+</template>
+
+<script>
+import axios from 'axios';
+
+function createButtonState() {
+  return { spinner: false, text: false, success: false, failure: false };
+}
+
+function getConfigEntry(path) {
+  return path.reduce((acc, key) => (acc && acc[key] !== undefined ? acc[key] : undefined), window.spress_namespace?.config);
+}
+
+function getConfigValue(path, fallback = '') {
+  const entry = getConfigEntry(path);
+  if (entry && Object.prototype.hasOwnProperty.call(entry, 'value')) {
+    return entry.value;
+  }
+
+  return fallback;
+}
+
+function getConfigHelper(path, fallback = '') {
+  const entry = getConfigEntry(path);
+  if (entry && Object.prototype.hasOwnProperty.call(entry, 'helper')) {
+    return entry.helper;
+  }
+
+  return fallback;
+}
+
+export default {
+  data() {
+    return {
+      imagePreview: null,
+      isDragging: false,
+      deleteButton: "from-red-500 to-red-800 text-red-800",      
+      buttons: {
+        include_partytown: createButtonState(),       
+        update_external: createButtonState(),   
+      },
+      include_partytown: getConfigValue(['speed_css', 'include_partytown'], ''),
+      gtag_locally: getConfigValue(['external_scripts', 'gtag_locally'], 'false'),
+      preload_gtag: getConfigValue(['external_scripts', 'preload_gtag'], 'false'),
+      include_partytown_helper: getConfigHelper(['speed_css', 'include_partytown'], ''),
+    };
+  },
+  mounted() {
+  },
+  beforeDestroy() {
+  },  
+  methods: {
+    submitForm(event) {
+      
+      event.preventDefault();
+
+      const ref = event.target.dataset.ref;
+      const formElements = event.target.elements;
+
+      // Set loading to true
+      this.buttons[ref].spinner = true;
+      this.buttons[ref].text = true;
+
+      let formDataJson = {};
+      let config_key = '';
+
+      //Get the config key
+      Array.from(formElements).forEach((element) => {    
+        if (element.type === 'hidden' && element.name === 'config_key') {
+          config_key = element.value;
+        }
+      });
+
+      //Force the correct value for checboxed
+      Array.from(formElements).forEach((element) => {        
+        if (element.type === 'checkbox') {
+          formDataJson[element.name] = element.checked.toString();
+        } else if (element.type === 'radio') {
+          if(element.checked === true) {
+            formDataJson[element.name] = element.value;
+          }
+        } else {
+          formDataJson[element.name] = element.value;
+        }
+
+        //Update global JS
+        if(typeof window.spress_namespace.config[config_key][element.name] != 'undefined') {
+          window.spress_namespace.config[config_key][element.name].value = formDataJson[element.name];
+        }
+
+
+      });
+
+
+      // Encode the values using btoa()
+      for (let key in formDataJson) formDataJson[key] = btoa(
+        encodeURIComponent(formDataJson[key])
+          .replace(/%([0-9A-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+      );  
+
+      // Make your AJAX POST request here
+      api.post(window.spress_namespace.resturl + 'speedifypress/update_config', formDataJson)
+        .then(response => {
+ 
+          // Handle the response here
+          if(ref == "update_external") {
+            this.gfonts_locally = window.spress_namespace.config.external_scripts.gfonts_locally.value;
+          }
+ 
+          //Set success
+          this.setButton(this.buttons[ref],'success');          
+        })
+        .catch(error => {
+          // Handle any errors here
+          //Set success
+          this.setButton(this.buttons[ref],'failure');
+        })
+        .finally(() => {
+          
+        });
+    },    
+    setButton(button, type) {
+
+      if(type == "success") {
+      
+        button.spinner = false;
+        button.success = true;
+        setTimeout(() => {
+          button.text = false;
+          button.success = false;
+        }, 1000);
+
+      } else if(type == "failure") {
+      
+        button.spinner = false;
+        button.failure = true;
+        setTimeout(() => {
+          button.text = false;
+          button.failure = false;
+        }, 1000);         
+
+      }
+
+    }  
+  },
+};
+</script>

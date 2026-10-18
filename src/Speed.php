@@ -248,14 +248,25 @@ class Speed {
      * @param string $cache_logged_in_users Cache policy flag.
      * @param string $bypass_cookies Line-separated bypass cookie fragments.
      * @param string $bypass_useragents Line-separated bypass user agent fragments.
+     * @param string $bypass_urls Line-separated full or partial URLs to bypass.
      * @return string|false Reason string when bypassing, false otherwise.
      */
-    public static function request_should_bypass_cache($request_uri = '', $script_name = '', $cache_logged_in_users = '', $bypass_cookies = '', $bypass_useragents = '') {
+    public static function request_should_bypass_cache($request_uri = '', $script_name = '', $cache_logged_in_users = '', $bypass_cookies = '', $bypass_useragents = '', $bypass_urls = '') {
+
         $request_uri = $request_uri !== '' ? $request_uri : self::server_var('REQUEST_URI', '');
         $script_name = $script_name !== '' ? $script_name : self::server_var('SCRIPT_NAME', '');
         $request_method = self::server_var('REQUEST_METHOD', '');
         $requested_with = self::server_var('HTTP_X_REQUESTED_WITH', '');
         $http_user_agent = self::server_var('HTTP_USER_AGENT', '');
+
+        // Match URL exclusions identically when reading cached pages and generating them.
+        foreach (array_filter(array_map('trim', explode("\n", (string) $bypass_urls))) as $bypass_url) {
+            if (($bypass_url === '/' && self::safe_parse_url($request_uri, PHP_URL_PATH) === '/')
+                || ($bypass_url !== '/' && stripos($request_uri, $bypass_url) !== false)
+            ) {
+                return 'Bypass URL: ' . $bypass_url;
+            }
+        }
 
         // Only cache GET or HEAD requests.
         if ( ! in_array($request_method, array('GET', 'HEAD'), true) ) {
@@ -318,6 +329,8 @@ class Speed {
                     return 'Logged-in cookie';
                 }
             }
+        } elseif (Cache::should_bypass_unverified_logged_in_cache()) {
+            return 'Unverified logged-in role cookie';
         }
 
         if ($bypass_cookies !== '' && !empty($_COOKIE)) {
@@ -381,15 +394,6 @@ class Speed {
                 'init',function() {
                     ob_start(array(__CLASS__, 'process_output'));
 
-                    // zlib can become non-removable after our output reaches it.
-                    foreach (ob_get_status(true) as $buffer) {
-                        if ($buffer['name'] === 'zlib output compression') {
-                            if (remove_action('shutdown', 'wp_ob_end_flush_all', 1)) {
-                                add_action('shutdown', array(__CLASS__, 'flush_removable_output_buffers'), 1);
-                            }
-                            break;
-                        }
-                    }
             });      
         }
 
@@ -420,6 +424,7 @@ class Speed {
         if ($path === '/_csrf' || basename($path) === '_csrf') {
 
             // Ensure a binding exists BEFORE generating the token
+            // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.MissingUnslash, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Bootstrap sanitizer rejects non-strings, strips slashes and removes control characters before WordPress helpers are available.
             $guest_cookie = isset($_COOKIE['spdy_guest']) ? self::sanitize_bootstrap_text($_COOKIE['spdy_guest']) : '';
             if ( $guest_cookie === '' ) {
                 Cache::generate_guest_cookie();
@@ -654,6 +659,22 @@ class Speed {
         return site_url() . "/wp-content/" . self::get_cache_root()  . "/". self::get_cache_directory() ."/" . self::$hostname;
 
     }    
+
+    /**
+     * Select safe flushing before WordPress closes buffers, regardless of request type.
+     */
+    public static function protect_output_buffers() {
+
+        // Check at shutdown: a theme or plugin may have started compression after init.
+        foreach (ob_get_status(true) as $buffer) {
+            if ($buffer['name'] === 'zlib output compression') {
+                if (remove_action('shutdown', 'wp_ob_end_flush_all', 1)) {
+                    add_action('shutdown', array(__CLASS__, 'flush_removable_output_buffers'), 1);
+                }
+                break;
+            }
+        }
+    }
 
     /**
      * Flushes removable buffers, leaving protected buffers for PHP shutdown.

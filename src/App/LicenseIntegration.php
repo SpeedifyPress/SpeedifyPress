@@ -2,6 +2,10 @@
 
 namespace SPRESS\App;
 
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
 /**
  * Centralizes licensing-dependent hooks and data so edition-specific builds can
  * exclude this module without scattering conditional logic across the plugin.
@@ -20,6 +24,7 @@ class LicenseIntegration {
     }
 
     public static function get_dashboard_data() {
+
         return LicenseService::get_license_data();
     }
 
@@ -82,6 +87,7 @@ class LicenseIntegration {
     }
 
     public static function get_worker_download_link() {
+
         return LicenseService::get_download_link( true );
     }
 
@@ -99,17 +105,20 @@ class LicenseIntegration {
 
                 $settings_url = admin_url( 'admin.php?page=' . Menu::$menu_slug );
 
-                echo "<tr class='plugin-update-tr active' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
+                echo "<tr class='plugin-update-tr active' id='" . esc_attr( $plugin_slug . '-update' ) . "' data-slug='" . esc_attr( $plugin_slug ) . "' data-plugin='" . esc_attr( $plugin_file ) . "'>
                 <td colspan='4' class='plugin-update'>
                     <div class='update-message notice inline notice-warning notice-alt'>
-                        <p>Please <a href='" . $settings_url . "'>activate your license</a> to enable plugin updates.</p>
+                        <p>Please <a href='" . esc_url( $settings_url ) . "'>activate your license</a> to enable plugin updates.</p>
                     </div>
                 </td>
                 </tr>";
 
+                // Compare attributes directly so plugin paths are never interpreted as selectors.
                 echo '<script>
                     jQuery(document).ready(function($) {
-                        $("tr[data-plugin=\'' . $plugin_file . '\']").addClass("update");
+                        $("tr").filter(function() {
+                            return this.getAttribute("data-plugin") === ' . wp_json_encode( $plugin_file, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) . ';
+                        }).addClass("update");
                     });
                 </script>';
             }
@@ -127,34 +136,32 @@ class LicenseIntegration {
 
             $update_url = wp_nonce_url( self_admin_url( 'update.php?action=upgrade-plugin&plugin=' . $plugin_file ), 'upgrade-plugin_' . $plugin_file );
 
-            echo "<tr class='plugin-update-tr active update' id='{$plugin_slug}-update' data-slug='{$plugin_slug}' data-plugin='{$plugin_file}'>
+            echo "<tr class='plugin-update-tr active update' id='" . esc_attr( $plugin_slug . '-update' ) . "' data-slug='" . esc_attr( $plugin_slug ) . "' data-plugin='" . esc_attr( $plugin_file ) . "'>
                     <td colspan='4' class='plugin-update'>
                         <div class='update-message notice inline notice-warning notice-alt'>
                             <p>There is a new version of SpeedifyPress available.
-                                <a href='{$update_url}'
+                                <a href='" . esc_url( $update_url ) . "'
                                 class='update-link'
-                                data-plugin='{$plugin_file}'
-                                data-slug='{$plugin_slug}'
+                                data-plugin='" . esc_attr( $plugin_file ) . "'
+                                data-slug='" . esc_attr( $plugin_slug ) . "'
                                 data-name='SpeedifyPress'
                                 aria-label='Update SpeedifyPress now'
                                 data-wp-action='update-plugin'>
-                                    Update to version {$version}
+                                    Update to version " . esc_html( $version ) . "
                                 </a>
                             </p>
                         </div>
                     </td>
                 </tr>";
 
-            echo "<style>
-                tr.update[data-plugin='" . $plugin_file . "'] th, tr.plugin-update-tr[data-plugin='" . $plugin_file . "'] th
-                tr.update[data-plugin='" . $plugin_file . "'] td, tr.plugin-update-tr[data-plugin='" . $plugin_file . "'] td {
-                    box-shadow:none !important;
-                }
-                </style>";
-
+            // Apply the row styling without inserting plugin paths into CSS or JavaScript strings.
             echo '<script>
                     jQuery(document).ready(function($) {
-                        $("tr[data-plugin=\'' . $plugin_file . '\']").addClass("update");
+                        $("tr").filter(function() {
+                            return this.getAttribute("data-plugin") === ' . wp_json_encode( $plugin_file, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ) . ';
+                        }).addClass("update").children("th, td").each(function() {
+                            this.style.setProperty("box-shadow", "none", "important");
+                        });
                     });
                 </script>';
         }
@@ -194,7 +201,7 @@ class LicenseIntegration {
 
         $release_url = 'https://speedifypress.com/license/release/';
 
-        $host = parse_url( $release_url, PHP_URL_HOST );
+        $host = wp_parse_url( $release_url, PHP_URL_HOST );
         if ( $host !== 'speedifypress.com' ) {
             return $result;
         }

@@ -821,7 +821,7 @@ class Config {
 						}					
 						
 						//Save to advanced cache
-						if($key_to_update == "separate_cookie_cache" ||
+						if($key_to_update == "cache_mode" || $key_to_update == "separate_cookie_cache" ||
 						$key_to_update == "force_gzipped_output" ||
 						$key_to_update == "csrf_expiry_seconds" ||
 						$key_to_update == "cache_path_uploads" ||
@@ -829,6 +829,9 @@ class Config {
 						$key_to_update == "cache_mobile_separately" ||	
 						$key_to_update == "ignore_querystrings" ||	
 						$key_to_update == "cache_lifetime" ||	
+						$key_to_update == "bypass_cookies" ||
+						$key_to_update == "bypass_useragents" ||
+						$key_to_update == "bypass_urls" ||
 						$key_to_update == "plugin_mode" ||	
 						$key_to_update == "disable_urls" ||	
 						$key_to_update == "preload_fonts_desktop_only") {

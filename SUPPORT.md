@@ -8,7 +8,6 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
 
 - [ Cache Settings](#cache-settings)
    - [Mode Selection](#mode-selection)
-   - [Nonce Replacement](#nonce-replacement)
    - [Filters](#filters)
    - [Cache Outputs](#cache-outputs)
 - [ CSS Settings](#css-settings)
@@ -27,6 +26,7 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
    - [Media](#media)
    - [Discussion](#discussion)
    - [WooCommerce](#woocommerce)
+- [ CSS Stats](#css-stats)
 ##  Cache Settings
 
 ### Mode Selection
@@ -48,20 +48,6 @@ Here you can choose how the plugin should perform page preloading. This is when 
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
 
-### Nonce Replacement
-
-A nonce is a security token used to check requests. Tokens embedded in cached pages can expire before the page cache does, causing actions such as product searches or cart updates to fail. These optional settings use SpeedifyPress's CSRF token system to help supported requests work with long-lived cached pages.
-
-*Replace WooCommerce nonces?*
-
-Enables SpeedifyPress's token handling for supported WooCommerce Store API and wc-ajax requests. Use this when WooCommerce actions fail because a cached page contains an expired nonce. Test adding and removing products, cart updates and checkout after enabling it.
-
-*Replace AJAX nonces?*
-
-Adds a SpeedifyPress CSRF token to supported same-origin admin-ajax.php requests. When a plugin uses WordPress's check_ajax_referer(), a valid SpeedifyPress token can be accepted if the original nonce is missing or expired. This can help features such as AJAX product searches; it is not limited to WooCommerce and does not cover plugins that use their own nonce checks.
-
-Enable only the options your site needs, clear the page cache and test the affected features on both fresh and cached visits. These settings do not replace permission checks or make personalised account, cart or checkout content safe to share between visitors. If a feature is incompatible, disable its replacement option and use a shorter cache lifetime or bypass caching for the affected page.
-
 ### Filters
 
 *Bypass When Cookies Present*
@@ -73,7 +59,7 @@ Enter a line seprate list of (partial) cookie names that, if detected, will prev
 
 *Bypass URLs*
 
-Specify a line separated list of (partial) URLs where no caching should take place. For example, if you're caching logged in users you might want to add *my-account* here
+Specify a line separated list of (partial) URLs where no caching should take place.
 
 *Bypass User Agents*
 
@@ -86,11 +72,10 @@ Specify a line separated list of querystrings that should be ignored for caching
 
 ### Cache Outputs
 
-*Device Paths & Compression*
+*Device Paths*
 
 Allows you to create separate caches for:
 
-- Mobile users. Use this if mobile users are shown a different site (rather than a responsive site)
 - Cookies
 
 **Switch the Cache Path** will change the cache path from /wp-content/cache/ to /wp-content/upload. The is sometimes necessary for compatibility with other plugins and some hosts.
@@ -178,16 +163,6 @@ Enter any script name or partial script names here to push them to the end of th
 
 Enter JavaScript here that should be run after all the scripts have finished loading.  
                 Enter complete JavaScript with no script tags.
-
-*Completion Triggers*
-
-This allows advanced users to change how the delay script re-fires onload and onready events that may have been missed due to the delay.
-                Generally the default settings will be fire for most cases, especially when combined with custom executions to run on completion. Advanced users may wish to 
-                change the defaults.
-
-*Completion Events*
-
-If a users clicks or mouseovers before the JS has loaded to process that event, it will be lost unless this option is enabled.
 ##  Image Settings
 
 *Preload Image*
@@ -214,7 +189,7 @@ We hook into the CompressX plugin by [https://compressx.io/](https://compressx.i
 
 *Locally host Google fonts*
 
-Select this to serve Google Fonts locally, rather than downloading them from the Google website. You should select this in order for the "Only preload fonts on desktop" option to work properly.
+Select this to serve Google Fonts locally, rather than downloading them from the Google website.
 
 ### Advanced options
 
@@ -224,7 +199,7 @@ Recommended if you have icon fonts below the fold and they're causing render blo
 
 *Use system fonts on mobile*
 
-Recommended for every site, in conjunction with "Only preload fonts on desktop". Instead of font files, system fonts are used on mobile which is much quicker. To overwrite the system fonts,
+Recommended for every site.  Instead of font files, system fonts are used on mobile which is much quicker. To overwrite the system fonts,
                 just replace the "--spdy-ui-font" for the selector in question. For example, this would replace H1 and H2 on mobile with Times New Roman:
                 
                      @media (max-width: 800px) {
@@ -243,10 +218,6 @@ The system will automatically detect fonts and preload them. However, it won't p
 If you are using the standard Google Analytics tag then this generally results in a performance hit. One way to improve things is to host the file locally. 
                 Ticking this option will download the remote file and setup a cron job to ensure it's always kept up to date. 
                 This is the recommended method for most sites using GA.
-
-*Preload gtag.js*
-
-Adds a preload in for the locally hosted gtag.js. You won't generally see a performance increase from this, but it can be worth testing.
 ##  Bloat Settings
 
 ### Core Frontend
@@ -314,3 +285,24 @@ Disables pingbacks and trackbacks, removes related head links/headers, and reduc
 *Disable WooCommerce cart fragments*
 
 Disables wc-cart-fragments to reduce sitewide JS and AJAX requests. Only enable if you do not need live cart count updates in the header.
+##  CSS Stats
+
+**CSS Stats** provide valuable insights into how CSS is being generated across your site and which plugins contribute to it.
+
+- The **Unused** column shows the number of CSS files generated but **not used** on any page.
+- The **Used** column displays the CSS files that are actively in use.
+- Click on a row for a **detailed breakdown** of how CSS is applied across your site.
+
+*By Plugin Folder*
+
+View a breakdown of **CSS files generated per 📂 plugin folder**. This helps identify which plugins contribute the most to your site's styles.
+
+*By Path*
+
+Displays CSS caching stats **for each 🔍 page path**. This helps pinpoint where CSS is stored and how it's being utilized across different URLs.
+
+*By Post Types*
+
+Groups CSS stats by **📝 Post Type**, allowing you to analyze **which plugins affect different content types**.
+
+- If certain post types **only** fill the **Unused** column, they likely don’t need those styles—optimizing them can improve performance.

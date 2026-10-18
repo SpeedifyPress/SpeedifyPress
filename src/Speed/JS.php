@@ -441,14 +441,4 @@ class JS {
     }
  
 
-    /**
-     * Enqueues the partytown script if required by the plugin configuration.
-     *
-     * This function is hooked into the 'wp_enqueue_scripts' action and is 
-     * responsible for enqueuing the partytown script and localizing the script
-     * with the cache directory.
-     *
-     * @return void
-     */
-
 }

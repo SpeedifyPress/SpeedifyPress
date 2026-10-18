@@ -399,22 +399,6 @@ class CSSUsageCollector {
         };
     }
 
-    /**
-     * Returns the de-duplicated, sorted array of icon font-family names found in the DOM.
-     * @returns {string[]}
-     */
-    getIconFontFamilies() {
-        return this.getIconFontData().families;
-    }
-
-    /**
-     * Returns the de-duplicated, sorted array of selectors for icon-bearing nodes found in the DOM.
-     * @returns {string[]}
-     */
-    getIconSelectors() {
-        return this.getIconFontData().selectors;
-    }    
-
     // Returns true if at least one LCP entry appears within maxWaitMs
     async  waitForLcpOrTimeout(maxWaitMs = 3000) {
         return new Promise((resolve) => {

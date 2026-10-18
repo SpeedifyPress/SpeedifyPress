@@ -49,6 +49,15 @@ if ( ! defined( 'SPRESS_CACHE_MOBILE_SEPARATELY' ) ) {
 if ( ! defined( 'SPRESS_IGNORE_QUERYSTRINGS' ) ) {
     define( 'SPRESS_IGNORE_QUERYSTRINGS', '%%SPRESS_IGNORE_QUERYSTRINGS%%' );
 }
+if ( ! defined( 'SPRESS_BYPASS_COOKIES' ) ) {
+    define( 'SPRESS_BYPASS_COOKIES', '%%SPRESS_BYPASS_COOKIES%%' );
+}
+if ( ! defined( 'SPRESS_BYPASS_USERAGENTS' ) ) {
+    define( 'SPRESS_BYPASS_USERAGENTS', '%%SPRESS_BYPASS_USERAGENTS%%' );
+}
+if ( ! defined( 'SPRESS_BYPASS_URLS' ) ) {
+    define( 'SPRESS_BYPASS_URLS', '%%SPRESS_BYPASS_URLS%%' );
+}
 if ( ! defined( 'SPRESS_CACHE_LIFETIME' ) ) {
     define( 'SPRESS_CACHE_LIFETIME', '%%SPRESS_CACHE_LIFETIME%%' );
 }
@@ -85,6 +94,9 @@ class AdvancedCache {
     public static $cache_logged_in_users;
     public static $cache_mobile_separately;
     public static $ignore_querystrings;
+    public static $bypass_cookies;
+    public static $bypass_useragents;
+    public static $bypass_urls;
     public static $cache_lifetime;
     public static $original_uri;
     public static $plugin_mode;
@@ -101,6 +113,9 @@ class AdvancedCache {
         self::$cache_logged_in_users      = SPRESS_CACHE_LOGGED_IN_USERS;
         self::$cache_mobile_separately    = SPRESS_CACHE_MOBILE_SEPARATELY;
         self::$ignore_querystrings        = SPRESS_IGNORE_QUERYSTRINGS;
+        self::$bypass_cookies             = SPRESS_BYPASS_COOKIES;
+        self::$bypass_useragents          = SPRESS_BYPASS_USERAGENTS;
+        self::$bypass_urls                = SPRESS_BYPASS_URLS;
         self::$cache_lifetime             = intval(SPRESS_CACHE_LIFETIME);
         $request_uri_raw                  = Speed::server_var('REQUEST_URI', '/');
         self::$original_uri               = Speed::get_sanitized_uri($request_uri_raw);
@@ -116,6 +131,7 @@ class AdvancedCache {
      * @return bool True if any condition requires exiting.
      */
     protected static function should_exit() {
+
         //Check if disabled
         if(self::$plugin_mode === "disabled") {
             return true;
@@ -130,10 +146,12 @@ class AdvancedCache {
                 }
             }    
         }
-        $request_uri = Speed::server_var('REQUEST_URI', '');
+
+        // Use the full URL just like runtime, so hostname-qualified exclusions work too.
+        $request_uri = Speed::get_clean_url(null, self::$ignore_querystrings);
         $script_name = Speed::server_var('SCRIPT_NAME', '');
 
-        $bypass_reason = Speed::request_should_bypass_cache($request_uri, $script_name, self::$cache_logged_in_users, '', '');
+        $bypass_reason = Speed::request_should_bypass_cache($request_uri, $script_name, self::$cache_logged_in_users, self::$bypass_cookies, self::$bypass_useragents, self::$bypass_urls);
         if ($bypass_reason !== false) {
             return true;
         }
