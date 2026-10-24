@@ -11,6 +11,7 @@ import Dashboard from './components/Dashboard.vue'
 import CssSettings from './components/CssSettings.vue'
 import CssStats from './components/CssStats.vue'
 import CacheSettings from './components/CacheSettings.vue'
+import ServerConfig from './components/ServerConfig.vue'
 import ExternalScripts from './components/ExternalScripts.vue'
 import ImageSettings from './components/ImageSettings.vue'
 import BloatSettings from './components/BloatSettings.vue'
@@ -21,6 +22,7 @@ import JavascriptSettings from './components/JavascriptSettings.vue'
 //Import docs
 import DashboardDoc from './components/docs/DashboardDoc.vue';
 import CacheSettingsDoc from './components/docs/CacheSettingsDoc.vue';
+import ServerConfigDoc from './components/docs/ServerConfigDoc.vue';
 import ExternalScriptsDoc from './components/docs/ExternalScriptsDoc.vue';
 import FontSettingsDoc from './components/docs/FontSettingsDoc.vue';
 import BloatSettingsDoc from './components/docs/BloatSettingsDoc.vue';
@@ -85,13 +87,14 @@ const base_admin_items = [
     { name: 'Font Settings', component: FontSettings, docComponent: FontSettingsDoc, icon: '<svg class="' + iconClass + '" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="black"><path d="M12 5H20V7H12Z"/><path d="M15 6H17V18H15Z"/><path d="M4 10H10V12H4Z"/><path d="M6 11H8V18H6Z"/></svg>'},
     { name: 'External Scripts', component: ExternalScripts, docComponent: ExternalScriptsDoc, li_class: 'pt-2 border-t border-gray-300 dark:border-gray-700', icon: '<svg class="' + iconClass + '" viewBox="0 0 32 32" width="32" xmlns="http://www.w3.org/2000/svg"><defs><style>.cls-1{fill:none;}</style></defs><title/><polygon points="18.83 26 21.41 23.42 20 22 16 26 20 30 21.42 28.59 18.83 26"/><polygon points="27.17 26 24.59 28.58 26 30 30 26 26 22 24.58 23.41 27.17 26"/><path d="M14,28H8V4h8v6a2.0058,2.0058,0,0,0,2,2h6v6h2V10a.9092.9092,0,0,0-.3-.7l-7-7A.9087.9087,0,0,0,18,2H8A2.0058,2.0058,0,0,0,6,4V28a2.0058,2.0058,0,0,0,2,2h6ZM18,4.4,23.6,10H18Z"/><rect class="cls-1" data-name="&lt;Transparent Rectangle&gt;" height="32" id="_Transparent_Rectangle_" width="32"/></svg>'},    
     { name: 'Bloat Remover', component: BloatSettings, docComponent: BloatSettingsDoc, icon: '<svg class="' + iconClass + '" viewBox="0 0 48 48" data-name="Layer 1" id="Layer_1" xmlns="http://www.w3.org/2000/svg"><title/><path d="M42,3H28a2,2,0,0,0-2-2H22a2,2,0,0,0-2,2H6A2,2,0,0,0,6,7H42a2,2,0,0,0,0-4Z"/><path d="M39,9a2,2,0,0,0-2,2V43H11V11a2,2,0,0,0-4,0V45a2,2,0,0,0,2,2H39a2,2,0,0,0,2-2V11A2,2,0,0,0,39,9Z"/><path d="M21,37V19a2,2,0,0,0-4,0V37a2,2,0,0,0,4,0Z"/><path d="M31,37V19a2,2,0,0,0-4,0V37a2,2,0,0,0,4,0Z"/></svg>'},        
+    { name: 'Server Config', component: ServerConfig, docComponent: ServerConfigDoc, li_class: 'pt-2 border-t border-gray-300 dark:border-gray-700', icon: '<svg class="' + iconClass + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01M11 7h6M11 17h6" stroke-linecap="round"/></svg>'},
     {
       name: 'CSS Stats',
       component: CssStats,
       docComponent: CssStatsDoc,
       li_class: 'pt-2 border-t border-gray-300 dark:border-gray-700',
       icon: '<svg class="' + iconClass + '" viewBox="0 0 512 512" width="512" xmlns="http://www.w3.org/2000/svg"><title/><path d="M104,496H72a24,24,0,0,1-24-24V328a24,24,0,0,1,24-24h32a24,24,0,0,1,24,24V472A24,24,0,0,1,104,496Z"/><path d="M328,496H296a24,24,0,0,1-24-24V232a24,24,0,0,1,24-24h32a24,24,0,0,1,24,24V472A24,24,0,0,1,328,496Z"/><path d="M440,496H408a24,24,0,0,1-24-24V120a24,24,0,0,1,24-24h32a24,24,0,0,1,24,24V472A24,24,0,0,1,440,496Z"/><path d="M216,496H184a24,24,0,0,1-24-24V40a24,24,0,0,1,24-24h32a24,24,0,0,1,24,24V472A24,24,0,0,1,216,496Z"/></svg>',
-    },
+    }
 ];
 
 //Pro-only screens still require an active Pro licence; CSS Stats is always available.

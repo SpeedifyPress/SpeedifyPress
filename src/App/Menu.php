@@ -406,11 +406,34 @@ class Menu {
             'resturl'   => (string) $rest_url,
             'restNonce' => (string) $rest_nonce,
             'has_woo'   => ( $has_woo === 'true' ),
+            'server_software' => isset( $_SERVER['SERVER_SOFTWARE'] ) && is_string( $_SERVER['SERVER_SOFTWARE'] )
+                ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) : '',
+            'cache_url_path' => self::get_cache_url_path(),
         );
         echo '<script>window.spress_namespace=' . wp_json_encode( $frontend_payload ) . ';</script>';        
 
         // Output a container div for the Vue.js app with Tailwind CSS classes.
         echo '<div id="app" class="tailwind"></div>';
+    }
+
+    /**
+     * Returns the configured cache URL prefix for the server configuration examples.
+     *
+     * @return string URL path with no trailing slash.
+     */
+    private static function get_cache_url_path() {
+
+        if ( ! class_exists( '\\SPRESS\\Speed' ) || ! \SPRESS\Speed::$hostname ) {
+            return '';
+        }
+
+        $cache_url = \SPRESS\Speed::get_root_cache_url();
+        $cache_path = wp_parse_url( $cache_url, PHP_URL_PATH );
+        if ( ! is_string( $cache_path ) || $cache_path === '' ) {
+            return '';
+        }
+
+        return rtrim( preg_replace( '#[^A-Za-z0-9/_~.%\\-]#', '', $cache_path ), '/' );
     }
 
 }

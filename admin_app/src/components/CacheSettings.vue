@@ -293,6 +293,12 @@ const emit = defineEmits(['showDocs'])
                         style="box-shadow:inherit!important"
                       ></textarea>                    
                       <p  id="helper-text-explanation" class="mb-3 mt-2 text-sm text-gray-500 dark:text-gray-400">{{ bypass_urls_helper }}</p>
+                      <div v-if="server_config_warnings.bypass_urls" role="alert" class="mb-3 mt-2 flex items-start justify-between gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                        <span>If direct server delivery is configured, copy and apply the updated Server Config snippet after changing these exclusions. Clear the page cache after adding exclusions so files from before the change cannot be served.</span>
+                        <button type="button" class="shrink-0 rounded p-1 text-amber-700 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:text-amber-200 dark:hover:bg-amber-900/40" aria-label="Dismiss warning" @click="server_config_warnings.bypass_urls = false">
+                          <svg class="h-3 w-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m1 1 12 12M13 1 1 13"/></svg>
+                        </button>
+                      </div>
 
 
                       <Button config_key="speed_cache" title="Update URLs" :status_object="buttons" id="bypass_urls" />
@@ -327,6 +333,12 @@ const emit = defineEmits(['showDocs'])
                         style="box-shadow:inherit!important"
                       ></textarea>                    
                       <p  id="helper-text-explanation" class="mb-3 mt-2 text-sm text-gray-500 dark:text-gray-400">{{ bypass_useragents_helper }}</p>
+                      <div v-if="server_config_warnings.bypass_useragents" role="alert" class="mb-3 mt-2 flex items-start justify-between gap-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                        <span>If direct server delivery is configured, copy and apply the updated Server Config snippet after changing these exclusions. Reload Nginx after updating its config.</span>
+                        <button type="button" class="shrink-0 rounded p-1 text-amber-700 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:text-amber-200 dark:hover:bg-amber-900/40" aria-label="Dismiss warning" @click="server_config_warnings.bypass_useragents = false">
+                          <svg class="h-3 w-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m1 1 12 12M13 1 1 13"/></svg>
+                        </button>
+                      </div>
 
                       <Button config_key="speed_cache" title="Update User Agents" :status_object="buttons" id="bypass_useragents" />
 
@@ -499,6 +511,7 @@ export default {
       },
       findReplaceData: null,
       skeletonsAvailable: null,      
+      server_config_warnings: { bypass_urls: false, bypass_useragents: false },
       cache_mode: getCacheValue('cache_mode', 'disabled'),
       cache_error: '',
       page_preload_mode: getCacheValue('page_preload_mode', 'intelligent'),
@@ -661,6 +674,7 @@ export default {
       api.post(window.spress_namespace.resturl + 'speedifypress/update_config', formDataJson)
         .then(response => {
           if (ref === 'cache_mode') this.cache_mode = window.spress_namespace.config.speed_cache.cache_mode.value;
+          this.showServerConfigWarning(ref);
           //Set success
           this.setButton(this.buttons[ref],'success');
         })
@@ -681,6 +695,11 @@ export default {
         .finally(() => {
         });
     },    
+    showServerConfigWarning(ref) {
+      if (!Object.prototype.hasOwnProperty.call(this.server_config_warnings, ref)) return;
+
+      this.server_config_warnings[ref] = true;
+    },
     setButton(button, type) {
 
       if(type == "success") {
