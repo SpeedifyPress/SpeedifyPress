@@ -96,7 +96,7 @@ class Config {
 			),
 			'bypass_useragents' => array(
 				'name'   => 'Bypass on Useragents',
-				'helper' => 'Enter (partial) matches of user agent strings that will prevent caching if detected. Separate multiple with new lines.',
+				'helper' => 'Enter (partial) matches of user agent strings that will prevent caching if detected. Separate multiple with new lines. If direct server delivery is configured, update the server config whenever this list changes.',
 				'value' => '',
 			),
 			'separate_cookie_cache' => array(

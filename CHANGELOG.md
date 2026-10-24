@@ -2,6 +2,15 @@
 
 Release notes for changes included in the SpeedifyPress Community edition. The complete repository history, including Pro-only changes, is in [CHANGELOG.md](CHANGELOG.md).
 
+### 0.81.4 - 2026-10-24
+
+- Added a Server Config screen with Apache/LiteSpeed and Nginx snippets to protect cache files or optionally deliver eligible cached pages directly.
+- Added server-config help, syntax-highlighted editors, and warnings when URL or user-agent exclusions change.
+- Updated Cloudflare bypass cookies and blocked direct public requests to SpeedifyPress cache paths, including when the cache is under uploads.
+- Limited Apache and Nginx Direct Server Delivery snippets to GET requests and aligned their response headers and exclusion handling.
+- Kept SpeedifyCSS settings in the shared configuration option so switching editions retains saved settings.
+- Restored the `package:wordpressorg` command to Community builds, including its required packaging inputs and support for `SPRESS_BUILD_OUTPUT_DIR`.
+
 ### 0.81.3 - 2026-10-18
 
 - Added CSS Stats to the Community admin interface, including its documentation and dashboard access.

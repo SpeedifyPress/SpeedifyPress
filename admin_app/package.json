@@ -10,6 +10,7 @@
     "watch:community": "vite build --watch",
     "build:wordpressorg": "VITE_PLUGIN_TYPE=wordpressorg vite build",
     "watch:wordpressorg": "VITE_PLUGIN_TYPE=wordpressorg vite build --watch",
+    "package:wordpressorg": "bash scripts/package_wordpressorg.sh",
     "preview": "vite preview"
   },
   "dependencies": {

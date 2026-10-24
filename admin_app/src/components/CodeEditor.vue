@@ -13,6 +13,8 @@ const loaders = {
   css: () => import('prismjs/components/prism-css'),
   json: () => import('prismjs/components/prism-json'),
   php: () => import('prismjs/components/prism-php'),
+  apacheconf: () => import('prismjs/components/prism-apacheconf'),
+  nginx: () => import('prismjs/components/prism-nginx'),
 };
 
 const props = defineProps({

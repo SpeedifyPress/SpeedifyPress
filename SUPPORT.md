@@ -10,6 +10,7 @@ The community version of SpeedifyPress comes with no support, but plenty of docs
    - [Mode Selection](#mode-selection)
    - [Filters](#filters)
    - [Cache Outputs](#cache-outputs)
+- [ Server Config](#server-config)
 - [ CSS Settings](#css-settings)
    - [Mode Selection](#mode-selection)
    - [Filters](#filters)
@@ -79,6 +80,26 @@ Allows you to create separate caches for:
 - Cookies
 
 **Switch the Cache Path** will change the cache path from /wp-content/cache/ to /wp-content/upload. The is sometimes necessary for compatibility with other plugins and some hosts.
+##  Server Config
+
+These snippets let your web server help SpeedifyPress serve cached pages. First, block direct access to the cache files. If you want to go further, you can also let the server deliver eligible cached pages without starting WordPress. That second step is optional and needs a little extra care.
+
+*Protect cache files*
+
+Use this rule to stop visitors opening cache files directly by URL. SpeedifyPress can still read and use those files. Choose the snippet for the server handling your site, then add it where the instructions say.
+
+*Direct server delivery (advanced)*
+
+Want to avoid starting WordPress for cache hits? Enable this only if you understand how your server and cache work. The rules serve only GET requests without a query string, and send requests with known session, cart, or other personalisation cookies to WordPress instead. They also fall back to WordPress if there is no cache file or an update is pending.
+
+Direct delivery does not run PHP's cache-expiry checks or response-header logic. Before enabling it, set the page-cache lifetime to **Never Expires** and make sure page changes reliably clear the cache. Clear the cache after changing server rules or cache settings, then test excluded pages, logged-in sessions, cart pages, and Cloudflare updates. If anything serves the wrong content, remove the direct-delivery rules; the normal SpeedifyPress cache will keep working.
+
+*Applying the snippets*
+
+- Not sure which server to choose? The detected server is a suggestion; your host or a reverse proxy may affect what actually handles requests.
+- For Apache or LiteSpeed, put the rules in the WordPress root .htaccess, above the standard WordPress rewrite rules. Your host must allow these rewrite rules.
+- For Nginx Direct Server Delivery, copy the nginx.conf (http block) snippet into the main http {} block. Add the Site config (/etc/nginx/sites-available) snippet to your existing site's server {} block; don't create a second one.
+- After changing the URL or user-agent exclusions in SpeedifyPress, copy the snippets again so your server rules stay in sync. For Nginx, validate the config and reload Nginx. Keep a backup, and ask your host for help if you're unsure.
 ##  CSS Settings
 
 ### Mode Selection
