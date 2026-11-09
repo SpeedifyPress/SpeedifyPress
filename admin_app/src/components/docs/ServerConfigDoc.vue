@@ -11,7 +11,7 @@ defineProps({ iconclass: String })
 
     <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">Protect cache files</h5>
     <p class="text-gray-500 dark:text-gray-400 text-sm font-normal">
-      Use this rule to stop visitors opening cache files directly by URL. SpeedifyPress can still read and use those files. Choose the snippet for the server handling your site, then add it where the instructions say.
+      Use this rule to prevent direct requests for cached page HTML and private CSS lookup files. Public optimized CSS, font assets, and frontend cache indexes remain accessible. Choose the snippet for the server handling your site, then add it where the instructions say.
     </p>
 
     <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">Direct server delivery (advanced)</h5>
@@ -27,7 +27,7 @@ defineProps({ iconclass: String })
     <ul class="list-disc pl-7 space-y-2 text-gray-700 mt-2">
       <li>Not sure which server to choose? The detected server is a suggestion; your host or a reverse proxy may affect what actually handles requests.</li>
       <li>For Apache or LiteSpeed, put the rules in the WordPress root <code>.htaccess</code>, above the standard WordPress rewrite rules. Your host must allow these rewrite rules.</li>
-      <li>For Nginx Direct Server Delivery, copy the <code>nginx.conf (http block)</code> snippet into the main <code>http {}</code> block. Add the <code>Site config (/etc/nginx/sites-available)</code> snippet to your existing site's <code>server {}</code> block; don't create a second one.</li>
+      <li>For Nginx Direct Server Delivery, first add the cache-protection snippet to the site's <code>server {}</code> block. Then copy the <code>nginx.conf (http block)</code> snippet into the main <code>http {}</code> block and add the <code>Site config (/etc/nginx/sites-available)</code> snippet to that same existing server block; don't create a second one.</li>
       <li>After changing the URL or user-agent exclusions in SpeedifyPress, copy the snippets again so your server rules stay in sync. For Nginx, validate the config and reload Nginx. Keep a backup, and ask your host for help if you're unsure.</li>
     </ul>
   </div>

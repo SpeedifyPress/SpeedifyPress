@@ -20,11 +20,11 @@ class Dashboard {
    * @return array
    *
    */
-  public static function get_data() {
+  public static function get_data($refresh_page_cache = false) {
 
     $data = array();
     $data['cache_data'] = CSS::get_cache_data();
-    $data['page_cache_data'] = Cache::get_cache_data();
+    $data['page_cache_data'] = Cache::get_cache_data($refresh_page_cache);
     $data['license_data'] = class_exists( '\SPRESS\App\LicenseIntegration' )
       ? LicenseIntegration::get_dashboard_data()
       : array(

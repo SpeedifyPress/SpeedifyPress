@@ -246,7 +246,7 @@ class CSS {
             //Rewrite with new CSS if not already done
             if($output !== false && !strstr($output,"@@@CSSDone@@@")) {
 
-                $output = self::rewrite_css($output,true);
+                $output = self::rewrite_css($output, true, true);
 
                 //Add invisible elements
                 //if delay JS is active
@@ -379,15 +379,16 @@ class CSS {
      * from the lookup file.
      *
      * @param string $output The HTML output to optimize.
-     * @param string $direct Is the output being provided directly
+     * @param bool $force_lcp_preload Whether to force the stored LCP image preload.
+     * @param bool $internal_processing Whether this is a trusted rewrite of cached HTML.
      * @return string The optimized HTML output.
      */
-    public static function rewrite_css($output , $force_lcp_preload = false) {
+    public static function rewrite_css($output , $force_lcp_preload = false, $internal_processing = false) {
 
         $start_time = microtime(true);
 
         // Early exit?
-        if(self::should_exit_early() === true) {
+        if(self::should_exit_early($internal_processing) === true) {
             return $output;
         }
 
@@ -929,19 +930,20 @@ class CSS {
     /**
      * Determines if the current operation should exit early based on various conditions.
      *
+     * @param bool $allow_internal_processing Allow trusted cached-HTML rewrites outside frontend requests.
      * @return bool True if any condition for early exit is met, otherwise false.
      * 
      * This function checks if the current execution context should not proceed due to:
-     * - Not being on the front-end.
+     * - Not being on the front-end, unless internal cached-HTML processing is allowed.
      * - The mode being set to "disabled".
      * - The mode set to "preview" and the current user lacking management permissions.
      * - The current URL being blocked.
      */
 
-    public static function should_exit_early() {
+    public static function should_exit_early($allow_internal_processing = false) {
 
-        //Only run on front-end
-        if(Speed::is_frontend() === false) {
+        // Allow the REST callback to rewrite cached HTML, but keep frontend-only behavior elsewhere.
+        if (!$allow_internal_processing && Speed::is_frontend() === false) {
             return true;
         }
 

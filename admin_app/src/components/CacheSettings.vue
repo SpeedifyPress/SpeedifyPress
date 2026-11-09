@@ -161,10 +161,13 @@ const emit = defineEmits(['showDocs'])
                     <form @submit.prevent="submitForm" class="max-w-xl mx-auto" data-ref="cache_lifetime" ref="cache_lifetime">
 
                       <div class="flex items-left mb-4">
-                        <svg :class="iconclass" class="mr-2" viewBox="0 0 512 512" width="512px" xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path d="M421.9,199.3c-16.7-15-39-23.3-62.6-23.3c-23.6,0-45.9,8.3-62.6,23.3l-31.6,28.5l22.4,20.2l31.1-28  c10.8-9.7,25.3-15.1,40.7-15.1c15.4,0,29.9,5.4,40.7,15.1c10.7,9.6,16.6,22.4,16.6,36.1c0,13.6-5.9,26.4-16.6,36  c-10.8,9.7-25.3,15.1-40.7,15.1c-15.4,0-29.9-5.4-40.7-15.1l-103.3-92.7c-16.7-15-39-23.3-62.6-23.3c-23.6,0-45.9,8.3-62.6,23.3  C73.3,214.4,64,234.5,64,256c0,21.5,9.3,41.6,26.1,56.7c16.7,15,39,23.3,62.6,23.3c23.6,0,45.9-8.3,62.6-23.3l31.6-28.4l-22.4-20.2  l-31,27.9c-10.8,9.7-25.3,15.1-40.7,15.1s-29.9-5.4-40.7-15.1c-10.7-9.6-16.6-22.4-16.6-36c0-13.6,5.9-26.4,16.6-36.1  c10.8-9.7,25.3-15.1,40.7-15.1c15.4,0,29.9,5.4,40.7,15.1l103.3,92.7c16.7,15,39,23.3,62.6,23.3c23.6,0,45.9-8.3,62.6-23.3  c16.8-15.1,26.1-35.2,26.1-56.7C448,234.5,438.7,214.4,421.9,199.3z"/></svg>
-                        <h5 class="text-lg font-bold leading-none text-gray-900 dark:text-white">Choose cache lifetime</h5>                      
+                        <svg :class="iconclass" class="mr-2" viewBox="0 0 36 36" version="1.1"  preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><path class="clr-i-outline clr-i-outline-path-1" d="M34,21.08,30.86,8.43A2,2,0,0,0,28.94,7H7.06A2,2,0,0,0,5.13,8.47L2,21.08a1,1,0,0,0,0,.24V29a2,2,0,0,0,2,2H32a2,2,0,0,0,2-2V21.31A1,1,0,0,0,34,21.08ZM4,29V21.44L7.06,9H28.93L32,21.44V29Z"></path><rect class="clr-i-outline clr-i-outline-path-2" x="6" y="20" width="24" height="2"></rect><rect class="clr-i-outline clr-i-outline-path-3" x="26" y="24" width="4" height="2"></rect><rect x="0" y="0" width="36" height="36" fill-opacity="0"/></svg>
+                        <h5 class="text-lg font-bold leading-none text-gray-900 dark:text-white">Cache Capacity</h5>                      
                       </div>
-                      <ul class="grid w-full gap-2 md:grid-cols-5 mb-3">
+
+
+                      <label for="cache_lifetime" class="font-medium text-gray-900 dark:text-gray-300">Cache Lifetime</label>
+                      <ul class="grid w-full gap-2 md:grid-cols-5 mb-3 mt-2">
                           <li>
                               <input type="radio" id="mode-0" name="cache_lifetime" value="0" class="!hidden peer" required v-bind:checked="cache_lifetime === '0'" />
                               <label for="mode-0" class="inline-flex items-center justify-between w-full h-16 p-4 text-gray-500 bg-white border border-gray-200 rounded-lg cursor-pointer dark:hover:text-gray-300 dark:border-cyan-700 dark:peer-checked:text-blue-600 peer-checked:border-indigo-700 peer-checked:text-indigo-800 peer-checked:bg-indigo-100 hover:text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700">                           
@@ -209,7 +212,12 @@ const emit = defineEmits(['showDocs'])
                           </li>                        
                       </ul>
 
-                      <Button config_key="speed_cache" title="Update Cache Lifetime" id="cache_lifetime" :status_object="buttons" />
+                      
+
+                      
+                                                
+
+                      <Button config_key="speed_cache" title="Update Cache Capacity" id="cache_lifetime" :status_object="buttons" />
 
                     </form>                   
 
@@ -219,7 +227,8 @@ const emit = defineEmits(['showDocs'])
                 </div>
             </div>               
 
-                                                                
+                                   
+
 
             <div class="w-full p-2 mr-4" >
                 <div class="flex items-left mb-4">
@@ -467,9 +476,11 @@ const emit = defineEmits(['showDocs'])
 
 
                 </div>
-            </div>                  
+            </div>         
+   
 
                
+
 
     </div>    
 
@@ -507,7 +518,7 @@ export default {
         update_settings: createButtonState(),    
         cache_lifetime: createButtonState(),  
         cache_logged_in_users: createButtonState(),        
-        replace_nonces: createButtonState(),                
+        advanced_options: createButtonState(),
       },
       findReplaceData: null,
       skeletonsAvailable: null,      

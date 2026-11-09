@@ -19,10 +19,18 @@ const isWordPressOrgBuild = __PLUGIN_TYPE__ === 'wordpressorg';
             This widget displays the currently enabled Cache mode and provides a quick link to change the settings.
         </p>
 
-        <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">CSS Cache Status</h5>
+        <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">Page Cache Status</h5>
         <p class="text-sm">
-            This widget shows the number of pages that are currently in the page cache and some stats on their age. It provides the button for clearing the cache.
+            This widget shows how many pages are cached, their age, and the total cache size compared with its effective storage limit. Use the refresh button to update these statistics or the cache controls to clear the page cache. In automatic mode, the displayed limit is estimated from the filesystem space PHP reports.
         </p>
+        <p class="mt-2 text-sm">
+            On shared hosting, including some cPanel servers, PHP may report free space for the whole filesystem rather than the quota allocated to your hosting account. The automatic limit can therefore be higher than the space your account can actually use. PHP has no portable way to read every host's account quota; if the reported limit looks wrong, set a manual Cache Size Limit in Cache Settings based on your account's available space.
+        </p>
+
+        <div class="mt-2 mb-2 flex items-center gap-2">
+            <span class="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800 dark:bg-red-900 dark:text-red-200">FULL</span>
+        </div>
+        <p class="mt-2 text-sm">When this indicator appears beside the refresh button, a page could not be cached because the available storage limit was reached. New pages will not be saved until the blocked page can fit again. Clear cached pages or free disk space; if you set a cache-size limit, you can also increase it.</p>
 
         <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">Plugin Mode</h5>
         <p class="text-sm">

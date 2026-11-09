@@ -243,8 +243,11 @@ function changeColumn(newColumn) {
                 <div class="flex items-left mb-4">
                     <svg :class="iconclass" class="mr-2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19,12 L19,8.62081119 C17.3445598,9.50508911 14.8145288,10 12,10 C9.18547122,10 6.65544022,9.50508911 5,8.62081119 L5,12.0000003 C5,12.8370203 8.10127922,14 12,14 C15.8987208,14 19,12.8370203 19,12 Z M19,14.6208112 C17.3445598,15.5050891 14.8145288,16 12,16 C9.18547122,16 6.65544022,15.5050891 5,14.6208112 L5,18 C5,18.8370203 8.10127922,20 12,20 C15.8987208,20 19,18.8370203 19,18 L19,14.6208112 Z M3,6 C3,3.52331179 7.06216478,2 12,2 C16.9378352,2 21,3.52331179 21,6 L21,18 C21,20.4766882 16.9378352,22 12,22 C7.06216478,22 3,20.4766882 3,18 L3,6 Z M12,8 C15.8987208,8 19,6.83702029 19,6 C19,5.16297971 15.8987208,4 12,4 C8.10127922,4 5,5.16297971 5,6 C5,6.83702029 8.10127922,8 12,8 Z" fill-rule="evenodd"/></svg>
                     <h5 class="text-lg font-bold leading-none text-gray-900 dark:text-white">Page Cache Status</h5>
-                    <svg @click="refreshPageCache" v-if="!refreshing_page" class="flex-shrink-0 w-4 h-4 inline-block mt-[-1px] cursor-pointer ml-auto no-gradient" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"/></svg>
-                    <svg v-if="refreshing_page" class="flex-shrink-0 w-4 h-4 inline-block mt-[-1px] animate-spin ml-auto no-gradient" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"/></svg>
+                    <div class="ml-auto flex items-center gap-2">
+                        <button v-if="dashboardData.page_cache_data && dashboardData.page_cache_data.is_full" type="button" class="rounded-full bg-red-100 px-2 py-1 text-xs font-semibold text-red-800 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800" title="Open Page Cache Status documentation" @click="emit('showDocs', 'Dashboard')">FULL</button>
+                        <svg @click="refreshPageCache(true)" v-if="!refreshing_page" class="flex-shrink-0 w-4 h-4 inline-block mt-[-1px] cursor-pointer no-gradient" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"/></svg>
+                        <svg v-if="refreshing_page" class="flex-shrink-0 w-4 h-4 inline-block mt-[-1px] animate-spin no-gradient" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg"><path d="M10 3v2a5 5 0 0 0-3.54 8.54l-1.41 1.41A7 7 0 0 1 10 3zm4.95 2.05A7 7 0 0 1 10 17v-2a5 5 0 0 0 3.54-8.54l1.41-1.41zM10 20l-4-4 4-4v8zm0-12V0l4 4-4 4z"/></svg>
+                    </div>
                 </div>
                  <hr class="h-px my-4 bg-gray-200 border-0 dark:bg-gray-700">
                 <div class="flow-root">                  
@@ -255,6 +258,13 @@ function changeColumn(newColumn) {
                             <tr>
                                 <td>Pages cached</td>
                                 <td class="text-right">{{ dashboardData.page_cache_data.count }}</td>
+                            </tr>
+                            <tr>
+                                <td>Total Cache Size</td>
+                                <td class="text-right">
+                                    {{ dashboardData.page_cache_data.total_size }} /
+                                    <a href="#" class="text-cyan-600 hover:underline" @click.prevent="changeColumn('Cache Settings')">{{ dashboardData.page_cache_data.limit_size }}</a>
+                                </td>
                             </tr>
                             <tr>
                                 <td>Oldest file</td>
@@ -309,7 +319,7 @@ function changeColumn(newColumn) {
                 </div>
             </div>              
        
-            <div class="w-full max-w-lg p-4 ml-2 mr-4 mb-4 bg-white border border-gray-200 rounded-lg shadow xxl:mt-[-50px]" >
+            <div class="w-full max-w-lg p-4 ml-2 mr-4 mb-4 bg-white border border-gray-200 rounded-lg shadow xxl:mt-[-80px]" >
 
                 <div class="flow-root">                  
 
@@ -969,11 +979,11 @@ export default {
     (window.spress_namespace.config.plugin.plugin_mode.value) = this.plugin_mode;
     window.dispatchEvent(new Event("pluginModeChanged"));
   },
-  fetchData() {
+  fetchData(forcePageCacheRefresh = false) {
     return new Promise((resolve, reject) => {
 
         const cachedData = localStorage.getItem('dashboardData');
-        if (cachedData) {
+        if (cachedData && !forcePageCacheRefresh) {
           this.dashboardData = JSON.parse(cachedData);
           if (this.isWordPressOrgBuild) {
             this.dashboardData.license_data.license_status = 'active';
@@ -990,7 +1000,9 @@ export default {
           return;
         }
 
-        api.get(window.spress_namespace.resturl + 'speedifypress/get_dashboard_data')
+        const endpoint = window.spress_namespace.resturl + 'speedifypress/get_dashboard_data';
+        const refreshQuery = forcePageCacheRefresh ? '?refresh_page_cache=1' : '';
+        api.get(endpoint + refreshQuery)
           .then(response => {
             this.dashboardData = response.data;
             this.refreshing = false;
@@ -1166,7 +1178,7 @@ export default {
           }, 10000);
         });
     },  
-    refreshPageCache() {
+    refreshPageCache(forceRefresh = false) {
 
       // Prevent multiple simultaneous executions
       if (this.refreshing_page) return;
@@ -1174,7 +1186,7 @@ export default {
       this.refreshing_page = true;
       localStorage.removeItem('dashboardData');
 
-      this.fetchData()
+      this.fetchData(forceRefresh)
         .finally(() => {
           // Start the next cycle only after fetchData completes
           setTimeout(() => {
