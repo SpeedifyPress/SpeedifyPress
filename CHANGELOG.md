@@ -2,6 +2,16 @@
 
 Release notes for changes included in the SpeedifyPress Community edition. The complete repository history, including Pro-only changes, is in [CHANGELOG.md](CHANGELOG.md).
 
+### 0.82.0 - 2026-11-08
+
+- Added automatic page-cache space protection, keeping a 10% filesystem reserve and skipping writes when safe capacity cannot be determined.
+- Added Dashboard cache-size reporting and a `FULL` indicator; periodic reconciliation removes oldest entries when the effective limit is exceeded.
+- Clear cached pages and generated CSS after WordPress core or theme updates.
+- Bypass cache writes for WooCommerce cart-changing requests and URLs containing nonce parameters.
+- Fixed CSS completion processing for cached HTML so preload generation runs during backend rewrites.
+- Refined server snippets to protect internal cache data without blocking required optimized assets.
+- Improved CSRF token refresh timing using the configured expiry and page visibility events.
+
 ### 0.81.4 - 2026-10-24
 
 - Added a Server Config screen with Apache/LiteSpeed and Nginx snippets to protect cache files or optionally deliver eligible cached pages directly.

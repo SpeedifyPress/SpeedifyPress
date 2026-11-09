@@ -37,12 +37,14 @@ class Cache {
     public static $force_gzipped_output;                 // string: 'true' or 'false'    
     public static $csrf_expiry_seconds;                  // int
     public static $cache_lifetime;                       // string: 0,2,6,12,24
+    public static $cache_size_limit_gb;                   // decimal GB; zero enables automatic disk-space protection
     public static $plugin_mode;                          // string: 'enabled', 'disabled', 'partial'
     public static $disable_urls;                         // line separated list of (partial) URLs
     public static $preload_fonts_desktop_only;           //string: 'true' or 'false'
     public static $multisite_identifier;                 //string: blogid or empty
     public static $replace_woo_nonces;                   //string: 'true' or 'false'
     public static $replace_ajax_nonces;                   //string: 'true' or 'false'
+    public static $clear_cache_on_wp_updates;             // string: 'true' or 'false'; Community always clears after updates.
 
     /**
      * Initializes the cache settings from configuration.
@@ -369,14 +371,20 @@ class Cache {
         $cache_file = self::get_cache_filepath($url);
 
 
-        // If the original and modified URL differ, save in a lookup
-        // so we can purge both when required
+        // Save the page cache before indexing the URL so skipped pages aren't recorded as cached.
+        $cached_html = self::save_cache($cache_file, $html, '', false, true);
+        if ($cached_html === false) {
+            return $html . "\n<!-- Cache skipped SIZE LIMIT -->";
+        }
+        $html = $cached_html;
+
+        // If the original and modified URL differ, save a lookup so both can be purged later.
         if ($url != $modified_url) {
-            $lookup_file = Speed::get_root_cache_path() . '/lookup_uris.json';;
-            
+            $lookup_file = Speed::get_root_cache_path() . '/lookup_uris.json';
+
             // Initialize current lookup as an array.
             $current_lookup = [];
-            
+
             if (file_exists($lookup_file)) {
                 $contents = @file_get_contents($lookup_file);
                 if ($contents !== false) {
@@ -386,25 +394,21 @@ class Cache {
                     }
                 }
             }
-            
+
             // Ensure the key for the modified URL is an array.
             if (!isset($current_lookup[$modified_url]) || !is_array($current_lookup[$modified_url])) {
                 $current_lookup[$modified_url] = [];
             }
-            
+
             // Save the original URL under the modified URL key.
             $current_lookup[$modified_url][$url] = true;
-            
-            // Write back the lookup data.
-            $json = wp_json_encode( $current_lookup );
-            if ( json_last_error() === JSON_ERROR_NONE ) {
-                file_put_contents($lookup_file, $json, LOCK_EX);
-            }            
-            
-        }
 
-        //Save to cache
-        $html = self::save_cache($cache_file,$html);
+            // Write back the lookup data.
+            $json = wp_json_encode($current_lookup);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                file_put_contents($lookup_file, $json, LOCK_EX);
+            }
+        }
         
         //$url has now been cached, update links index
         //if this is a top of funnel page
@@ -577,7 +581,17 @@ class Cache {
         return true;
     }    
 
-    public static function save_cache($cache_file,$html,$msg='',$gz_only=false) {
+    /**
+     * Save a cached response, optionally checking page-cache capacity first.
+     *
+     * @param string $cache_file         Destination path for the HTML file.
+     * @param string $html               Response HTML to save.
+     * @param string $msg                Optional cache comment appended to the response.
+     * @param bool   $gz_only            Save only the compressed copy when true.
+     * @param bool   $enforce_size_limit Apply the page-cache cap or automatic disk reserve.
+     * @return string|false Saved HTML, or false when the configured capacity cannot fit it.
+     */
+    public static function save_cache($cache_file,$html,$msg='',$gz_only=false,$enforce_size_limit=false) {
 
         $end_time = microtime(true);
         $elapsed_time = isset(Speed::$start_time) ? $end_time - Speed::$start_time : 0;
@@ -590,16 +604,37 @@ class Cache {
         }
 
         $html = preg_replace("@--><!--@","",$html);
-    
-        // Ensure the cache directory exists.
-        $dir = dirname($cache_file);
-        if (!is_dir($dir)) {
-            wp_mkdir_p($dir);
-        }
 
         //if .gz get base
         if(strstr($cache_file,'.gz')) {
             $cache_file = substr($cache_file,0,-3);
+        }
+
+        $write_gzip = self::gzip_accepted() || $gz_only === true;
+
+        // Keep both HTML and gzip files current when an existing page already has a gzip copy.
+        if (file_exists($cache_file . '.gz')) {
+            $write_gzip = true;
+        }
+
+        $gzip_content = $write_gzip ? gzencode($html) : false;
+
+        $existing_entry_bytes = 0;
+        $existing_entry_exists = false;
+        if ($enforce_size_limit) {
+            // Use file metadata and the cached byte total; do not walk the cache tree on a visitor request.
+            $existing_entry_bytes = self::get_page_cache_entry_bytes($cache_file);
+            $existing_entry_exists = $existing_entry_bytes > 0;
+            $incoming_bytes = ($gz_only === false ? strlen($html) : 0) + ($gzip_content !== false ? strlen($gzip_content) : 0);
+            if (!self::can_write_page_cache($incoming_bytes, $existing_entry_bytes)) {
+                return false;
+            }
+        }
+
+        // Ensure the cache directory exists after capacity has been made available.
+        $dir = dirname($cache_file);
+        if (!is_dir($dir)) {
+            wp_mkdir_p($dir);
         }
 
         // Save the uncompressed version.
@@ -608,13 +643,153 @@ class Cache {
         }
 
         // If gzip is accepted, save a gzipped version separately as .gz
-        if (self::gzip_accepted() || $gz_only === true) {
+        if ($write_gzip && $gzip_content !== false) {
             $gz_file = $cache_file . '.gz';
-            file_put_contents($gz_file, gzencode($html), LOCK_EX);
+            file_put_contents($gz_file, $gzip_content, LOCK_EX);
+        }
+
+        if ($enforce_size_limit) {
+            $new_entry_bytes = self::get_page_cache_entry_bytes($cache_file);
+            self::update_page_cache_size_counter(
+                $new_entry_bytes - $existing_entry_bytes,
+                $existing_entry_exists,
+                $new_entry_bytes > 0
+            );
         }
 
         return $html;
 
+    }
+
+
+    /** Return the combined size of the HTML file and its optional gzip copy. */
+    private static function get_page_cache_entry_bytes($cache_file) {
+
+        $total = 0;
+        foreach (array($cache_file, $cache_file . '.gz') as $path) {
+            if (is_file($path) && !is_link($path)) {
+                $size = filesize($path);
+                $total += $size !== false ? (int) $size : 0;
+            }
+        }
+
+        return $total;
+    }
+
+    /** Return filesystem capacity data for the cache path, or false when PHP cannot report it. */
+    private static function get_page_cache_disk_capacity() {
+
+        $space_path = Speed::get_root_cache_path();
+
+        // Use an existing parent when the cache root has not been created yet.
+        while ($space_path !== '' && !is_dir($space_path)) {
+            $parent_path = dirname($space_path);
+            if ($parent_path === $space_path) {
+                $space_path = '';
+                break;
+            }
+            $space_path = $parent_path;
+        }
+
+        if ($space_path === '' || !function_exists('disk_total_space') || !function_exists('disk_free_space')) {
+            return false;
+        }
+
+        $total_space = @disk_total_space($space_path);
+        $free_space = @disk_free_space($space_path);
+        if (!is_numeric($total_space) || !is_numeric($free_space) || $total_space <= 0 || $free_space < 0) {
+            return false;
+        }
+
+        return array('total' => (float) $total_space, 'free' => (float) $free_space);
+    }
+
+    /**
+     * Check the fixed cap and disk reserve using only filesystem stats and the cached byte total.
+     *
+     * @param int $incoming_bytes        Combined size of the new HTML and gzip copies.
+     * @param int $existing_entry_bytes Existing HTML/gzip bytes at this cache path, used for cap accounting.
+     * @return bool Whether the write fits without a full cache scan.
+     */
+    private static function can_write_page_cache($incoming_bytes, $existing_entry_bytes) {
+
+        $disk_capacity = self::get_page_cache_disk_capacity();
+        if ($disk_capacity === false) {
+            return false;
+        }
+
+        $stats = get_transient('spress_page_cache_stats');
+        $current_total = is_array($stats) && isset($stats['total_bytes']) && is_numeric($stats['total_bytes'])
+            ? (int) $stats['total_bytes']
+            : 0;
+        $next_total = max(0, $current_total - $existing_entry_bytes) + $incoming_bytes;
+
+        // Use the full incoming size as a conservative guard; this avoids depending on overwrite behavior.
+        if ($disk_capacity['free'] - $incoming_bytes < ($disk_capacity['total'] * 0.10)) {
+            self::mark_page_cache_write_blocked($incoming_bytes, $existing_entry_bytes);
+            return false;
+        }
+
+        $limit_gb = (float) self::$cache_size_limit_gb;
+        if ($limit_gb > 0) {
+            // Pro's fixed cap requires a known total; a dashboard scan initializes or reconciles it.
+            if (!is_array($stats) || !isset($stats['total_bytes']) || !is_numeric($stats['total_bytes'])) {
+                return false;
+            }
+
+            if ($next_total > (int) floor($limit_gb * 1000000000)) {
+                self::mark_page_cache_write_blocked($incoming_bytes, $existing_entry_bytes);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** Remember capacity-rejected writes so the Dashboard can report a full cache. */
+    private static function mark_page_cache_write_blocked($incoming_bytes, $existing_entry_bytes) {
+
+        set_transient('spress_page_cache_write_blocked', array(
+            'incoming_bytes' => (int) $incoming_bytes,
+            'existing_entry_bytes' => (int) $existing_entry_bytes,
+            'blocked_at' => time(),
+        ), 0);
+    }
+
+    /** Update the known total after a write; dashboard scans periodically correct external changes. */
+    private static function update_page_cache_size_counter($byte_delta, $had_entry, $has_entry) {
+
+        $stats = get_transient('spress_page_cache_stats');
+        if (!is_array($stats) || !isset($stats['total_bytes']) || !is_numeric($stats['total_bytes'])) {
+            return;
+        }
+
+        $stats['total_bytes'] = max(0, (int) $stats['total_bytes'] + (int) $byte_delta);
+        $stats['total_size'] = self::format_page_cache_size($stats['total_bytes']);
+        if (!$had_entry && $has_entry) {
+            $stats['count']++;
+        } elseif ($had_entry && !$has_entry) {
+            $stats['count'] = max(0, (int) $stats['count'] - 1);
+        }
+
+        set_transient('spress_page_cache_stats', $stats, 0);
+        self::add_page_cache_capacity_status($stats);
+    }
+
+    /** Format bytes in decimal units to match the GB limit setting. */
+    private static function format_page_cache_size($bytes) {
+
+        if ($bytes >= 1000000000) {
+            return number_format($bytes / 1000000000, 2) . ' GB';
+        }
+        if ($bytes >= 1000000) {
+            return number_format($bytes / 1000000, 2) . ' MB';
+        }
+        if ($bytes >= 1000) {
+            return number_format($bytes / 1000, 2) . ' KB';
+        }
+
+        return number_format((int) $bytes) . ' B';
     }
 
     /**
@@ -774,7 +949,7 @@ class Cache {
     }    
 
     /**
-     * Bypass cache variants when a login or role cookie lacks a valid signed ticket.
+     * Prevent logged-in cache use when the login or role cookie lacks a valid signed ticket.
      *
      * @return bool Whether this request has an unverified login or role cookie.
      */
@@ -867,7 +1042,7 @@ class Cache {
             return false;
         }
 
-        $expected_ticket = self::sign_logged_in_roles($parts[0], $expires, $login_cookie);
+        $expected_ticket = self::sign_logged_in_roles($roles, $expires, $login_cookie);
         if ($expected_ticket === false) {
             return false;
         }
@@ -916,21 +1091,52 @@ class Cache {
      * - The age newest cached file
      * - The age of oldest cached file
      *
-     * @return array Associative array with keys: count, average_age, newest, oldest.
+     * @param bool $force_refresh Bypass the one-minute cached scan for an explicit Dashboard refresh.
+     * @return array Cache counts, ages, and total HTML/gzip bytes.
      */
-    public static function get_cache_data() {
-        
+    public static function get_cache_data($force_refresh = false) {
+
+        $stats_key = 'spress_page_cache_stats';
+        $cached_stats = get_transient($stats_key);
+        if (
+            !$force_refresh
+            && is_array($cached_stats)
+            && isset($cached_stats['scanned_at'])
+            && isset($cached_stats['limit_size'])
+            && (time() - (int) $cached_stats['scanned_at']) < 60
+        ) {
+            return self::add_page_cache_capacity_status($cached_stats);
+        }
+
         $cache_dir = Speed::get_root_cache_path();
         $unique_files = [];
+        $entries = array();
+        $total_bytes = 0;
     
-        $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($cache_dir));
-        foreach ($rii as $file) {
-            if (!$file->isDir() && preg_match('/index(.*?)\.(html|html\.gz)$/', $file->getFilename())) {
+        if (is_dir($cache_dir)) {
+            $rii = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($cache_dir, \FilesystemIterator::SKIP_DOTS));
+            foreach ($rii as $file) {
+                if (!$file->isFile() || $file->isLink() || !preg_match('/index(.*?)\.(html|html\.gz)$/', $file->getFilename())) {
+                    continue;
+                }
+
                 $full_path = $file->getPathname();
-                // Normalize: if file ends with .gz, use the base filename without .gz.
                 $base = (substr($full_path, -3) === '.gz') ? substr($full_path, 0, -3) : $full_path;
+                $size = (int) $file->getSize();
+                $mtime = (int) $file->getMTime();
+                $total_bytes += $size;
+
+                // Group each HTML file with its gzip copy so refresh-time eviction removes a complete entry.
+                if (!isset($entries[$base])) {
+                    $entries[$base] = array('base' => $base, 'size' => 0, 'mtime' => $mtime, 'files' => array());
+                }
+                $entries[$base]['size'] += $size;
+                $entries[$base]['mtime'] = min($entries[$base]['mtime'], $mtime);
+                $entries[$base]['files'][] = array('path' => $full_path, 'size' => $size);
+
+                // Use the same entry key for both the HTML file and its compressed copy.
                 if (isset($unique_files[$base])) {
-                    // Prefer the uncompressed version if available.
+                    // Prefer the uncompressed copy when calculating page age.
                     if (substr($unique_files[$base], -3) === '.gz' && substr($full_path, -3) !== '.gz') {
                         $unique_files[$base] = $full_path;
                     }
@@ -939,15 +1145,69 @@ class Cache {
                 }
             }
         }
+
+        $limit_gb = (float) self::$cache_size_limit_gb;
+        $limit_bytes = $limit_gb > 0 ? (int) floor($limit_gb * 1000000000) : null;
+        $disk_capacity = self::get_page_cache_disk_capacity();
+        if ($disk_capacity !== false) {
+            // Include the existing cache in the budget because it is already deducted from free space.
+            $automatic_limit = max(0, (int) floor($total_bytes + $disk_capacity['free'] - ($disk_capacity['total'] * 0.10)));
+            $limit_bytes = $limit_bytes === null ? $automatic_limit : min($limit_bytes, $automatic_limit);
+        }
+
+        if ($limit_bytes !== null && $total_bytes > $limit_bytes) {
+            $entries = array_values($entries);
+
+            // The dashboard scan is off the public request path, so it can prune oldest entries safely.
+            usort($entries, static function ($left, $right) {
+                return $left['mtime'] <=> $right['mtime'];
+            });
+
+            foreach ($entries as $entry) {
+                foreach ($entry['files'] as $cached_file) {
+                    if (Speed::delete_file_compat($cached_file['path'])) {
+                        $total_bytes -= $cached_file['size'];
+                    }
+                }
+
+                $remaining = array_filter($entry['files'], static function ($cached_file) {
+                    return is_file($cached_file['path']);
+                });
+                if (empty($remaining)) {
+                    unset($unique_files[$entry['base']]);
+                } else {
+                    $remaining = array_values($remaining);
+                    $preferred = $remaining[0]['path'];
+                    foreach ($remaining as $remaining_file) {
+                        if (substr($remaining_file['path'], -3) !== '.gz') {
+                            $preferred = $remaining_file['path'];
+                            break;
+                        }
+                    }
+                    $unique_files[$entry['base']] = $preferred;
+                }
+
+                if ($total_bytes <= $limit_bytes) {
+                    break;
+                }
+            }
+        }
     
         $count = count($unique_files);
         if ($count === 0) {
-            return [
+            $stats = [
                 'count'       => 0,
                 'average_age' => '0h 0m',
                 'newest'      => '0h 0m',
                 'oldest'      => '0h 0m',
+                'total_bytes' => $total_bytes,
+                'total_size'  => self::format_page_cache_size($total_bytes),
+                'limit_bytes' => $limit_bytes,
+                'limit_size'  => $limit_bytes !== null ? self::format_page_cache_size($limit_bytes) : 'Unavailable',
+                'scanned_at'  => time(),
             ];
+            set_transient($stats_key, $stats, 0);
+            return self::add_page_cache_capacity_status($stats);
         }
     
         $total_age_seconds = 0;
@@ -980,12 +1240,50 @@ class Cache {
         $newest_age_seconds  = time() - $newest_time;
         $oldest_age_seconds  = time() - $oldest_time;
     
-        return [
+        $stats = [
             'count'       => $count,
             'average_age' => $format_age($average_age_seconds),
             'newest'      => $format_age($newest_age_seconds),
             'oldest'      => $format_age($oldest_age_seconds),
+            'total_bytes' => $total_bytes,
+            'total_size'  => self::format_page_cache_size($total_bytes),
+            'limit_bytes' => $limit_bytes,
+            'limit_size'  => $limit_bytes !== null ? self::format_page_cache_size($limit_bytes) : 'Unavailable',
+            'scanned_at'  => time(),
         ];
+        set_transient($stats_key, $stats, 0);
+
+        return self::add_page_cache_capacity_status($stats);
+    }
+
+    /** Add the current full-state marker and clear it when a scan shows space was freed. */
+    private static function add_page_cache_capacity_status($stats) {
+
+        $blocked = get_transient('spress_page_cache_write_blocked');
+        if (is_array($blocked)) {
+            $can_fit_again = true;
+            $disk_capacity = self::get_page_cache_disk_capacity();
+            if ($disk_capacity === false || $disk_capacity['free'] - (int) $blocked['incoming_bytes'] < ($disk_capacity['total'] * 0.10)) {
+                $can_fit_again = false;
+            }
+
+            $limit_gb = (float) self::$cache_size_limit_gb;
+            if ($limit_gb > 0) {
+                $next_total = max(0, (int) $stats['total_bytes'] - (int) $blocked['existing_entry_bytes']) + (int) $blocked['incoming_bytes'];
+                if ($next_total > (int) floor($limit_gb * 1000000000)) {
+                    $can_fit_again = false;
+                }
+            }
+
+            if ($can_fit_again) {
+                delete_transient('spress_page_cache_write_blocked');
+                $blocked = false;
+            }
+        }
+
+        $stats['is_full'] = is_array($blocked);
+
+        return $stats;
     }
     
     /**
@@ -1156,6 +1454,8 @@ class Cache {
                 $dir = Speed::get_root_cache_path();
                 // Speed::deleteSpecificFiles is wil recursively remove files matching the extensions.
                 Speed::deleteSpecificFiles($dir, array("html", "gz","cached_uris.json"),true);
+                delete_transient('spress_page_cache_stats');
+                delete_transient('spress_page_cache_write_blocked');
 
             }
 
@@ -1390,13 +1690,40 @@ class Cache {
     }
 
     /**
-     * Refreshes the drop-in only when this plugin is updated, not for unrelated upgrades.
+     * Handles WordPress core, plugin, and theme updates after the upgrader completes.
+     *
+     * When cache clearing is enabled, purges generated CSS and page caches after a
+     * core or theme update because those updates may change styles, markup, or assets
+     * referenced by cached HTML. Other plugins do not trigger a cache purge.
+     * This is always enabled in Community and controlled by the Pro setting in Pro.
+     *
+     * When SpeedifyPress itself is updated, refreshes its advanced-cache.php drop-in
+     * so the updated bootstrap code is installed. This drop-in refresh is independent
+     * of the cache-clearing setting.
+     *
+     * @param object $upgrader The WordPress upgrader instance invoking this callback.
+     * @param array  $options  Upgrader context, including the update action, type, and
+     *                         plugin or theme identifiers when applicable.
+     * @return void
      */
     public static function refresh_after_upgrade($upgrader, $options) {
 
-        if (($options['type'] ?? '') !== 'plugin' || ($options['action'] ?? '') !== 'update') {
+        if (($options['action'] ?? '') !== 'update') {
             return;
         }
+
+        // Core and theme updates can change source styles and markup used by generated CSS.
+        if (
+            self::$clear_cache_on_wp_updates === 'true'
+            && in_array(($options['type'] ?? ''), array('core', 'theme'), true)
+        ) {
+            CSS::clear_cache();
+        }
+
+        if (($options['type'] ?? '') !== 'plugin') {
+            return;
+        }
+
         $plugins = $options['plugins'] ?? array($options['plugin'] ?? '');
         if (in_array(SPRESS_FILE_NAME, $plugins, true)) {
             self::init();

@@ -159,7 +159,7 @@ class Config {
 			),
 			'csrf_expiry_seconds' => array(
 				'name'   => 'CSRF Expiry',
-				'helper' => 'Number of seconds for the CSRF token to be valid',
+				'helper' => 'Expiry in seconds for CSRF tokens used by public CSS update requests. WooCommerce nonce replacement uses the WordPress nonce_life setting instead.',
 				'value' => '30',
 			),
 			'force_includes_limit' => array(
@@ -869,6 +869,7 @@ class Config {
 		}
 
 		update_option( 'spress_namespace_CONFIG', self::$config, false );
+
 
 	}
 

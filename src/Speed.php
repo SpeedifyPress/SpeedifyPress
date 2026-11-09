@@ -283,6 +283,20 @@ class Speed {
             return 'Cache bust parameter';
         }
 
+        // WooCommerce cart actions can mutate state through GET requests and include per-request nonces in cache paths.
+        foreach (array('add-to-cart', 'remove_item', 'undo_item', 'remove_coupon', 'wc-ajax') as $query_arg) {
+            if (self::request_has_query_arg($query_arg)) {
+                return 'WooCommerce cart action';
+            }
+        }
+
+        // Nonce-bearing URLs are action- or session-specific and must not create cache variants.
+        foreach (array_keys(self::get_query_args()) as $query_arg) {
+            if (stripos((string) $query_arg, 'nonce') !== false) {
+                return 'Nonce query parameter';
+            }
+        }
+
         // Legacy nocache requests should also skip caching.
         if (stripos($request_uri, 'nocache') !== false || stripos($script_name, 'nocache') !== false) {
             return 'Nocache querystring';
@@ -1155,41 +1169,73 @@ class Speed {
         //Generate token
         $csrf_token = self::generate_csrf_token(self::get_url());
 
-        //Mini worker to fetch token
-        $mini_worker = '
-        var _spdyInflight=false,_spdyLast=0,_spdyMinInterval=60000;
+        $csrf_expiry_seconds = max(1, (int) (Config::get('speed_css', 'csrf_expiry_seconds') ?: 30));
+        $csrf_refresh_interval_ms = min(60000, max(5000, (int) floor($csrf_expiry_seconds * 800)));
 
-        var _w=new Worker(URL.createObjectURL(new Blob(["onmessage=e=>{var d=e.data||{},u=d.u,p=d.p;if(!u)return;fetch(u,{method:\'HEAD\',credentials:\'same-origin\',headers:{\'X-Page-URL\':p||\'\',Accept:\'application/json\'}}).then(r=>postMessage(r.headers.get(\'X-CSRF-Token\')||\'\')).catch(()=>postMessage(\'\'))}"],{type:"text/javascript"})));
+        // Mini worker to fetch token
+        $mini_worker = '
+        var _spdyInflight=false,_spdyLastSuccess=0,_spdyMinSuccessInterval=' . $csrf_refresh_interval_ms . ',_spdySuccessKey="spdy_csrf_last_success",_spdyRequestId=0,_spdyActiveRequest=0,_spdyRequestTimer=null,_w=null;
+
+        // Always fetch once for this page load; later triggers use the per-tab success time.
+        try{sessionStorage.setItem(_spdySuccessKey,"0")}catch(e){}
+
+        var _workerCode=`onmessage=async e=>{var d=e.data||{},u=d.u,p=d.p,id=d.id;if(!u){postMessage({id:id,error:"Missing request URL"});return}try{var r=await fetch(u,{method:"HEAD",credentials:"same-origin",headers:{"X-Page-URL":p||"","Accept":"application/json"}}),t=r.headers.get("X-CSRF-Token")||"";postMessage({id:id,token:t})}catch(error){postMessage({id:id,error:String(error)})}}`;
+        try{
+            var _workerUrl=URL.createObjectURL(new Blob([_workerCode],{type:"text/javascript"}));
+            _w=new Worker(_workerUrl);
+        }catch(e){}
         window.spdy_csrfToken=null;
 
-        // set once (not per call)
-        _w.onmessage=e=>{
-        var t=e.data;
-        _spdyInflight=false;
+        // Set worker handlers once, not for each refresh attempt.
+        if(_w){
+            _w.onmessage=e=>{
+            var result=e.data||{};
+            if(result.id!==_spdyActiveRequest)return;
+            clearTimeout(_spdyRequestTimer);
+            _spdyRequestTimer=null;
+            _spdyInflight=false;
+            _spdyActiveRequest=0;
+            var t=result.token||"";
             if(t){
+                _spdyLastSuccess=Date.now();
+                try{sessionStorage.setItem(_spdySuccessKey,String(_spdyLastSuccess))}catch(e){}
                 window.spdy_csrfToken=t;
                 document.cookie = \'spdy_csrf=\' + encodeURIComponent(t) + \'; Path=/; Secure; SameSite=Lax\';
-                document.dispatchEvent(new CustomEvent("spdy:csrf-updated",{detail:{token:t}}))
+                document.dispatchEvent(new CustomEvent("spdy:csrf-updated",{detail:{token:t}}));
             }
-        };        
+            };
+            _w.onerror=e=>{clearTimeout(_spdyRequestTimer);_spdyRequestTimer=null;_spdyInflight=false;_spdyActiveRequest=0};
+            _w.onmessageerror=e=>{clearTimeout(_spdyRequestTimer);_spdyRequestTimer=null;_spdyInflight=false;_spdyActiveRequest=0};
+        }
 
         function spdyFetchCsrf(path) {
         if (typeof path !== \'string\' || !path) path = \'_csrf\';
 
         var now = Date.now();
-        if (_spdyInflight || now - _spdyLast < _spdyMinInterval) return
+        var lastSuccess = _spdyLastSuccess;
+        try{lastSuccess=Number(sessionStorage.getItem(_spdySuccessKey))||0}catch(e){}
+        var sinceSuccess=now-lastSuccess;
+        if(!_w||_spdyInflight)return;
+        if(lastSuccess&&sinceSuccess>=5000&&sinceSuccess<=_spdyMinSuccessInterval)return;
 
         _spdyInflight = true;
-        _spdyLast = now;
+        _spdyActiveRequest=++_spdyRequestId;
 
         var u = new URL(path, location.href).href;
-        _w.postMessage({ u, p: location.href });
+        try{
+            _w.postMessage({u:u,p:location.href,id:_spdyActiveRequest});
+            var requestId=_spdyActiveRequest;
+            _spdyRequestTimer=setTimeout(()=>{if(_spdyActiveRequest===requestId){_spdyInflight=false;_spdyActiveRequest=0;_spdyRequestTimer=null}},10000);
+        }catch(e){
+            _spdyInflight=false;
+            _spdyActiveRequest=0;
+        }
         }
 
         spdyFetchCsrf();
-        addEventListener("visibilitychange",()=>{!document.hidden&&spdyFetchCsrf()});
-        addEventListener("focus",spdyFetchCsrf);
-        addEventListener("pageshow",e=>{e.persisted&&spdyFetchCsrf()});
+        document.addEventListener("visibilitychange",()=>{if(!document.hidden)spdyFetchCsrf()});
+        addEventListener("focus",()=>spdyFetchCsrf());
+        addEventListener("pageshow",e=>{if(e.persisted)spdyFetchCsrf()});
         '; 
 
         //Minify it

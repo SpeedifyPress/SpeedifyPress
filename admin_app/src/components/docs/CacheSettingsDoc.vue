@@ -41,9 +41,19 @@ defineProps({
     <p class="text-gray-500 dark:text-gray-400 text-sm font-normal">
       This decides how long your cached files will last for being automatically deleted. <i>Never Expires</i> is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
     </p>    
+
+    <h5 class="mb-1 mt-3 text-base text-gray-500 md:text-lg dark:text-gray-400">Automatic cache space protection</h5>
+    <p class="text-gray-500 dark:text-gray-400 text-sm font-normal">
+      All editions check available disk space before page-cache writes. The Dashboard reconciles cache size at most once per minute while open, deleting the oldest entries when needed to keep at least 10% of the filesystem free. Until a reconciliation makes room, new entries that exceed the available budget are skipped. If PHP cannot determine disk capacity, page caching is skipped rather than left unbounded. This applies to cached HTML and gzip copies, not generated CSS files. Pro can also set a fixed cache-size limit.
+    </p>
+    <p class="mt-2 text-gray-500 dark:text-gray-400 text-sm font-normal">
+      Automatic protection uses the free-space figures reported by PHP for the filesystem containing the cache. On shared hosting, including some cPanel servers, those figures may describe the whole filesystem rather than your account's storage quota. PHP has no portable way to read account quotas across hosting providers, so the automatic limit can be an estimate and may be higher than your account can use. If so, use the Pro Cache Size Limit below and set it to a safe amount within your account's available space.
+    </p>
+
+    
   
 
-    <!-- Nonce replacement is available only in the Pro build. -->
+    <!-- Advanced cache options are available only in the Pro build. -->
     
 
     <!-- Filters -->

@@ -262,10 +262,14 @@ class RestApi {
     /**
      * Retrieves dashboard data for admin users.
      *
+     * @param WP_REST_Request $request Request parameters.
      * @return array Dashboard data.
      */
-    public static function get_dashboard_data() {
-        $data = App\Dashboard::get_data();
+    public static function get_dashboard_data($request) {
+        $refresh_page_cache = is_object($request)
+            && method_exists($request, 'get_param')
+            && rest_sanitize_boolean($request->get_param('refresh_page_cache'));
+        $data = App\Dashboard::get_data($refresh_page_cache);
         return $data;
     }
 

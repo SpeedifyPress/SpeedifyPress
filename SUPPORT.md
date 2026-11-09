@@ -49,6 +49,12 @@ Here you can choose how the plugin should perform page preloading. This is when 
 
 This decides how long your cached files will last for being automatically deleted. *Never Expires* is the recommended but it's possible you could run into issues with expired nonce (in which case, set to 6hrs)
 
+*Automatic cache space protection*
+
+All editions check available disk space before page-cache writes. The Dashboard reconciles cache size at most once per minute while open, deleting the oldest entries when needed to keep at least 10% of the filesystem free. Until a reconciliation makes room, new entries that exceed the available budget are skipped. If PHP cannot determine disk capacity, page caching is skipped rather than left unbounded. This applies to cached HTML and gzip copies, not generated CSS files. Pro can also set a fixed cache-size limit.
+
+Automatic protection uses the free-space figures reported by PHP for the filesystem containing the cache. On shared hosting, including some cPanel servers, those figures may describe the whole filesystem rather than your account's storage quota. PHP has no portable way to read account quotas across hosting providers, so the automatic limit can be an estimate and may be higher than your account can use. If so, use the Pro Cache Size Limit below and set it to a safe amount within your account's available space.
+
 ### Filters
 
 *Bypass When Cookies Present*
@@ -86,7 +92,7 @@ These snippets let your web server help SpeedifyPress serve cached pages. First,
 
 *Protect cache files*
 
-Use this rule to stop visitors opening cache files directly by URL. SpeedifyPress can still read and use those files. Choose the snippet for the server handling your site, then add it where the instructions say.
+Use this rule to prevent direct requests for cached page HTML and private CSS lookup files. Public optimized CSS, font assets, and frontend cache indexes remain accessible. Choose the snippet for the server handling your site, then add it where the instructions say.
 
 *Direct server delivery (advanced)*
 
@@ -98,7 +104,7 @@ Direct delivery does not run PHP's cache-expiry checks or response-header logic.
 
 - Not sure which server to choose? The detected server is a suggestion; your host or a reverse proxy may affect what actually handles requests.
 - For Apache or LiteSpeed, put the rules in the WordPress root .htaccess, above the standard WordPress rewrite rules. Your host must allow these rewrite rules.
-- For Nginx Direct Server Delivery, copy the nginx.conf (http block) snippet into the main http {} block. Add the Site config (/etc/nginx/sites-available) snippet to your existing site's server {} block; don't create a second one.
+- For Nginx Direct Server Delivery, first add the cache-protection snippet to the site's server {} block. Then copy the nginx.conf (http block) snippet into the main http {} block and add the Site config (/etc/nginx/sites-available) snippet to that same existing server block; don't create a second one.
 - After changing the URL or user-agent exclusions in SpeedifyPress, copy the snippets again so your server rules stay in sync. For Nginx, validate the config and reload Nginx. Keep a backup, and ask your host for help if you're unsure.
 ##  CSS Settings
 
